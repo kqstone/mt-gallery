@@ -104,7 +104,7 @@ fun FolderDetailScreen(
                             SubfolderSection(
                                 subfolders = uiState.subfolders,
                                 onFolderClick = onFolderClick,
-                                thumbUrlProvider = { md5, fileId -> viewModel.getThumbUrl(md5, fileId) }
+                                thumbUrlProvider = { md5, _ -> viewModel.getThumbUrlByMd5(md5) }
                             )
                         }
                     }

@@ -50,6 +50,10 @@ class FolderDetailViewModel(private val galleryRepository: GalleryRepository) : 
         return galleryRepository.getThumbUrl(md5, fileId)
     }
 
+    fun getThumbUrlByMd5(md5: String): String {
+        return galleryRepository.getThumbUrlByMd5(md5)
+    }
+
     fun getAllLoadedPhotos(): List<PhotoItem> = _uiState.value.photos
 
     fun updateColumnCount(count: Int) {

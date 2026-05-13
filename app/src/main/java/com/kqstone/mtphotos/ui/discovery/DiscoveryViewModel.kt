@@ -88,6 +88,10 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
         return galleryRepository.getThumbUrl(md5, fileId)
     }
 
+    fun getThumbUrlByMd5(md5: String): String {
+        return galleryRepository.getThumbUrlByMd5(md5)
+    }
+
     class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

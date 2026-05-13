@@ -99,7 +99,7 @@ fun FolderScreen(
                             FolderCard(
                                 folder = folder,
                                 thumbUrl = if (folder.coverMd5.isNotEmpty()) {
-                                    viewModel.getThumbUrl(folder.coverMd5, folder.coverFileId)
+                                    viewModel.getThumbUrlByMd5(folder.coverMd5)
                                 } else null,
                                 onClick = { onFolderClick(folder.id) }
                             )

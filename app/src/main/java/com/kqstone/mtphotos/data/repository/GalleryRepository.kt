@@ -116,6 +116,12 @@ class GalleryRepository(private val container: AppContainer) {
         return "$serverUrl/gateway/file/$fileId/$md5?auth_code=$authCode"
     }
 
+    fun getThumbUrlByMd5(md5: String): String {
+        val serverUrl = prefsManager.getServerUrlSync()
+        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
+        return "$serverUrl/gateway/s260/$md5?auth_code=$authCode"
+    }
+
     fun getFullImageUrl(id: Double, md5: String): String {
         val serverUrl = prefsManager.getServerUrlSync()
         val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
@@ -144,10 +150,12 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getRootFolders(): Result<List<FolderItem>> {
         return try {
             val response = container.gatewayApi.GatewayControllerPart5FolderTopList()
+            android.util.Log.d("FolderRepo", "folderTopList keys=${response.keys}")
             val list = response["folderList"] as? List<*>
                 ?: response["list"] as? List<*>
                 ?: response["folders"] as? List<*>
                 ?: emptyList<Any>()
+            if (list.isNotEmpty()) android.util.Log.d("FolderRepo", "folder first=${list.first()}")
             val folders = list.mapNotNull { item ->
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 val id = (map["id"] as? Double)?.toString() ?: return@mapNotNull null
@@ -351,20 +359,37 @@ class GalleryRepository(private val container: AppContainer) {
             val body: Map<String, Any> = mapOf("ids" to intIds)
             val response = container.gatewayApi.GatewayControllerPart4GetFileInIds(body)
             android.util.Log.d("DiscRepo", "fileInIds keys=${response.keys}")
-            val list = response["list"] as? List<*>
-                ?: response["fileList"] as? List<*>
-                ?: response["files"] as? List<*>
-                ?: response["result"] as? List<*>
-                ?: emptyList<Any>()
-            android.util.Log.d("DiscRepo", "fileInIds list size=${list.size}")
-            if (list.isNotEmpty()) android.util.Log.d("DiscRepo", "fileInIds first=${list.first()}")
             val result = mutableMapOf<Double, String>()
-            for (item in list) {
-                val map = item as? Map<*, *> ?: continue
-                val id = map["id"] as? Double ?: continue
-                val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
-                result[id] = md5
+
+            // Try timeline-style "result" format: {result: [{day, list: [{id, MD5, ...}]}]}
+            val resultList = response["result"] as? List<*>
+            if (resultList != null) {
+                for (dayEntry in resultList) {
+                    val dayMap = dayEntry as? Map<*, *> ?: continue
+                    val photoList = dayMap["list"] as? List<*> ?: continue
+                    for (photo in photoList) {
+                        val map = photo as? Map<*, *> ?: continue
+                        val id = map["id"] as? Double ?: continue
+                        val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
+                        result[id] = md5
+                    }
+                }
             }
+
+            // Try flat list format
+            if (result.isEmpty()) {
+                val list = response["list"] as? List<*>
+                    ?: response["fileList"] as? List<*>
+                    ?: response["files"] as? List<*>
+                    ?: emptyList<Any>()
+                for (item in list) {
+                    val map = item as? Map<*, *> ?: continue
+                    val id = map["id"] as? Double ?: continue
+                    val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
+                    result[id] = md5
+                }
+            }
+
             android.util.Log.d("DiscRepo", "md5Map=$result")
             result
         } catch (e: Exception) {
@@ -375,7 +400,9 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun getClassifyTopList(): Result<List<SceneItem>> {
         return try {
-            val list = container.gatewayApi.GatewayControllerPart2ClassifyTopList("", "")
+            val list = container.gatewayApi.GatewayControllerPart2ClassifyTopList("all", "explore")
+            android.util.Log.d("DiscRepo", "classifyTopList size=${list.size}")
+            if (list.isNotEmpty()) android.util.Log.d("DiscRepo", "classifyTopList first=${list.first()}")
             val scenes = list.mapNotNull { item ->
                 val id = item["id"] as? String ?: (item["id"] as? Double)?.toInt()?.toString() ?: return@mapNotNull null
                 val name = item["cname"] as? String ?: item["name"] as? String ?: item["label"] as? String ?: return@mapNotNull null
@@ -383,10 +410,12 @@ class GalleryRepository(private val container: AppContainer) {
                 val coverFileId = item["fileId"] as? Double ?: item["coverFileId"] as? Double ?: 0.0
                 val count = (item["num"] as? Double)?.toInt() ?: (item["count"] as? Double)?.toInt() ?: 0
                 val cid = item["cid"] as? String ?: (item["cid"] as? Double)?.toInt()?.toString()
+                android.util.Log.d("DiscRepo", "scene id=$id name=$name coverMd5=$coverMd5 cid=$cid")
                 SceneItem(id, name, coverMd5, coverFileId, count, cid)
             }
             Result.success(scenes)
         } catch (e: Exception) {
+            android.util.Log.e("DiscRepo", "classifyTopList failed", e)
             Result.failure(e)
         }
     }
@@ -394,7 +423,7 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getClassifyFileList(id: String?, cid: String?): Result<List<PhotoItem>> {
         return try {
             android.util.Log.d("DiscRepo", "classifyFileList id=$id cid=$cid")
-            val response = container.gatewayApi.GatewayControllerPart2ClassifyFileList("", id, cid)
+            val response = container.gatewayApi.GatewayControllerPart2ClassifyFileList("all", id, cid)
             android.util.Log.d("DiscRepo", "classifyFileList keys=${response.keys}")
             val photos = mutableListOf<PhotoItem>()
 
@@ -445,7 +474,7 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun getAddressCountByCity(): Result<List<LocationItem>> {
         return try {
-            val list = container.gatewayApi.GatewayControllerPart2AddressCountByCity("", "")
+            val list = container.gatewayApi.GatewayControllerPart2AddressCountByCity("all", "explore")
             val locations = list.mapNotNull { item ->
                 val city = item["city"] as? String ?: item["name"] as? String ?: return@mapNotNull null
                 val count = (item["count"] as? Double)?.toInt() ?: 0
@@ -459,7 +488,7 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun getFilesInCity(city: String): Result<List<PhotoItem>> {
         return try {
-            val list = container.gatewayApi.GatewayControllerPart2FilesInAddressV2("", "city", city)
+            val list = container.gatewayApi.GatewayControllerPart2FilesInAddressV2("all", "city", city)
             val photos = list.mapNotNull { item ->
                 val id = item["id"] as? Double ?: return@mapNotNull null
                 val md5 = item["MD5"] as? String ?: item["md5"] as? String ?: return@mapNotNull null

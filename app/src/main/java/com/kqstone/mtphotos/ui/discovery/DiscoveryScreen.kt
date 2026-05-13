@@ -108,7 +108,7 @@ fun DiscoveryScreen(
                                 SceneSection(
                                     scenes = uiState.scenes,
                                     onItemClick = { onSceneClick(it.id, it.cid) },
-                                    thumbUrlProvider = { md5, fileId -> viewModel.getThumbUrl(md5, fileId) }
+                                    thumbUrlProvider = { md5, _ -> viewModel.getThumbUrlByMd5(md5) }
                                 )
                             }
                         }
