@@ -27,7 +27,11 @@ data class GalleryUiState(
     val months: List<MonthGroup> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val selectedPhotoIds: Set<Double> = emptySet(),
+    val isSelectionMode: Boolean = false,
+    val columnCount: Int = 3,
+    val isDeleting: Boolean = false
 )
 
 class GalleryViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
@@ -132,12 +136,133 @@ class GalleryViewModel(private val galleryRepository: GalleryRepository) : ViewM
         }
     }
 
+    fun toggleMonthExpand(yearMonth: String) {
+        val current = _uiState.value
+        val month = current.months.find { it.yearMonth == yearMonth } ?: return
+        if (month.isLoaded) {
+            // Collapse: unload the month
+            val updatedMonths = current.months.map { m ->
+                if (m.yearMonth == yearMonth) {
+                    m.copy(days = emptyList(), isLoaded = false)
+                } else {
+                    m
+                }
+            }
+            _uiState.value = _uiState.value.copy(months = updatedMonths)
+        } else {
+            loadMonthFiles(yearMonth)
+        }
+    }
+
+    // Selection management
+    fun toggleSelection(photoId: Double) {
+        val current = _uiState.value
+        val newSelected = if (photoId in current.selectedPhotoIds) {
+            current.selectedPhotoIds - photoId
+        } else {
+            current.selectedPhotoIds + photoId
+        }
+        _uiState.value = current.copy(
+            selectedPhotoIds = newSelected,
+            isSelectionMode = newSelected.isNotEmpty()
+        )
+    }
+
+    fun startDragSelection(photoId: Double) {
+        val current = _uiState.value
+        if (!current.isSelectionMode) {
+            _uiState.value = current.copy(
+                selectedPhotoIds = setOf(photoId),
+                isSelectionMode = true
+            )
+        }
+    }
+
+    fun dragSelect(photoId: Double) {
+        val current = _uiState.value
+        if (current.isSelectionMode) {
+            _uiState.value = current.copy(
+                selectedPhotoIds = current.selectedPhotoIds + photoId
+            )
+        }
+    }
+
+    fun clearSelection() {
+        _uiState.value = _uiState.value.copy(
+            selectedPhotoIds = emptySet(),
+            isSelectionMode = false
+        )
+    }
+
+    fun selectAll() {
+        val allPhotos = _uiState.value.months
+            .flatMap { month -> month.days.flatMap { it.photos } }
+        _uiState.value = _uiState.value.copy(
+            selectedPhotoIds = allPhotos.map { it.id }.toSet(),
+            isSelectionMode = true
+        )
+    }
+
+    // Delete
+    fun deleteSelected() {
+        val selectedIds = _uiState.value.selectedPhotoIds.toList()
+        if (selectedIds.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(isDeleting = true)
+        viewModelScope.launch {
+            val result = galleryRepository.deleteFiles(selectedIds)
+            result.fold(
+                onSuccess = {
+                    // Remove deleted photos from the loaded months
+                    val updatedMonths = _uiState.value.months.map { month ->
+                        val updatedDays = month.days.map { day ->
+                            day.copy(photos = day.photos.filter { it.id !in selectedIds.toSet() })
+                        }.filter { it.photos.isNotEmpty() }
+                        val newTotal = updatedDays.sumOf { it.photos.size }
+                        month.copy(
+                            days = updatedDays,
+                            totalCount = if (month.isLoaded) newTotal else month.totalCount
+                        )
+                    }.filter { !it.isLoaded || it.days.isNotEmpty() }
+                    _uiState.value = _uiState.value.copy(
+                        months = updatedMonths,
+                        selectedPhotoIds = emptySet(),
+                        isSelectionMode = false,
+                        isDeleting = false
+                    )
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isDeleting = false,
+                        error = "删除失败: ${e.message}"
+                    )
+                }
+            )
+        }
+    }
+
+    // Column count for pinch-to-zoom
+    fun updateColumnCount(newCount: Int) {
+        val clamped = newCount.coerceIn(2, 6)
+        if (clamped != _uiState.value.columnCount) {
+            _uiState.value = _uiState.value.copy(columnCount = clamped)
+        }
+    }
+
     fun getThumbUrl(md5: String, fileId: Double): String {
         return galleryRepository.getThumbUrl(md5, fileId)
     }
 
     fun getFullImageUrl(id: Double, md5: String): String {
         return galleryRepository.getFullImageUrl(id, md5)
+    }
+
+    fun getAllLoadedPhotos(): List<PhotoItem> {
+        return _uiState.value.months
+            .filter { it.isLoaded }
+            .flatMap { month ->
+                month.days.flatMap { it.photos }
+            }
     }
 
     private fun formatYearMonth(ym: String): String {

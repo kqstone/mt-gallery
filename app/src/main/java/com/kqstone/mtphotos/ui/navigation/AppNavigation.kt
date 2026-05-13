@@ -3,11 +3,9 @@ package com.kqstone.mtphotos.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
@@ -49,10 +47,10 @@ fun AppNavigation() {
             GalleryScreen(
                 viewModel = galleryViewModel,
                 onPhotoClick = { photo ->
-                    val imageUrl = viewerViewModel.getFullImageUrl(photo.id, photo.md5)
-                    navController.navigate(
-                        "viewer/${photo.id}/${photo.md5}/${photo.fileName}"
-                    )
+                    val allPhotos = galleryViewModel.getAllLoadedPhotos()
+                    val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                    viewerViewModel.setPhotos(allPhotos, index)
+                    navController.navigate("viewer")
                 },
                 onSettingsClick = {
                     navController.navigate("settings")
@@ -60,21 +58,9 @@ fun AppNavigation() {
             )
         }
 
-        composable(
-            route = "viewer/{fileId}/{md5}/{fileName}",
-            arguments = listOf(
-                navArgument("fileId") { type = NavType.StringType },
-                navArgument("md5") { type = NavType.StringType },
-                navArgument("fileName") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val fileId = backStackEntry.arguments?.getString("fileId")?.toDoubleOrNull() ?: 0.0
-            val md5 = backStackEntry.arguments?.getString("md5") ?: ""
-            val fileName = backStackEntry.arguments?.getString("fileName") ?: ""
-
+        composable("viewer") {
             ViewerScreen(
-                imageUrl = viewerViewModel.getFullImageUrl(fileId, md5),
-                fileName = fileName,
+                viewModel = viewerViewModel,
                 onBack = { navController.popBackStack() }
             )
         }
