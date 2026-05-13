@@ -15,14 +15,14 @@ interface AuthApi {
 
     /** 登录 */
     @POST("/auth/login")
-    suspend fun AppControllerLogin(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun AppControllerLogin(@Body body: Map<String, String>): Map<String, Any>
 
     /** 刷新token */
     @POST("/auth/refresh")
-    suspend fun AppControllerRefreshToken(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun AppControllerRefreshToken(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取auth_code，有效时间为24小时内 */
     @POST("/auth/auth_code")
-    suspend fun AppControllerGetAuthCode(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun AppControllerGetAuthCode(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
 }

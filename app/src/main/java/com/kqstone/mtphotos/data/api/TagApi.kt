@@ -19,11 +19,11 @@ interface TagApi {
 
     /** 更新标签（PATCH） */
     @PATCH("/api-tag/tag/{id}")
-    suspend fun TagControllerUpdateTag(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun TagControllerUpdateTag(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 更新标签（PUT） */
     @PUT("/api-tag/tag/{id}")
-    suspend fun TagControllerUpdateTagPut(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun TagControllerUpdateTagPut(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取标签关联的文件列表 */
     @GET("/api-tag/files/{id}")
@@ -31,23 +31,23 @@ interface TagApi {
 
     /** 编辑文件标签 */
     @POST("/api-tag/editFileTag")
-    suspend fun TagControllerEditFileTag(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerEditFileTag(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 批量为文件添加标签 */
     @POST("/api-tag/fileAddTags")
-    suspend fun TagControllerFileAddTags(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerFileAddTags(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 批量删除文件标签（仅数据库） */
     @POST("/api-tag/fileDelTagsInDb")
-    suspend fun TagControllerFileDelTagsInDb(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerFileDelTagsInDb(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 批量保存标签到 EXIF */
     @POST("/api-tag/saveToExif")
-    suspend fun TagControllerSaveToExif(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerSaveToExif(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 隐藏空标签 */
     @POST("/api-tag/hideTag")
-    suspend fun TagControllerHideTag(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerHideTag(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 隐藏所有空标签 */
     @POST("/api-tag/hideEmptyTags")
@@ -55,6 +55,6 @@ interface TagApi {
 
     /** 根据 ID 获取标签名称 */
     @POST("/api-tag/tagNames")
-    suspend fun TagControllerGetTagNames(@Body body: Map<String, Any>): Unit
+    suspend fun TagControllerGetTagNames(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
 }

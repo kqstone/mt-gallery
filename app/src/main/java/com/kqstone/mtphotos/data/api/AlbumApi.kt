@@ -59,11 +59,11 @@ interface AlbumApi {
 
     /** 添加文件至相册中 */
     @POST("/api-album/addFileToAlbum")
-    suspend fun AlbumControllerAddFileToAlbum(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerAddFileToAlbum(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 将文件从相册中删除 */
     @POST("/api-album/removeFileFromAlbum")
-    suspend fun AlbumControllerRemoveFileFromAlbum(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerRemoveFileFromAlbum(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 相册的自动更新配置 */
     @GET("/api-album/link/{id}")
@@ -71,11 +71,11 @@ interface AlbumApi {
 
     /** 添加 相册 自动配置 */
     @POST("/api-album/link/{id}")
-    suspend fun AlbumControllerAddAutoLink(@Path("id") id: Double, @Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerAddAutoLink(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 删除 相册 自动配置 */
     @DELETE("/api-album/link/{id}")
-    suspend fun AlbumControllerDelAutoLink(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun AlbumControllerDelAutoLink(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 相册 自动关联 更新文件 */
     @POST("/api-album/linkSyncFiles/{id}")
@@ -83,19 +83,19 @@ interface AlbumApi {
 
     /** 相册硬链接 - 触发同步 */
     @POST("/api-album/hlinkAlbum")
-    suspend fun AlbumControllerHlinkAlbum(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerHlinkAlbum(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 相册 硬链接 创建- admin only */
     @POST("/api-album/addAlbumHLink")
-    suspend fun AlbumControllerAddAlbumHLink(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerAddAlbumHLink(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 相册 硬链接 更新- admin only */
     @POST("/api-album/updateAlbumHLink")
-    suspend fun AlbumControllerUpdateAlbumHLink(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerUpdateAlbumHLink(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 相册 硬链接 - admin only */
     @POST("/api-album/delAlbumHLink")
-    suspend fun AlbumControllerDelAlbumHLink(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerDelAlbumHLink(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 相册 硬链接 */
     @GET("/api-album/getAlbumHardLinkByAlbumId/{id}")
@@ -107,6 +107,6 @@ interface AlbumApi {
 
     /** 硬链接 显示的全部相册列表 - admin only */
     @POST("/api-album/findAllForHardLink/list")
-    suspend fun AlbumControllerFindAllForHardLink(@Body body: Map<String, Any>): Unit
+    suspend fun AlbumControllerFindAllForHardLink(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
 }

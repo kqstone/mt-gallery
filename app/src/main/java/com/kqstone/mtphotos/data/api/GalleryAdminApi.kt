@@ -15,7 +15,7 @@ interface GalleryAdminApi {
 
     /** 查找重复文件 */
     @POST("/gallery/findDuplicateFiles")
-    suspend fun GalleryControllerFindDuplicateFilesWithGalleryIds(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GalleryControllerFindDuplicateFilesWithGalleryIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 查找已删除文件 */
     @GET("/gallery/findDeletedFiles")
@@ -31,11 +31,11 @@ interface GalleryAdminApi {
 
     /** 删除重复文件 */
     @POST("/gallery/deleteDuplicateFiles")
-    suspend fun GalleryControllerDeleteDuplicateFiles(@Body body: Map<String, Any>): Any
+    suspend fun GalleryControllerDeleteDuplicateFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Any
 
     /** 文件夹路径重置检查 */
     @POST("/gallery/folderPathRebase")
-    suspend fun GalleryControllerFolderPathRebase(@Body body: Map<String, Any>): Any
+    suspend fun GalleryControllerFolderPathRebase(@Body body: Map<String, @JvmSuppressWildcards Any>): Any
 
     /** 创建图库 */
     @POST("/gallery")
@@ -75,15 +75,15 @@ interface GalleryAdminApi {
 
     /** 更新图库权重 */
     @POST("/gallery/updateWeights")
-    suspend fun GalleryControllerUpdateWeights(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GalleryControllerUpdateWeights(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 批量创建文件夹 */
     @POST("/gallery/createFolders")
-    suspend fun GalleryControllerCreateFolders(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GalleryControllerCreateFolders(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取功能排除的图库ID */
     @POST("/gallery/func_exclude")
-    suspend fun GalleryControllerGetFuncExcludeIds(@Body body: Map<String, Any>): Any
+    suspend fun GalleryControllerGetFuncExcludeIds(@Body body: Map<String, @JvmSuppressWildcards Any>): Any
 
     /** 获取跳过扫描的文件夹日志 */
     @POST("/gallery/skippedFolderLogs")

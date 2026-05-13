@@ -19,7 +19,7 @@ interface SystemConfigApi {
 
     /** 批量修改图库设置配置值 - adminOnly */
     @POST("/system-config/patchMulti")
-    suspend fun SystemConfigControllerPatchMultiForFront(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerPatchMultiForFront(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取FFmpeg硬件加速列表 - adminOnly */
     @POST("/system-config/getFFmpegHWList")
@@ -35,15 +35,15 @@ interface SystemConfigApi {
 
     /** 修改数据库向量的长度 - adminOnly */
     @POST("/system-config/changeTableVecLength")
-    suspend fun SystemConfigControllerChangeTableVecLength(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerChangeTableVecLength(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取数据库向量长度 - adminOnly */
     @POST("/system-config/getTableVecLength")
-    suspend fun SystemConfigControllerGetTableVecLength(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerGetTableVecLength(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 测试OCR API配置 - adminOnly */
     @POST("/system-config/test/ocrApi")
-    suspend fun SystemConfigControllerTestOcrApiConfig(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerTestOcrApiConfig(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 准备CLIP表 - adminOnly */
     @POST("/system-config/db/prepareCLIP")
@@ -55,7 +55,7 @@ interface SystemConfigApi {
 
     /** 切换人脸识别版本 - adminOnly */
     @POST("/system-config/switchUseFaceRegV2")
-    suspend fun SystemConfigControllerSwitchUseFaceRegV2(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerSwitchUseFaceRegV2(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取配置信息 - adminOnly */
     @POST("/system-config/configInfo")
@@ -79,7 +79,7 @@ interface SystemConfigApi {
 
     /** 切换libheif版本 - adminOnly */
     @POST("/system-config/libheifVersion")
-    suspend fun SystemConfigController_SwitchLibheifVersion(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigController_SwitchLibheifVersion(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取离线ID - adminOnly */
     @POST("/system-config/offlineID")
@@ -87,7 +87,7 @@ interface SystemConfigApi {
 
     /** 在线验证授权 - adminOnly */
     @POST("/system-config/verifyAuthOnlineInBrowser")
-    suspend fun SystemConfigControllerVerifyAuthOnlineInBrowser(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun SystemConfigControllerVerifyAuthOnlineInBrowser(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取日志 - adminOnly */
     @POST("/system-config/getLogs")

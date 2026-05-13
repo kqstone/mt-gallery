@@ -7,7 +7,7 @@ interface FileAdminApi {
 
     /** 触发边界演变 */
     @POST("/files/triggerBoundaryEvolution")
-    suspend fun FilesController_TriggerBoundaryEvolution(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun FilesController_TriggerBoundaryEvolution(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 重置文件状态 */
     @POST("/files/resetFile/{id}")
@@ -31,11 +31,11 @@ interface FileAdminApi {
 
     /** 提交OCR识别结果 */
     @POST("/files/ocr/result")
-    suspend fun FilesControllerSaveOcrResult(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun FilesControllerSaveOcrResult(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 重置OCR状态 */
     @POST("/files/ocr/resetStatus")
-    suspend fun FilesControllerResetOcrStatus(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun FilesControllerResetOcrStatus(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取单个文件信息 */
     @GET("/files/{id}")
@@ -47,10 +47,10 @@ interface FileAdminApi {
 
     /** 获取浏览器任务文件列表 */
     @POST("/files/broTaskFileList")
-    suspend fun FilesControllerGetBrowserTaskFileList(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun FilesControllerGetBrowserTaskFileList(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 根据行政区划或坐标测试地理位置识别 */
     @POST("/files/findInGpsDistrict")
-    suspend fun FilesControllerFindInGpsDistrict(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun FilesControllerFindInGpsDistrict(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
 }

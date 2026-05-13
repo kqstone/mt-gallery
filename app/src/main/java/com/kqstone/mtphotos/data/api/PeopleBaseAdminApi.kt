@@ -31,19 +31,19 @@ interface PeopleBaseAdminApi {
 
     /** 根据文件ID列表获取MD5值（用于显示封面） */
     @POST("/people-base/findFileMD5ByFileIds")
-    suspend fun PeopleBaseControllerFindMD5ByIds(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun PeopleBaseControllerFindMD5ByIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 根据人物基础ID列表获取基础信息 - adminOnly */
     @POST("/people-base/findBaseInfoByIds")
-    suspend fun PeopleBaseControllerFindBaseInfoByIds(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun PeopleBaseControllerFindBaseInfoByIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 合并人物基础 - adminOnly */
     @POST("/people-base/adminMergeBaseIds")
-    suspend fun PeopleBaseControllerAdminMergeBaseIds(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleBaseControllerAdminMergeBaseIds(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 设置人物基础（合并或更新名称）- adminOnly */
     @POST("/people-base/adminSetBaseId")
-    suspend fun PeopleBaseControllerAdminSetBaseId(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleBaseControllerAdminSetBaseId(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取人物基础对应照片识别的人脸信息 - adminOnly */
     @GET("/people-base/baseInFileInfo")
@@ -51,6 +51,6 @@ interface PeopleBaseAdminApi {
 
     /** 根据人物基础ID获取人物名称 - adminOnly */
     @POST("/people-base/getNameFromPeople")
-    suspend fun PeopleBaseControllerGetNameFromPeople(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleBaseControllerGetNameFromPeople(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
 }

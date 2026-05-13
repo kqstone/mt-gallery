@@ -7,7 +7,7 @@ interface FileTaskAdminApi {
 
     /** 创建后台任务 */
     @POST("/fileTask/addTask")
-    suspend fun FileTaskControllerAddTask(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun FileTaskControllerAddTask(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取正在执行的任务列表 */
     @GET("/fileTask/jobs/active")

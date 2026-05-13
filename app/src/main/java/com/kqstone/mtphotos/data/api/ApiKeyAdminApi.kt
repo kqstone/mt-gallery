@@ -11,7 +11,7 @@ interface ApiKeyAdminApi {
 
     /** 为指定用户创建 API Key（管理员） */
     @POST("/api-keys-admin")
-    suspend fun ApiKeyAdminControllerCreate(@Body body: Map<String, Any>): Unit
+    suspend fun ApiKeyAdminControllerCreate(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 获取单个 API Key（管理员） */
     @GET("/api-keys-admin/{id}")
@@ -19,7 +19,7 @@ interface ApiKeyAdminApi {
 
     /** 更新 API Key（管理员） */
     @PATCH("/api-keys-admin/{id}")
-    suspend fun ApiKeyAdminControllerUpdate(@Path("id") id: String, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ApiKeyAdminControllerUpdate(@Path("id") id: String, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 删除 API Key（管理员） */
     @DELETE("/api-keys-admin/{id}")

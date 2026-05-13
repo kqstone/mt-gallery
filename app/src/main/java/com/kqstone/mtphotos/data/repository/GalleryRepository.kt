@@ -89,9 +89,14 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun deleteFiles(ids: List<Double>): Result<Unit> {
         return try {
-            val body = mapOf("ids" to ids)
-            container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-            Result.success(Unit)
+            val body = mapOf("fileIds" to ids.map { it.toInt() })
+            val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
+            val code = response["code"] as? String
+            if (code != null) {
+                Result.failure(Exception(code))
+            } else {
+                Result.success(Unit)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }

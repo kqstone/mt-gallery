@@ -11,7 +11,7 @@ interface ApiKeyApi {
 
     /** 创建新的 API Key */
     @POST("/api-keys")
-    suspend fun ApiKeyControllerCreate(@Body body: Map<String, Any>): Unit
+    suspend fun ApiKeyControllerCreate(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 获取当前用户的单个 API Key */
     @GET("/api-keys/{id}")
@@ -19,7 +19,7 @@ interface ApiKeyApi {
 
     /** 更新当前用户的 API Key */
     @PATCH("/api-keys/{id}")
-    suspend fun ApiKeyControllerUpdate(@Path("id") id: String, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ApiKeyControllerUpdate(@Path("id") id: String, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 删除当前用户的 API Key */
     @DELETE("/api-keys/{id}")

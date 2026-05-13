@@ -47,11 +47,11 @@ interface ShareApi {
 
     /** 单天剩余文件 - 已登录用户 */
     @POST("/api-share/dayFileMoreForUser")
-    suspend fun ShareControllerDayFileMoreForUser(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun ShareControllerDayFileMoreForUser(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 单天剩余文件 - 链接 */
     @POST("/api-share/dayFileMore")
-    suspend fun ShareControllerFindDayFileMore(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun ShareControllerFindDayFileMore(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取相册的自动更新配置 */
     @GET("/api-share/album/link/{id}")
@@ -59,11 +59,11 @@ interface ShareApi {
 
     /** 添加 相册 自动配置 */
     @POST("/api-share/album/link/{id}")
-    suspend fun ShareControllerAddAutoLink(@Path("id") id: Double, @Body body: Map<String, Any>): Unit
+    suspend fun ShareControllerAddAutoLink(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 删除 分享的相册 自动配置 */
     @DELETE("/api-share/album/link/{id}")
-    suspend fun ShareControllerDelAutoLink(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ShareControllerDelAutoLink(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 查询相册分享链接的文件列表 - 网页使用 */
     @GET("/api-share/visit/albumFiles/{key}")
@@ -87,15 +87,15 @@ interface ShareApi {
 
     /** 下载前查询文件信息 - 分享的链接 */
     @POST("/api-share/filesInfo")
-    suspend fun ShareControllerGetFilesInfo(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ShareControllerGetFilesInfo(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 添加文件到分享相册 */
     @POST("/api-share/addFileToAlbum")
-    suspend fun ShareControllerAddFileToAlbum(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ShareControllerAddFileToAlbum(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 从分享相册移除文件 */
     @POST("/api-share/removeFileFromAlbum")
-    suspend fun ShareControllerRemoveFileFromAlbum(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun ShareControllerRemoveFileFromAlbum(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 查询分享信息 */
     @GET("/api-share/{id}")

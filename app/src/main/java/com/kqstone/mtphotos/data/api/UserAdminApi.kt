@@ -7,7 +7,7 @@ interface UserAdminApi {
 
     /** 重置管理员密码 */
     @PATCH("/users/resetSuperAdminPwd")
-    suspend fun UsersControllerResetSuperAdminPwd(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun UsersControllerResetSuperAdminPwd(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 创建用户 */
     @POST("/users")

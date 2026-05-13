@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "Bash(adb devices *)",
+      "Bash(.\\\\gradlew.bat installDebug *)",
+      "PowerShell(.\\\\gradlew.bat installDebug 2>&1)",
+      "Bash(adb shell *)",
+      "Bash(adb logcat *)",
+      "Bash(timeout 15)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "Bash(adb install *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'feat: 图库主页时间线展示、多选删除、图片浏览滑动切换 *)",
+      "Bash(git commit -m ' *)",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "Bash(.\\\\gradlew installDebug *)"
+    ]
+  }
+}

@@ -23,7 +23,7 @@ interface InstallApi {
 
     /** 批量创建文件夹 */
     @POST("/install/createFolders")
-    suspend fun InstallControllerCreateFolders(@Body body: Map<String, Any>): Unit
+    suspend fun InstallControllerCreateFolders(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 创建图库 */
     @POST("/install/gallery")
@@ -59,7 +59,7 @@ interface InstallApi {
 
     /** 自动升级 */
     @POST("/install/autoUpgrade")
-    suspend fun InstallControllerAutoUpgrade(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun InstallControllerAutoUpgrade(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取内存使用情况 */
     @GET("/install/memory")

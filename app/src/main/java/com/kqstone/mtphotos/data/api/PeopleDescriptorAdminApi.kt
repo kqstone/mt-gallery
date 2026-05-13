@@ -15,11 +15,11 @@ interface PeopleDescriptorAdminApi {
 
     /** 重置文件人脸识别状态 */
     @POST("/people-descriptor/resetFileStatus")
-    suspend fun PeopleDescriptorControllerResetFileStatus(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleDescriptorControllerResetFileStatus(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 计算两个特征描述之间的距离（V2版本） */
     @POST("/people-descriptor/itemDistV2")
-    suspend fun PeopleDescriptorControllerItemDistV2(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleDescriptorControllerItemDistV2(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取人脸识别任务列表（浏览器辅助识别用） */
     @POST("/people-descriptor/faceRegTask")
@@ -27,15 +27,15 @@ interface PeopleDescriptorAdminApi {
 
     /** 保存人脸识别结果（浏览器辅助识别用） */
     @POST("/people-descriptor/faceRegResult")
-    suspend fun PeopleDescriptorControllerSaveFaceRegResult(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun PeopleDescriptorControllerSaveFaceRegResult(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 查找人物对应的特征描述 */
     @POST("/people-descriptor/findDescriptorOfFileForPeople")
-    suspend fun PeopleDescriptorControllerFindDescriptorOfFileForPeople(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun PeopleDescriptorControllerFindDescriptorOfFileForPeople(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 查找相似的未匹配人物特征描述 */
     @POST("/people-descriptor/findLikelyBase0Descriptor")
-    suspend fun PeopleDescriptorControllerAdminFindLikelyNoMatchedDescriptor(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun PeopleDescriptorControllerAdminFindLikelyNoMatchedDescriptor(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取文件的人脸特征描述列表 */
     @GET("/people-descriptor/findDescriptorOfFile/{fileId}")
