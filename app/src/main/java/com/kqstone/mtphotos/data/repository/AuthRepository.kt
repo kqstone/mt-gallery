@@ -19,7 +19,7 @@ class AuthRepository(private val container: AppContainer) {
 
             // Step 1: Login with plain text password
             Log.d(TAG, "Step 1: Logging in")
-            val loginBody = mapOf(
+            val loginBody: Map<String, String> = mapOf(
                 "username" to username,
                 "password" to password
             )
@@ -56,7 +56,7 @@ class AuthRepository(private val container: AppContainer) {
     suspend fun refreshAuthCode(): Result<String> {
         return try {
             val refreshToken = prefsManager.getRefreshTokenSync()
-            val body = if (refreshToken.isNotEmpty()) {
+            val body: Map<String, Any> = if (refreshToken.isNotEmpty()) {
                 mapOf("refresh_token" to refreshToken)
             } else {
                 emptyMap()

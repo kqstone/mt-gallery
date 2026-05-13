@@ -239,7 +239,7 @@ interface GatewayApi {
 
     /** 按事物场景分类-文件列表 */
     @GET("/gateway/classifyFileList")
-    suspend fun GatewayControllerPart2ClassifyFileList(@Query("galleryIds") galleryIds: String, @Query("id") id: String? = null, @Query("cid") cid: String? = null): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2ClassifyFileList(@Query("galleryIds") galleryIds: String, @Query("id") id: String? = null, @Query("cid") cid: String? = null): Map<String, Any>
 
     /** 修改文件智能分类属性 */
     @POST("/gateway/editFileClassify")
@@ -335,7 +335,7 @@ interface GatewayApi {
 
     /** 人物关联的文件列表 */
     @GET("/gateway/peopleFileListV2")
-    suspend fun GatewayControllerPart3PeopleFileListV2(@Query("peopleId") peopleId: String? = null): List<Map<String, Any>>
+    suspend fun GatewayControllerPart3PeopleFileListV2(@Query("peopleId") peopleId: String? = null, @Query("galleryIds") galleryIds: String? = null): Map<String, Any>
 
     /** 人脸特征列表 - 管理员可调用 */
     @GET("/gateway/peopleDescriptorList")
@@ -483,7 +483,7 @@ interface GatewayApi {
 
     /** 根据文件ID列表获取文件详情 */
     @POST("/gateway/fileInIds")
-    suspend fun GatewayControllerPart4GetFileInIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart4GetFileInIds(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 启用文件备份功能 */
     @POST("/gateway/enableFileBackup")

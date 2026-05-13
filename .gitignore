@@ -13,3 +13,4 @@ local.properties
 *.ap_
 *.aab
 .claude
+scripts/*.log

@@ -12,7 +12,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
-import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.settings.SettingsScreen
 import com.kqstone.mtphotos.ui.settings.SettingsViewModel
@@ -30,7 +29,7 @@ fun AppNavigation() {
 
     LaunchedEffect(Unit) {
         val token = container.prefsManager.getTokenSync()
-        startDestination = if (token.isNotEmpty()) "gallery" else "settings"
+        startDestination = if (token.isNotEmpty()) "main" else "settings"
     }
 
     if (startDestination == null) return
@@ -50,23 +49,23 @@ fun AppNavigation() {
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onConnected = {
-                    navController.navigate("gallery") {
+                    navController.navigate("main") {
                         popUpTo("settings") { inclusive = true }
                     }
                 }
             )
         }
 
-        composable("gallery") {
-            GalleryScreen(
-                viewModel = galleryViewModel,
-                onPhotoClick = { photo ->
-                    val allPhotos = galleryViewModel.getAllLoadedPhotos()
-                    val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                    viewerViewModel.setPhotos(allPhotos, index)
+        composable("main") {
+            MainScreen(
+                container = container,
+                galleryViewModel = galleryViewModel,
+                viewerViewModel = viewerViewModel,
+                onNavigateToViewer = { photos, index ->
+                    viewerViewModel.setPhotos(photos, index)
                     navController.navigate("viewer")
                 },
-                onSettingsClick = {
+                onNavigateToSettings = {
                     settingsViewModel.resetLoginState()
                     navController.navigate("settings")
                 }
