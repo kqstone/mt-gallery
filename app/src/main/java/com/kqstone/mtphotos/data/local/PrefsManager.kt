@@ -32,8 +32,13 @@ class PrefsManager(private val context: Context) {
     val token: Flow<String> = context.dataStore.data.map { it[KEY_TOKEN] ?: "" }
     val refreshToken: Flow<String> = context.dataStore.data.map { it[KEY_REFRESH_TOKEN] ?: "" }
 
-    fun getServerUrlSync(): String = runBlocking { serverUrl.first() }
+    fun getServerUrlSync(): String = runBlocking {
+        serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
+    }
+    fun getUsernameSync(): String = runBlocking { username.first() }
+    fun getPasswordSync(): String = runBlocking { password.first() }
     fun getTokenSync(): String = runBlocking { token.first() }
+    fun getRefreshTokenSync(): String = runBlocking { refreshToken.first() }
     fun getAuthCodeSync(): String = runBlocking {
         val prefs = context.dataStore.data.first()
         val code = prefs[KEY_AUTH_CODE] ?: ""
@@ -47,10 +52,17 @@ class PrefsManager(private val context: Context) {
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_SERVER_URL] = serverUrl.trimEnd('/')
-            prefs[KEY_USERNAME] = username
-            prefs[KEY_PASSWORD] = password
+            prefs[KEY_SERVER_URL] = serverUrl.sanitizeUrl()
+            prefs[KEY_USERNAME] = username.trim()
+            prefs[KEY_PASSWORD] = password.trim()
         }
+    }
+
+    /** Remove invisible Unicode chars and trim whitespace */
+    private fun String.sanitizeUrl(): String {
+        return this.trim()
+            .replace(Regex("[\\p{Cf}\\p{Cc}]"), "") // control + format chars
+            .trimEnd('/')
     }
 
     suspend fun saveToken(token: String, refreshToken: String = "") {

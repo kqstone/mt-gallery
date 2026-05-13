@@ -1,6 +1,11 @@
 package com.kqstone.mtphotos.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -21,6 +26,15 @@ fun AppNavigation() {
     val app = context.applicationContext as MTPhotosApp
     val container = app.container
 
+    var startDestination by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        val token = container.prefsManager.getTokenSync()
+        startDestination = if (token.isNotEmpty()) "gallery" else "settings"
+    }
+
+    if (startDestination == null) return
+
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(container.authRepository)
     )
@@ -31,7 +45,7 @@ fun AppNavigation() {
         factory = ViewerViewModel.Factory(container.galleryRepository)
     )
 
-    NavHost(navController = navController, startDestination = "settings") {
+    NavHost(navController = navController, startDestination = startDestination!!) {
         composable("settings") {
             SettingsScreen(
                 viewModel = settingsViewModel,
@@ -53,6 +67,7 @@ fun AppNavigation() {
                     navController.navigate("viewer")
                 },
                 onSettingsClick = {
+                    settingsViewModel.resetLoginState()
                     navController.navigate("settings")
                 }
             )

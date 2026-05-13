@@ -25,9 +25,22 @@ class SettingsViewModel(private val authRepository: AuthRepository) : ViewModel(
 
     init {
         viewModelScope.launch {
-            val prefs = authRepository as com.kqstone.mtphotos.data.repository.AuthRepository
-            // Pre-fill from saved credentials
+            val prefs = authRepository.prefs()
+            val savedUrl = prefs.getServerUrlSync()
+            val savedUser = prefs.getUsernameSync()
+            val savedPass = prefs.getPasswordSync()
+            if (savedUrl.isNotEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    serverUrl = savedUrl,
+                    username = savedUser,
+                    password = savedPass
+                )
+            }
         }
+    }
+
+    fun resetLoginState() {
+        _uiState.value = _uiState.value.copy(isLoggedIn = false, error = null)
     }
 
     fun onServerUrlChange(value: String) {
