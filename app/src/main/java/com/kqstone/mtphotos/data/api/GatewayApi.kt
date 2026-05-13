@@ -23,11 +23,11 @@ interface GatewayApi {
 
     /** 照片-时间线按月分组统计数 */
     @GET("/gateway/timeline")
-    suspend fun GatewayControllerGetTimelineData(@Query("platform") platform: String? = null, @Query("galleryIds") galleryIds: String? = null, @Query("galleryId") galleryId: Double? = null): List<Map<String, Any>>
+    suspend fun GatewayControllerGetTimelineData(@Query("platform") platform: String? = null, @Query("galleryIds") galleryIds: String? = null, @Query("galleryId") galleryId: Double? = null): Map<String, Any>
 
     /** 照片-时间线 月数据 */
     @POST("/gateway/timelineMonth")
-    suspend fun GatewayControllerGetTimelineMonthData(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerGetTimelineMonthData(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 用户的图库列表 */
     @GET("/gateway/myGalleryList")
@@ -35,19 +35,19 @@ interface GatewayApi {
 
     /** 获取图库名称 */
     @POST("/gateway/galleryNames")
-    suspend fun GatewayControllerGetGalleryNames(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerGetGalleryNames(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 单天剩余文件 */
     @POST("/gateway/dayFileMore")
-    suspend fun GatewayControllerFindDayFileMore(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerFindDayFileMore(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 某一天的所有文件 */
     @POST("/gateway/dayFiles")
-    suspend fun GatewayControllerDayAllFiles(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerDayAllFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 下载前查询文件信息 */
     @POST("/gateway/filesInfo")
-    suspend fun GatewayControllerFindFilesInfo(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerFindFilesInfo(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 时间线中所有文件的数量 */
     @GET("/gateway/filesInTimelineCount")
@@ -55,23 +55,23 @@ interface GatewayApi {
 
     /** 查看文件夹文件 - 实时读取硬盘文件列表 */
     @POST("/gateway/folderFilesInDisk")
-    suspend fun GatewayControllerPart1FolderFilesInDisk(@Body body: Map<String, Any>): Unit
+    suspend fun GatewayControllerPart1FolderFilesInDisk(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 获取年度统计数据 */
     @POST("/gateway/annualData")
-    suspend fun GatewayControllerPart1AnnualData(@Body body: Map<String, Any>): Unit
+    suspend fun GatewayControllerPart1AnnualData(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 刷新照片人脸 */
     @POST("/gateway/refreshFileDescriptorBatch")
-    suspend fun GatewayControllerPart1RefreshFileDescriptor(@Body body: Map<String, Any>): Unit
+    suspend fun GatewayControllerPart1RefreshFileDescriptor(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 查询转码错误信息 */
     @POST("/gateway/getTranscodeError")
-    suspend fun GatewayControllerPart1GetTranscodeError(@Body body: Map<String, Any>): Unit
+    suspend fun GatewayControllerPart1GetTranscodeError(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 手动添加人脸识别框 */
     @POST("/gateway/addFaceRect")
-    suspend fun GatewayControllerPart1AddFaceRect(@Body body: Map<String, Any>): Unit
+    suspend fun GatewayControllerPart1AddFaceRect(@Body body: Map<String, @JvmSuppressWildcards Any>): Unit
 
     /** 显示文件的详细信息 */
     @GET("/gateway/fileInfo/{id}/{md5}")
@@ -95,7 +95,7 @@ interface GatewayApi {
 
     /** 获取照片包含的设备列表 */
     @POST("/gateway/extra/models")
-    suspend fun GatewayControllerPart2FileExtraModelsWithMake(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FileExtraModelsWithMake(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取照片包含的设备列表 */
     @GET("/gateway/extra/models")
@@ -103,7 +103,7 @@ interface GatewayApi {
 
     /** 获取照片包含的镜头列表 */
     @POST("/gateway/extra/lens")
-    suspend fun GatewayControllerPart2FileExtraLensWithModel(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FileExtraLensWithModel(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取照片包含的镜头列表 */
     @GET("/gateway/extra/lens")
@@ -115,11 +115,11 @@ interface GatewayApi {
 
     /** 获取地点列表 - 市 */
     @POST("/gateway/extra/placeL2")
-    suspend fun GatewayControllerPart2FilePlaceL2(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilePlaceL2(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 获取地点列表 - 区 */
     @POST("/gateway/extra/placeL3")
-    suspend fun GatewayControllerPart2FilePlaceL3(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilePlaceL3(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 显示文件的OCR结果 */
     @GET("/gateway/ocrInfo/{id}")
@@ -127,11 +127,11 @@ interface GatewayApi {
 
     /** 获取指定ids文件的地址 */
     @POST("/gateway/filesPath")
-    suspend fun GatewayControllerPart2FilesPath(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilesPath(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 根据MD5查询文件列表 */
     @POST("/gateway/filesInMD5")
-    suspend fun GatewayControllerPart2FilesInMD5(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilesInMD5(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 刷新文件的缩略图 */
     @GET("/gateway/refreshFileThumbs/{id}")
@@ -155,7 +155,7 @@ interface GatewayApi {
 
     /** 触发视频转码 */
     @POST("/gateway/transcode")
-    suspend fun GatewayControllerPart2TranscodeFile(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart2TranscodeFile(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取文件最新EXIF信息 */
     @GET("/gateway/fileInfoRT/{id}")
@@ -163,7 +163,7 @@ interface GatewayApi {
 
     /** 刷新照片人脸 */
     @POST("/gateway/refreshFileDescriptor")
-    suspend fun GatewayControllerPart2RefreshFileDescriptor(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart2RefreshFileDescriptor(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 检查文件是否存在 */
     @POST("/gateway/fileStat/{id}/{md5}")
@@ -243,7 +243,7 @@ interface GatewayApi {
 
     /** 修改文件智能分类属性 */
     @POST("/gateway/editFileClassify")
-    suspend fun GatewayControllerPart2EditFileClassify(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart2EditFileClassify(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 按类型分类的文件列表 */
     @GET("/gateway/filesInCategoriesV2")
@@ -263,7 +263,7 @@ interface GatewayApi {
 
     /** 查找相似文件 */
     @POST("/gateway/findSimilarFiles")
-    suspend fun GatewayControllerPart2FindDuplicateFilesWithGalleryIds(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FindDuplicateFilesWithGalleryIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 管理员-查看全部用户在回收站中的文件 */
     @GET("/gateway/filesInTrashAdmin")
@@ -271,23 +271,23 @@ interface GatewayApi {
 
     /** 管理员-查看无法识别的GPS坐标 */
     @POST("/gateway/findFilesWithInvalidGps")
-    suspend fun GatewayControllerPart2FindFilesWithInvalidGps(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart2FindFilesWithInvalidGps(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 添加照片到隐私相册中 */
     @POST("/gateway/hideFiles")
-    suspend fun GatewayControllerPart3AddHideFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3AddHideFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 从隐私相册内移出 */
     @POST("/gateway/cancelHideFiles")
-    suspend fun GatewayControllerPart3CancelHideFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3CancelHideFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 验证用户密码，验证通过后返回passwordCode 用于访问 /gateway/filesInHide */
     @POST("/gateway/passwordCode")
-    suspend fun GatewayControllerPart3PwdCode(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3PwdCode(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 隐私相册中的照片 */
     @POST("/gateway/filesInHide")
-    suspend fun GatewayControllerPart3FilesInHide(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart3FilesInHide(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 最近添加的文件 */
     @GET("/gateway/recentFiles")
@@ -311,15 +311,15 @@ interface GatewayApi {
 
     /** 一键显示或隐藏人物 */
     @POST("/gateway/multiHidePeople")
-    suspend fun GatewayControllerPart3MultiHidePeople(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3MultiHidePeople(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取人物名称 */
     @POST("/gateway/peopleNames")
-    suspend fun GatewayControllerPart3GetPeopleNames(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart3GetPeopleNames(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 修改人物详情 */
     @PATCH("/gateway/reassignPeopleFile/{id}")
-    suspend fun GatewayControllerPart3ReassignPeopleFile(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3ReassignPeopleFile(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 修改人物详情 - patch兼容 */
     @PUT("/gateway/reassignPeopleFile/{id}")
@@ -327,7 +327,7 @@ interface GatewayApi {
 
     /** 修改人物详情 */
     @POST("/gateway/editFileDescriptor")
-    suspend fun GatewayControllerPart3EditFileDescriptor(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3EditFileDescriptor(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 人物关联的文件列表 */
     @GET("/gateway/peopleFileList")
@@ -355,7 +355,7 @@ interface GatewayApi {
 
     /** 合并人物 */
     @POST("/gateway/people/merge")
-    suspend fun GatewayControllerPart3MergePeople(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3MergePeople(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 拆分人物 */
     @POST("/gateway/people/split/{id}")
@@ -363,15 +363,15 @@ interface GatewayApi {
 
     /** 计算people下descriptor的distance - 管理员可调用 */
     @POST("/gateway/people/distance")
-    suspend fun GatewayControllerPart3CalcPeopleDistance(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3CalcPeopleDistance(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 删除 */
-    @DELETE("/gateway/files")
-    suspend fun GatewayControllerPart3DeleteFiles(@Body body: Map<String, Any>): Map<String, Any>
+    @HTTP(method = "DELETE", path = "/gateway/files", hasBody = true)
+    suspend fun GatewayControllerPart3DeleteFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 从回收站恢复 */
     @PATCH("/gateway/files")
-    suspend fun GatewayControllerPart3RestoreFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3RestoreFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 从回收站恢复 - patch兼容 */
     @PUT("/gateway/files")
@@ -379,7 +379,7 @@ interface GatewayApi {
 
     /** 从回收站删除 */
     @POST("/gateway/deleteFilesPermanently")
-    suspend fun GatewayControllerPart3DeleteFromTrash(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3DeleteFromTrash(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取永久删除文件状态 */
     @GET("/gateway/deleteFilesPermanentlyStatus")
@@ -387,15 +387,15 @@ interface GatewayApi {
 
     /** 删除相似文件 */
     @POST("/gateway/deleteSimilarFiles")
-    suspend fun GatewayControllerPart3DeleteSimilarFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3DeleteSimilarFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 忽略相似照片 */
     @POST("/gateway/hideSimilarFiles")
-    suspend fun GatewayControllerPart3HideSimilarFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3HideSimilarFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 取消忽略相似照片 */
     @POST("/gateway/cancelHideSimilarFiles")
-    suspend fun GatewayControllerPart3CancelHideSimilarFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3CancelHideSimilarFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 忽略相似照片列表 */
     @POST("/gateway/similarFilesInHide")
@@ -403,27 +403,27 @@ interface GatewayApi {
 
     /** 修改自己的密码 */
     @POST("/gateway/user/pwd")
-    suspend fun GatewayControllerPart3UserUpdatePwd(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3UserUpdatePwd(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 用户申请注销账号 */
     @POST("/gateway/user/delete")
-    suspend fun GatewayControllerPart3UserUpdateDelete(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3UserUpdateDelete(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 自定义 自动相册的封面 */
     @POST("/gateway/user/cover")
-    suspend fun GatewayControllerPart3UserUpdateCover(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3UserUpdateCover(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 生成双因素认证 */
     @POST("/gateway/otp/generate")
-    suspend fun GatewayControllerPart3OtpGen(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3OtpGen(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 验证双因素认证 */
     @POST("/gateway/otp/verify")
-    suspend fun GatewayControllerPart3OtpVerify(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3OtpVerify(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 禁用双因素认证 */
     @POST("/gateway/otp/disable")
-    suspend fun GatewayControllerPart3OtpDisable(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart3OtpDisable(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 获取系统语言 */
     @GET("/gateway/lang")
@@ -479,11 +479,11 @@ interface GatewayApi {
 
     /** 根据文件ID列表获取文件信息 */
     @POST("/gateway/areaFilesMD5")
-    suspend fun GatewayControllerPart4GetFileMD5List(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart4GetFileMD5List(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 根据文件ID列表获取文件详情 */
     @POST("/gateway/fileInIds")
-    suspend fun GatewayControllerPart4GetFileInIds(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart4GetFileInIds(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 启用文件备份功能 */
     @POST("/gateway/enableFileBackup")
@@ -491,11 +491,11 @@ interface GatewayApi {
 
     /** 通知服务器是否在备份文件 */
     @POST("/gateway/changeAppUploadStatus")
-    suspend fun GatewayControllerPart4ChangeAppUploadStatus(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4ChangeAppUploadStatus(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 判断文件是否存在 */
     @POST("/gateway/checkFileId")
-    suspend fun GatewayControllerPart4CheckFileId(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4CheckFileId(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 请求重置异常状态文件 */
     @POST("/gateway/resetFileStatus")
@@ -515,11 +515,11 @@ interface GatewayApi {
 
     /** 备份目的地-验证 */
     @POST("/gateway/backupDist/verify")
-    suspend fun GatewayControllerPart4BackupDistVerify(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4BackupDistVerify(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 上传文件前，检查文件在服务端是否存在 */
     @POST("/gateway/checkPathForUpload")
-    suspend fun GatewayControllerPart4CheckPathForUpload(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4CheckPathForUpload(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 上传文件 - multipart方式 */
     @POST("/gateway/upload")
@@ -535,7 +535,7 @@ interface GatewayApi {
 
     /** 上传文件 - 分块上传前检查 */
     @POST("/gateway/uploadChunk/check")
-    suspend fun GatewayControllerPart4UploadChunkCheck(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4UploadChunkCheck(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 分块上传-检查(分享链接) */
     @POST("/gateway/uploadChunk/checkInShare")
@@ -575,7 +575,7 @@ interface GatewayApi {
 
     /** 测试回显 */
     @POST("/gateway/echo")
-    suspend fun GatewayControllerPart4Echo(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4Echo(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 订阅信息 - 管理员可调用 */
     @GET("/gateway/licenseInfo")
@@ -587,7 +587,7 @@ interface GatewayApi {
 
     /** 使用激活码-添加订阅 - 管理员可调用 */
     @POST("/gateway/bindLicense")
-    suspend fun GatewayControllerPart4BindLicense(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4BindLicense(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 触发联网验证 - 管理员可调用 */
     @POST("/gateway/verifyAuthOnline")
@@ -595,11 +595,11 @@ interface GatewayApi {
 
     /** gps坐标转为autonavi */
     @POST("/gateway/coordinate/convert")
-    suspend fun GatewayControllerPart4CoordinateConvert(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4CoordinateConvert(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 自动处理从 腾讯、高德地图坐标拾取器中粘贴的值 */
     @POST("/gateway/coordinate/parse")
-    suspend fun GatewayControllerPart4CoordinateAutoParse(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart4CoordinateAutoParse(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 文件夹视图-顶级 */
     @GET("/gateway/folders/root")
@@ -639,31 +639,31 @@ interface GatewayApi {
 
     /** 文件夹视图-重命名、移动、删除 */
     @POST("/gateway/folderPathEdit")
-    suspend fun GatewayControllerPart5FolderEdit(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderEdit(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 文件路径编辑 */
     @POST("/gateway/filePathEdit")
-    suspend fun GatewayControllerPart5FilePathEdit(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FilePathEdit(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 整理文件夹下的文件 - 预览移动路径 */
     @POST("/gateway/folder_files_move/preview")
-    suspend fun GatewayControllerPart5FolderFilesMovePreview(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderFilesMovePreview(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 整理文件夹下的文件 - 移动文件 */
     @POST("/gateway/folder_files_move/move")
-    suspend fun GatewayControllerPart5FolderFilesMoveRun(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderFilesMoveRun(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 删除文件夹下面的 空文件夹 */
     @POST("/gateway/folders/delete_empty")
-    suspend fun GatewayControllerPart5FolderDeleteEmpty(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderDeleteEmpty(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 整理文件夹 获取处理进度 */
     @POST("/gateway/folder_files_move/status")
-    suspend fun GatewayControllerPart5FolderFilesMoveStatus(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderFilesMoveStatus(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 修改文件夹封面 */
     @PATCH("/gateway/setFolderCover/{id}")
-    suspend fun GatewayControllerPart5SetFolderCover(@Path("id") id: Double, @Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5SetFolderCover(@Path("id") id: Double, @Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 修改文件夹封面 - 兼容PATCH */
     @PUT("/gateway/setFolderCover/{id}")
@@ -679,7 +679,7 @@ interface GatewayApi {
 
     /** 获取文件夹的调试信息 - 管理员可调用 */
     @POST("/gateway/folderDebugInfo")
-    suspend fun GatewayControllerPart5FolderDebugInfo(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderDebugInfo(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 更新文件的拍摄日期 */
     @POST("/gateway/updateFileDate")
@@ -687,55 +687,55 @@ interface GatewayApi {
 
     /** 修改文件的名称 */
     @POST("/gateway/updateFileName")
-    suspend fun GatewayControllerPart5UpdateFileName(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5UpdateFileName(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 编辑文件额外信息 */
     @POST("/gateway/editFileExtra")
-    suspend fun GatewayControllerPart5EditFileDesc(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5EditFileDesc(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 编辑文件GPS信息 */
     @POST("/gateway/editFileGps")
-    suspend fun GatewayControllerPart5EditFileGPS(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5EditFileGPS(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 重置文件GPS信息 */
     @POST("/gateway/resetFileGps")
-    suspend fun GatewayControllerPart5ResetFileGps(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5ResetFileGps(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 旋转文件 */
     @POST("/gateway/editFileRotate")
-    suspend fun GatewayControllerPart5EditFileRotate(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5EditFileRotate(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 搜索提示 */
     @POST("/gateway/searchTips")
-    suspend fun GatewayControllerPart5SearchTips(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart5SearchTips(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 搜索 */
     @POST("/gateway/search")
-    suspend fun GatewayControllerPart5SearchFiles(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5SearchFiles(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 搜索-CLIP */
     @POST("/gateway/searchCLIP")
-    suspend fun GatewayControllerPart5GetCLIPTextMatchedId(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5GetCLIPTextMatchedId(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 搜索-v2 */
     @POST("/gateway/searchV2")
-    suspend fun GatewayControllerPart5SearchFilesV2(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5SearchFilesV2(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 搜索结果提示框 */
     @POST("/gateway/searchResultTipsBox")
-    suspend fun GatewayControllerPart5SearchResultTipsBox(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5SearchResultTipsBox(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 搜索-CLIP */
     @POST("/gateway/searchCLIPV2")
-    suspend fun GatewayControllerPart5SearchCLIPV2(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5SearchCLIPV2(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 那年今日 */
     @POST("/gateway/memory")
-    suspend fun GatewayControllerPart5GetMemoryList(@Body body: Map<String, Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart5GetMemoryList(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
 
     /** 往年照片 - 一周 - 文件列表 */
     @POST("/gateway/memoryWeekFileList")
-    suspend fun GatewayControllerPart5MemoryWeekFileList(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5MemoryWeekFileList(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 是否可以用使用CLIP搜索 */
     @POST("/gateway/CLIP_status")
@@ -743,11 +743,11 @@ interface GatewayApi {
 
     /** 获取阳历日期的农历日期 */
     @POST("/gateway/nongLi")
-    suspend fun GatewayControllerPart5GetNongLiInfo(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5GetNongLiInfo(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 检查livePhoto视频部分是否正确 */
     @POST("/gateway/livePhotoMovCheck")
-    suspend fun GatewayControllerPart5LivePhotoMovCheck(@Body body: Map<String, Any>): Map<String, Any>
+    suspend fun GatewayControllerPart5LivePhotoMovCheck(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 上传动态照片视频部分 */
     @POST("/gateway/uploadForLivePhotoMov/{photoMD5}/{videoMD5}")
