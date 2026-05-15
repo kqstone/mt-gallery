@@ -13,4 +13,6 @@ local.properties
 *.ap_
 *.aab
 .claude
-scripts/*.log
+/scripts
+package*
+nul
