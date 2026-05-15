@@ -37,6 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.ui.util.isVideo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,10 +86,24 @@ fun ViewerScreen(
             userScrollEnabled = true
         ) { page ->
             val photo = photos[page]
-            ZoomableImage(
-                imageUrl = viewModel.getFullImageUrl(photo.id, photo.md5),
-                contentDescription = photo.fileName
-            )
+            val isCurrentPage = pagerState.settledPage == page
+            val isVid = photo.isVideo()
+
+            android.util.Log.d("ViewerScreen", "page=$page isVideo=$isVid fileType=${photo.fileType} fileName=${photo.fileName} id=${photo.id} md5=${photo.md5}")
+
+            if (isVid) {
+                val url = viewModel.getVideoUrl(photo.id, photo.md5)
+                android.util.Log.d("ViewerScreen", "Playing video url=$url")
+                VideoPlayer(
+                    videoUrl = url,
+                    isCurrentPage = isCurrentPage
+                )
+            } else {
+                ZoomableImage(
+                    imageUrl = viewModel.getFullImageUrl(photo.id, photo.md5),
+                    contentDescription = photo.fileName
+                )
+            }
         }
 
         TopAppBar(

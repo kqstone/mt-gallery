@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -13,13 +14,19 @@ data class CategoryFileListUiState(
     val photos: List<PhotoItem> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val columnCount: Int = 3
+    val columnCount: Int = 4
 )
 
 class CategoryFileListViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CategoryFileListUiState())
     val uiState: StateFlow<CategoryFileListUiState> = _uiState
+
+    val selectionManager = SelectionManager(
+        scope = viewModelScope,
+        onDelete = { ids -> galleryRepository.deleteFiles(ids) },
+        onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
+    )
 
     fun loadPeopleFiles(peopleId: String) {
         loadFiles { galleryRepository.getPeopleFiles(peopleId) }
@@ -51,10 +58,26 @@ class CategoryFileListViewModel(private val galleryRepository: GalleryRepository
         return galleryRepository.getThumbUrl(md5, fileId)
     }
 
+    fun getVideoThumbUrl(md5: String): String {
+        return galleryRepository.getVideoThumbUrl(md5)
+    }
+
     fun getAllLoadedPhotos(): List<PhotoItem> = _uiState.value.photos
 
     fun updateColumnCount(count: Int) {
         _uiState.value = _uiState.value.copy(columnCount = count.coerceIn(2, 6))
+    }
+
+    fun selectAll() {
+        selectionManager.selectAll(_uiState.value.photos.map { it.id })
+    }
+
+    fun deleteSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        selectionManager.deleteSelected {
+            val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
+            _uiState.value = _uiState.value.copy(photos = remaining)
+        }
     }
 
     class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {

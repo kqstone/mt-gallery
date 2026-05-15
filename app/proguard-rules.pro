@@ -8,3 +8,5 @@
 -keepclassmembers,allowshrinking,allowobfuscation interface * {
     @retrofit2.http.* <methods>;
 }
+-keep class androidx.media3.** { *; }
+-dontwarn androidx.media3.**

@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -23,18 +20,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -55,6 +47,7 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.ui.util.isVideo
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -66,15 +59,17 @@ fun GalleryScreen(
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
+    val isSelectionMode = selectedIds.isNotEmpty()
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (uiState.isSelectionMode) {
+        if (isSelectionMode) {
             SelectionTopBar(
-                selectedCount = uiState.selectedPhotoIds.size,
+                selectedCount = selectedIds.size,
                 onSelectAll = { viewModel.selectAll() },
                 onDelete = { showDeleteDialog = true },
-                onClearSelection = { viewModel.clearSelection() }
+                onClearSelection = { viewModel.selectionManager.clearSelection() }
             )
         } else {
             TopAppBar(
@@ -119,12 +114,9 @@ fun GalleryScreen(
                         months = uiState.months,
                         viewModel = viewModel,
                         columnCount = uiState.columnCount,
-                        selectedPhotoIds = uiState.selectedPhotoIds,
-                        isSelectionMode = uiState.isSelectionMode,
+                        selectedPhotoIds = selectedIds,
+                        isSelectionMode = isSelectionMode,
                         onPhotoClick = onPhotoClick,
-                        onToggleSelection = { viewModel.toggleSelection(it) },
-                        onStartDragSelection = { viewModel.startDragSelection(it) },
-                        onDragSelect = { viewModel.dragSelect(it) },
                         onColumnCountChange = { viewModel.updateColumnCount(it) }
                     )
                 }
@@ -133,60 +125,14 @@ fun GalleryScreen(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("确认删除") },
-            text = { Text("确定要删除选中的 ${uiState.selectedPhotoIds.size} 张照片吗？\n照片将移入服务端回收站。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteDialog = false
-                    viewModel.deleteSelected()
-                }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
+        DeleteConfirmDialog(
+            selectedCount = selectedIds.size,
+            onConfirm = {
+                showDeleteDialog = false
+                viewModel.deleteSelected()
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("取消")
-                }
-            }
+            onDismiss = { showDeleteDialog = false }
         )
-    }
-}
-
-@Composable
-private fun SelectionTopBar(
-    selectedCount: Int,
-    onSelectAll: () -> Unit,
-    onDelete: () -> Unit,
-    onClearSelection: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onClearSelection) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "取消选择")
-        }
-        Text(
-            text = "已选择 $selectedCount 项",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f)
-        )
-        IconButton(onClick = onSelectAll) {
-            Icon(Icons.Default.SelectAll, contentDescription = "全选")
-        }
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Default.Delete,
-                contentDescription = "删除",
-                tint = MaterialTheme.colorScheme.error
-            )
-        }
     }
 }
 
@@ -199,9 +145,6 @@ private fun PhotoGrid(
     selectedPhotoIds: Set<Double>,
     isSelectionMode: Boolean,
     onPhotoClick: (PhotoItem) -> Unit,
-    onToggleSelection: (Double) -> Unit,
-    onStartDragSelection: (Double) -> Unit,
-    onDragSelect: (Double) -> Unit,
     onColumnCountChange: (Int) -> Unit
 ) {
     data class GridItem(
@@ -307,37 +250,35 @@ private fun PhotoGrid(
                 when (item.type) {
                     "month" -> {
                         val month = months.find { it.yearMonth == item.monthYearMonth }
-                        MonthHeader(
-                            month = month!!,
-                            onClick = { viewModel.toggleMonthExpand(month.yearMonth) }
-                        )
+                        MonthHeader(month = month!!)
                     }
                     "day" -> {
                         DayHeader(dayGroup = item.dayGroup!!)
                     }
                     "photo" -> {
                         val photo = item.photo!!
+                        val thumbUrl = if (photo.isVideo()) viewModel.getVideoThumbUrl(photo.md5) else viewModel.getThumbUrl(photo.md5, photo.id)
                         PhotoThumbnail(
                             photo = photo,
-                            thumbUrl = viewModel.getThumbUrl(photo.md5, photo.id),
+                            thumbUrl = thumbUrl,
                             onClick = {
                                 if (isSelectionMode) {
-                                    onToggleSelection(photo.id)
+                                    viewModel.selectionManager.toggleSelection(photo.id)
                                 } else {
                                     onPhotoClick(photo)
                                 }
                             },
                             onLongClick = {
-                                onToggleSelection(photo.id)
+                                viewModel.selectionManager.toggleSelection(photo.id)
                             },
                             isSelected = photo.id in selectedPhotoIds,
                             isSelectionMode = isSelectionMode,
                             modifier = Modifier.pointerInput(photo.id) {
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { onStartDragSelection(photo.id) },
+                                    onDragStart = { viewModel.selectionManager.startDragSelection(photo.id) },
                                     onDrag = { change, _ ->
                                         change.consume()
-                                        onDragSelect(photo.id)
+                                        viewModel.selectionManager.dragSelect(photo.id)
                                     },
                                     onDragEnd = {},
                                     onDragCancel = {}
@@ -376,12 +317,11 @@ private fun AutoLoadVisibleMonths(
 }
 
 @Composable
-private fun MonthHeader(month: MonthGroup, onClick: () -> Unit) {
+private fun MonthHeader(month: MonthGroup) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { onClick() }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -391,19 +331,11 @@ private fun MonthHeader(month: MonthGroup, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "${month.totalCount}张",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (month.isLoaded) "收起" else "展开",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
+        Text(
+            text = "${month.totalCount}张",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

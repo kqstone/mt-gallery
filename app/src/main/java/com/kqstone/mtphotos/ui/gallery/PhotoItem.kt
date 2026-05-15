@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.ui.util.isVideo
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -57,10 +58,7 @@ fun PhotoThumbnail(
             modifier = Modifier.fillMaxSize()
         )
 
-        val isVideo = photo.fileType.startsWith("video") ||
-                photo.fileName.endsWith(".mp4", true) ||
-                photo.fileName.endsWith(".mov", true) ||
-                photo.fileName.endsWith(".avi", true)
+        val isVideo = photo.isVideo()
 
         if (isVideo) {
             Icon(

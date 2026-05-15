@@ -63,6 +63,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

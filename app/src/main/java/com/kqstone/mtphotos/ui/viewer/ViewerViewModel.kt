@@ -32,6 +32,10 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
         return galleryRepository.getFullImageUrl(id, md5)
     }
 
+    fun getVideoUrl(id: Double, md5: String): String {
+        return galleryRepository.getFullImageUrl(id, md5)
+    }
+
     fun getCurrentPhoto(): PhotoItem? {
         val state = _uiState.value
         return state.photos.getOrNull(state.currentIndex)

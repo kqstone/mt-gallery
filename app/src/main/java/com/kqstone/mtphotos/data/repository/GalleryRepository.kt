@@ -122,6 +122,12 @@ class GalleryRepository(private val container: AppContainer) {
         return "$serverUrl/gateway/s260/$md5?auth_code=$authCode"
     }
 
+    fun getVideoThumbUrl(md5: String): String {
+        val serverUrl = prefsManager.getServerUrlSync()
+        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
+        return "$serverUrl/gateway/h220/$md5?auth_code=$authCode"
+    }
+
     fun getFullImageUrl(id: Double, md5: String): String {
         val serverUrl = prefsManager.getServerUrlSync()
         val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
