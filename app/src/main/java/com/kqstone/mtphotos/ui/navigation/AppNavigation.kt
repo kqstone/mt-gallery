@@ -13,6 +13,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.settings.BackupSettingsScreen
+import com.kqstone.mtphotos.ui.settings.BackupSettingsViewModel
 import com.kqstone.mtphotos.ui.settings.SettingsScreen
 import com.kqstone.mtphotos.ui.settings.SettingsViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
@@ -38,7 +40,7 @@ fun AppNavigation() {
         factory = SettingsViewModel.Factory(container.authRepository)
     )
     val galleryViewModel: GalleryViewModel = viewModel(
-        factory = GalleryViewModel.Factory(container.galleryRepository)
+        factory = GalleryViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
     val viewerViewModel: ViewerViewModel = viewModel(
         factory = ViewerViewModel.Factory(container.galleryRepository)
@@ -66,8 +68,7 @@ fun AppNavigation() {
                     navController.navigate("viewer")
                 },
                 onNavigateToSettings = {
-                    settingsViewModel.resetLoginState()
-                    navController.navigate("settings")
+                    navController.navigate("backup_settings")
                 }
             )
         }
@@ -75,6 +76,21 @@ fun AppNavigation() {
         composable("viewer") {
             ViewerScreen(
                 viewModel = viewerViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("backup_settings") {
+            val backupSettingsViewModel: BackupSettingsViewModel = viewModel(
+                factory = BackupSettingsViewModel.Factory(
+                    container.prefsManager,
+                    container.syncRepository,
+                    container.storageOptimizer,
+                    container.localMediaScanner
+                )
+            )
+            BackupSettingsScreen(
+                viewModel = backupSettingsViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

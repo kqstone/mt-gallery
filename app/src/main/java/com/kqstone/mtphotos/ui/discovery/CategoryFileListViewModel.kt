@@ -3,6 +3,8 @@ package com.kqstone.mtphotos.ui.discovery
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
@@ -11,7 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 data class CategoryFileListUiState(
-    val photos: List<PhotoItem> = emptyList(),
+    val photos: List<UnifiedPhotoItem> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
     val columnCount: Int = 4
@@ -45,7 +47,15 @@ class CategoryFileListViewModel(private val galleryRepository: GalleryRepository
         viewModelScope.launch {
             loader().fold(
                 onSuccess = { photos ->
-                    _uiState.value = CategoryFileListUiState(photos = photos)
+                    val unified = photos.map { p ->
+                        UnifiedPhotoItem(
+                            cloudId = p.id, md5 = p.md5, fileName = p.fileName,
+                            fileType = p.fileType, mtime = p.mtime,
+                            width = p.width, height = p.height,
+                            syncStatus = SyncStatus.CLOUD_ONLY
+                        )
+                    }
+                    _uiState.value = CategoryFileListUiState(photos = unified)
                 },
                 onFailure = { e ->
                     _uiState.value = CategoryFileListUiState(error = e.message ?: "加载失败")
@@ -62,7 +72,7 @@ class CategoryFileListViewModel(private val galleryRepository: GalleryRepository
         return galleryRepository.getVideoThumbUrl(md5)
     }
 
-    fun getAllLoadedPhotos(): List<PhotoItem> = _uiState.value.photos
+    fun getAllLoadedPhotos(): List<UnifiedPhotoItem> = _uiState.value.photos
 
     fun updateColumnCount(count: Int) {
         _uiState.value = _uiState.value.copy(columnCount = count.coerceIn(2, 6))

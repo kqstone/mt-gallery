@@ -34,11 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
-import com.kqstone.mtphotos.ui.util.isVideo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +47,7 @@ fun CategoryFileListScreen(
     loadParam: String,
     loadParam2: String? = null,
     title: String,
-    onPhotoClick: (PhotoItem) -> Unit,
+    onPhotoClick: (UnifiedPhotoItem) -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()

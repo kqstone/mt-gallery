@@ -36,8 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.kqstone.mtphotos.data.repository.PhotoItem
-import com.kqstone.mtphotos.ui.util.isVideo
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +91,7 @@ fun ViewerScreen(
             android.util.Log.d("ViewerScreen", "page=$page isVideo=$isVid fileType=${photo.fileType} fileName=${photo.fileName} id=${photo.id} md5=${photo.md5}")
 
             if (isVid) {
-                val url = viewModel.getVideoUrl(photo.id, photo.md5)
+                val url = viewModel.getVideoUrl(photo)
                 android.util.Log.d("ViewerScreen", "Playing video url=$url")
                 VideoPlayer(
                     videoUrl = url,
@@ -100,7 +99,7 @@ fun ViewerScreen(
                 )
             } else {
                 ZoomableImage(
-                    imageUrl = viewModel.getFullImageUrl(photo.id, photo.md5),
+                    imageUrl = viewModel.getFullImageUrl(photo),
                     contentDescription = photo.fileName
                 )
             }

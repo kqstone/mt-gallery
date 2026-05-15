@@ -3,6 +3,7 @@ package com.kqstone.mtphotos.data.local
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,7 +15,7 @@ import kotlinx.coroutines.runBlocking
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "mtphotos_prefs")
 
-class PrefsManager(private val context: Context) {
+class PrefsManager(val context: Context) {
 
     companion object {
         private val KEY_SERVER_URL = stringPreferencesKey("server_url")
@@ -24,6 +25,12 @@ class PrefsManager(private val context: Context) {
         private val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         private val KEY_AUTH_CODE = stringPreferencesKey("auth_code")
         private val KEY_AUTH_CODE_EXPIRY = longPreferencesKey("auth_code_expiry")
+
+        // 备份相关
+        private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
+        private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
+        private val KEY_BACKUP_FOLDERS = stringPreferencesKey("backup_folders") // JSON array of paths
+        private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
@@ -31,6 +38,10 @@ class PrefsManager(private val context: Context) {
     val password: Flow<String> = context.dataStore.data.map { it[KEY_PASSWORD] ?: "" }
     val token: Flow<String> = context.dataStore.data.map { it[KEY_TOKEN] ?: "" }
     val refreshToken: Flow<String> = context.dataStore.data.map { it[KEY_REFRESH_TOKEN] ?: "" }
+    val backupEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
+    val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
+    val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
+    val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
 
     fun getServerUrlSync(): String = runBlocking {
         serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
@@ -49,6 +60,10 @@ class PrefsManager(private val context: Context) {
             ""
         }
     }
+    fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
+    fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
+    fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
+    fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
@@ -82,7 +97,32 @@ class PrefsManager(private val context: Context) {
         }
     }
 
+    suspend fun saveBackupEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKUP_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveBackupWifiOnly(wifiOnly: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKUP_WIFI_ONLY] = wifiOnly
+        }
+    }
+
+    suspend fun saveBackupFolders(foldersJson: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKUP_FOLDERS] = foldersJson
+        }
+    }
+
+    suspend fun saveDeviceName(name: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_DEVICE_NAME] = name.trim()
+        }
+    }
+
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
     }
 }
+

@@ -21,7 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.AppContainer
-import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.discovery.CategoryFileListScreen
 import com.kqstone.mtphotos.ui.discovery.CategoryFileListViewModel
 import com.kqstone.mtphotos.ui.discovery.DiscoveryScreen
@@ -53,7 +53,7 @@ fun MainScreen(
     container: AppContainer,
     galleryViewModel: GalleryViewModel,
     viewerViewModel: ViewerViewModel,
-    onNavigateToViewer: (List<PhotoItem>, Int) -> Unit,
+    onNavigateToViewer: (List<UnifiedPhotoItem>, Int) -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
     val innerNavController = rememberNavController()

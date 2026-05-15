@@ -46,8 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.kqstone.mtphotos.data.repository.PhotoItem
-import com.kqstone.mtphotos.ui.util.isVideo
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -55,7 +54,7 @@ import kotlin.math.sqrt
 @Composable
 fun GalleryScreen(
     viewModel: GalleryViewModel,
-    onPhotoClick: (PhotoItem) -> Unit,
+    onPhotoClick: (UnifiedPhotoItem) -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -144,7 +143,7 @@ private fun PhotoGrid(
     columnCount: Int,
     selectedPhotoIds: Set<Double>,
     isSelectionMode: Boolean,
-    onPhotoClick: (PhotoItem) -> Unit,
+    onPhotoClick: (UnifiedPhotoItem) -> Unit,
     onColumnCountChange: (Int) -> Unit
 ) {
     data class GridItem(
@@ -152,7 +151,7 @@ private fun PhotoGrid(
         val key: String,
         val monthYearMonth: String? = null,
         val dayGroup: DayGroup? = null,
-        val photo: PhotoItem? = null
+        val photo: UnifiedPhotoItem? = null
     )
 
     val gridItems by remember(months) {
@@ -257,7 +256,7 @@ private fun PhotoGrid(
                     }
                     "photo" -> {
                         val photo = item.photo!!
-                        val thumbUrl = if (photo.isVideo()) viewModel.getVideoThumbUrl(photo.md5) else viewModel.getThumbUrl(photo.md5, photo.id)
+                        val thumbUrl = viewModel.getThumbUrl(photo)
                         PhotoThumbnail(
                             photo = photo,
                             thumbUrl = thumbUrl,

@@ -46,11 +46,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.repository.FolderItem
-import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
-import com.kqstone.mtphotos.ui.util.isVideo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +57,7 @@ fun FolderDetailScreen(
     folderId: String,
     viewModel: FolderDetailViewModel,
     onFolderClick: (String) -> Unit,
-    onPhotoClick: (PhotoItem) -> Unit,
+    onPhotoClick: (UnifiedPhotoItem) -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
