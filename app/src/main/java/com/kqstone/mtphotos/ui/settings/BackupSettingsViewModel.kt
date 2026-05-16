@@ -139,13 +139,13 @@ class BackupSettingsViewModel(
                         path = f.path,
                         displayName = f.displayName,
                         fileCount = f.fileCount,
-                        isSelected = savedFolders.isEmpty() || f.path in savedFolders
+                        isSelected = f.path in savedFolders
                     )
                 }
 
                 _uiState.value = _uiState.value.copy(
                     folders = folderItems,
-                    selectedFolderCount = if (savedFolders.isEmpty()) 0 else savedFolders.size
+                    selectedFolderCount = savedFolders.size
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadFolders failed", e)

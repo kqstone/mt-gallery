@@ -31,6 +31,7 @@ class PrefsManager(val context: Context) {
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
         private val KEY_BACKUP_FOLDERS = stringPreferencesKey("backup_folders") // JSON array of paths
         private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
+        private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
@@ -42,6 +43,7 @@ class PrefsManager(val context: Context) {
     val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
+    val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
 
     fun getServerUrlSync(): String = runBlocking {
         serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
@@ -64,6 +66,7 @@ class PrefsManager(val context: Context) {
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
     fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
+    fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
@@ -112,6 +115,12 @@ class PrefsManager(val context: Context) {
     suspend fun saveBackupFolders(foldersJson: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_BACKUP_FOLDERS] = foldersJson
+        }
+    }
+
+    suspend fun saveFolderSetupComplete(complete: Boolean = true) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FOLDER_SETUP_COMPLETE] = complete
         }
     }
 

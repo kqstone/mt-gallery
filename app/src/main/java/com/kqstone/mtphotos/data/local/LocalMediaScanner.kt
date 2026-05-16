@@ -9,6 +9,9 @@ import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.MediaEntity
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -41,6 +44,128 @@ class LocalMediaScanner(private val context: Context) {
         results.addAll(scanVideos(folderPaths, computeMd5))
         Log.d(TAG, "Scanned ${results.size} media files (${results.count { it.fileType.startsWith("image") }} images, ${results.count { it.fileType.startsWith("video") }} videos)")
         results
+    }
+
+    /**
+     * 流式扫描：每 batchSize 条记录产出一个批次。
+     * 按时间倒序扫描，最新的照片最先产出。
+     * 默认不计算 MD5 以加快速度。
+     */
+    fun scanMediaFlow(
+        folderPaths: Set<String>? = null,
+        batchSize: Int = 50
+    ): Flow<List<MediaEntity>> = flow {
+        // 先扫描图片
+        val imageBatch = mutableListOf<MediaEntity>()
+        queryMediaFlow(
+            collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.MIME_TYPE,
+                MediaStore.Images.Media.DATE_MODIFIED,
+                MediaStore.Images.Media.DATE_TAKEN,
+                MediaStore.Images.Media.WIDTH,
+                MediaStore.Images.Media.HEIGHT,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.DATA
+            ),
+            folderPaths = folderPaths,
+            isVideo = false
+        ) { entity ->
+            imageBatch.add(entity)
+            if (imageBatch.size >= batchSize) {
+                emit(imageBatch.toList())
+                imageBatch.clear()
+            }
+        }
+        if (imageBatch.isNotEmpty()) {
+            emit(imageBatch.toList())
+            imageBatch.clear()
+        }
+
+        // 再扫描视频
+        val videoBatch = mutableListOf<MediaEntity>()
+        queryMediaFlow(
+            collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            else MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            projection = arrayOf(
+                MediaStore.Video.Media._ID,
+                MediaStore.Video.Media.DISPLAY_NAME,
+                MediaStore.Video.Media.MIME_TYPE,
+                MediaStore.Video.Media.DATE_MODIFIED,
+                MediaStore.Video.Media.DATE_TAKEN,
+                MediaStore.Video.Media.WIDTH,
+                MediaStore.Video.Media.HEIGHT,
+                MediaStore.Video.Media.SIZE,
+                MediaStore.Video.Media.DATA,
+                MediaStore.Video.Media.DURATION
+            ),
+            folderPaths = folderPaths,
+            isVideo = true
+        ) { entity ->
+            videoBatch.add(entity)
+            if (videoBatch.size >= batchSize) {
+                emit(videoBatch.toList())
+                videoBatch.clear()
+            }
+        }
+        if (videoBatch.isNotEmpty()) {
+            emit(videoBatch.toList())
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * 逐行遍历 cursor，每条记录通过 onItem 回调产出。
+     */
+    @Suppress("DEPRECATION")
+    private suspend fun queryMediaFlow(
+        collection: android.net.Uri,
+        projection: Array<String>,
+        folderPaths: Set<String>?,
+        isVideo: Boolean,
+        onItem: suspend (MediaEntity) -> Unit
+    ) {
+        var selection: String? = null
+        var selectionArgs: Array<String>? = null
+        if (folderPaths != null && folderPaths.isNotEmpty()) {
+            val conditions = folderPaths.map { "${MediaStore.MediaColumns.DATA} LIKE ?" }
+            selection = conditions.joinToString(" OR ")
+            selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
+        }
+
+        val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+
+        context.contentResolver.query(
+            collection, projection, selection, selectionArgs, sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+            val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+            val dateModifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+            val dateTakenColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
+            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+            val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+            val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
+
+            while (cursor.moveToNext()) {
+                try {
+                    val entity = parseCursorRow(
+                        cursor, idColumn, nameColumn, mimeColumn,
+                        dateModifiedColumn, dateTakenColumn, widthColumn, heightColumn,
+                        sizeColumn, dataColumn, durationColumn, isVideo, computeMd5 = false
+                    )
+                    if (entity != null) onItem(entity)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to process media item", e)
+                }
+            }
+        }
     }
 
     /**
@@ -142,8 +267,6 @@ class LocalMediaScanner(private val context: Context) {
         var selection: String? = null
         var selectionArgs: Array<String>? = null
         if (folderPaths != null && folderPaths.isNotEmpty()) {
-            val placeholders = folderPaths.joinToString(",") { "?" }
-            // 使用 DATA 列的父目录匹配
             val conditions = folderPaths.map { "${MediaStore.MediaColumns.DATA} LIKE ?" }
             selection = conditions.joinToString(" OR ")
             selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
@@ -167,56 +290,12 @@ class LocalMediaScanner(private val context: Context) {
 
             while (cursor.moveToNext()) {
                 try {
-                    val mediaStoreId = cursor.getLong(idColumn)
-                    val name = cursor.getString(nameColumn) ?: "unknown"
-                    val mimeType = cursor.getString(mimeColumn) ?: if (isVideo) "video/mp4" else "image/jpeg"
-                    val dateModified = cursor.getLong(dateModifiedColumn) * 1000 // seconds to millis
-                    val dateTaken = if (dateTakenColumn >= 0) cursor.getLong(dateTakenColumn) else 0L
-                    val width = cursor.getInt(widthColumn)
-                    val height = cursor.getInt(heightColumn)
-                    val size = cursor.getLong(sizeColumn)
-                    val data = cursor.getString(dataColumn) ?: ""
-                    val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
-
-                    // 使用拍摄时间优先，否则使用修改时间
-                    val timestamp = if (dateTaken > 0) dateTaken else dateModified
-                    val mtime = dateFormat.format(Date(timestamp))
-
-                    // 计算 content URI
-                    val contentUri = ContentUris.withAppendedId(
-                        if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                        else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        mediaStoreId
+                    val entity = parseCursorRow(
+                        cursor, idColumn, nameColumn, mimeColumn,
+                        dateModifiedColumn, dateTakenColumn, widthColumn, heightColumn,
+                        sizeColumn, dataColumn, durationColumn, isVideo, computeMd5
                     )
-
-                    // 计算文件夹路径
-                    val folderPath = File(data).parent
-
-                    // 计算 MD5
-                    val md5 = if (computeMd5 && data.isNotEmpty()) {
-                        computeFileMd5(data)
-                    } else {
-                        ""
-                    }
-
-                    results.add(
-                        MediaEntity(
-                            localMediaStoreId = mediaStoreId,
-                            md5 = md5,
-                            fileName = name,
-                            fileType = mimeType,
-                            mtime = mtime,
-                            width = width,
-                            height = height,
-                            localUri = contentUri.toString(),
-                            localPath = data,
-                            syncStatus = SyncStatus.LOCAL_ONLY,
-                            backupStatus = BackupStatus.NOT_STARTED,
-                            fileSize = size,
-                            duration = duration,
-                            localFolderPath = folderPath
-                        )
-                    )
+                    if (entity != null) results.add(entity)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to process media item", e)
                 }
@@ -224,6 +303,58 @@ class LocalMediaScanner(private val context: Context) {
         }
 
         return results
+    }
+
+    /**
+     * 从 cursor 当前行解析出 MediaEntity
+     */
+    private fun parseCursorRow(
+        cursor: android.database.Cursor,
+        idColumn: Int, nameColumn: Int, mimeColumn: Int,
+        dateModifiedColumn: Int, dateTakenColumn: Int,
+        widthColumn: Int, heightColumn: Int,
+        sizeColumn: Int, dataColumn: Int, durationColumn: Int,
+        isVideo: Boolean, computeMd5: Boolean
+    ): MediaEntity? {
+        val mediaStoreId = cursor.getLong(idColumn)
+        val name = cursor.getString(nameColumn) ?: "unknown"
+        val mimeType = cursor.getString(mimeColumn) ?: if (isVideo) "video/mp4" else "image/jpeg"
+        val dateModified = cursor.getLong(dateModifiedColumn) * 1000
+        val dateTaken = if (dateTakenColumn >= 0) cursor.getLong(dateTakenColumn) else 0L
+        val width = cursor.getInt(widthColumn)
+        val height = cursor.getInt(heightColumn)
+        val size = cursor.getLong(sizeColumn)
+        val data = cursor.getString(dataColumn) ?: ""
+        val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
+
+        val timestamp = if (dateTaken > 0) dateTaken else dateModified
+        val mtime = dateFormat.format(Date(timestamp))
+
+        val contentUri = ContentUris.withAppendedId(
+            if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            mediaStoreId
+        )
+
+        val folderPath = File(data).parent
+        val md5 = if (computeMd5 && data.isNotEmpty()) computeFileMd5(data) else ""
+
+        return MediaEntity(
+            localMediaStoreId = mediaStoreId,
+            md5 = md5,
+            fileName = name,
+            fileType = mimeType,
+            mtime = mtime,
+            width = width,
+            height = height,
+            localUri = contentUri.toString(),
+            localPath = data,
+            syncStatus = SyncStatus.LOCAL_ONLY,
+            backupStatus = BackupStatus.NOT_STARTED,
+            fileSize = size,
+            duration = duration,
+            localFolderPath = folderPath
+        )
     }
 
     companion object {

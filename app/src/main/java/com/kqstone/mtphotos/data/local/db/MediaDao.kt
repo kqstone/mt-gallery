@@ -11,8 +11,23 @@ interface MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: MediaEntity): Long
 
+    /** 批量删除指定 ID */
+    @Query("DELETE FROM media WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(entities: List<MediaEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAllIgnore(entities: List<MediaEntity>)
+
+    /** 查找已存在的 localMediaStoreId 集合（用于去重） */
+    @Query("SELECT localMediaStoreId FROM media WHERE localMediaStoreId IN (:ids)")
+    suspend fun findExistingLocalIds(ids: List<Long>): List<Long>
+
+    /** 查找已存在的 cloudId 集合（用于去重） */
+    @Query("SELECT cloudId FROM media WHERE cloudId IN (:ids)")
+    suspend fun findExistingCloudIds(ids: List<Double>): List<Double>
 
     @Update
     suspend fun update(entity: MediaEntity)

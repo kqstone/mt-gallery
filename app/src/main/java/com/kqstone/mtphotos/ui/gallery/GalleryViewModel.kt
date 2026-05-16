@@ -1,17 +1,23 @@
 package com.kqstone.mtphotos.ui.gallery
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.TimelineMonth
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+private const val TAG = "GalleryVM"
 
 data class DayGroup(
     val date: String,
@@ -35,12 +41,15 @@ data class GalleryUiState(
     /** true 时使用本地+云端合并模式，false 时使用纯云端模式 */
     val isHybridMode: Boolean = false,
     /** 是否正在执行首次同步 */
-    val isSyncing: Boolean = false
+    val isSyncing: Boolean = false,
+    /** 扫描进度文字 */
+    val syncProgressText: String? = null
 )
 
 class GalleryViewModel(
     private val galleryRepository: GalleryRepository,
-    private val syncRepository: SyncRepository? = null
+    private val syncRepository: SyncRepository? = null,
+    private val prefsManager: PrefsManager? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GalleryUiState())
@@ -57,29 +66,93 @@ class GalleryViewModel(
     }
 
     /**
+     * 获取用户选择的文件夹路径
+     */
+    private fun getSelectedFolders(): Set<String>? {
+        val json = prefsManager?.getBackupFoldersSync() ?: return null
+        if (json.isEmpty()) return null
+        return try {
+            val type = object : TypeToken<Set<String>>() {}.type
+            Gson().fromJson<Set<String>>(json, type)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * 加载时间线数据。
-     * 如果 SyncRepository 可用且有本地数据，则使用合并模式。
-     * 否则降级为纯云端模式。
+     * 如果 SyncRepository 可用且有本地数据，使用合并模式。
+     * 否则使用增量同步或纯云端模式。
      */
     fun loadTimeline() {
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
             if (syncRepository != null) {
-                // 尝试混合模式：从 Room DB 加载
                 try {
                     val hasData = syncRepository.hasData()
                     if (hasData) {
                         loadFromRoom()
                         return@launch
                     }
-                    // 首次加载：先用纯云端模式快速显示
-                    loadFromCloud()
+                    // 首次加载：使用渐进式同步
+                    triggerIncrementalSync()
                 } catch (e: Exception) {
-                    // Room 失败，降级到纯云端
+                    Log.e(TAG, "Hybrid load failed, falling back to cloud", e)
                     loadFromCloud()
                 }
             } else {
                 loadFromCloud()
+            }
+        }
+    }
+
+    /**
+     * 触发渐进式同步 — 边扫描边显示
+     */
+    private fun triggerIncrementalSync() {
+        if (syncRepository == null) return
+        val folders = getSelectedFolders()
+        _uiState.value = _uiState.value.copy(isSyncing = true, isLoading = false, syncProgressText = "正在加载云端数据...")
+
+        viewModelScope.launch {
+            try {
+                syncRepository.performIncrementalSync(folders).collect { progress ->
+                    when (progress.phase) {
+                        "cloud" -> {
+                            _uiState.value = _uiState.value.copy(syncProgressText = "正在加载云端数据...")
+                        }
+                        "cloud_done" -> {
+                            _uiState.value = _uiState.value.copy(syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地...")
+                            // 云端数据已写入 Room，先加载显示
+                            loadFromRoom()
+                        }
+                        "scanning" -> {
+                            _uiState.value = _uiState.value.copy(syncProgressText = "已扫描 ${progress.scanned} 个本地文件...")
+                            // 每批次刷新 UI
+                            loadFromRoom()
+                        }
+                        "done" -> {
+                            _uiState.value = _uiState.value.copy(
+                                isSyncing = false,
+                                syncProgressText = null
+                            )
+                            loadFromRoom()
+                            // 后台补算 MD5
+                            launch {
+                                syncRepository.computeMd5InBackground()
+                                // MD5 计算完后刷新一次
+                                loadFromRoom()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Incremental sync failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isSyncing = false,
+                    syncProgressText = null,
+                    error = "同步失败: ${e.message}"
+                )
             }
         }
     }
@@ -150,11 +223,18 @@ class GalleryViewModel(
         _uiState.value = _uiState.value.copy(isRefreshing = true)
         viewModelScope.launch {
             if (_uiState.value.isHybridMode && syncRepository != null) {
-                // 混合模式：重新同步
+                // 混合模式：使用增量同步（不计算 MD5，速度快）
                 try {
-                    syncRepository.performFullSync()
+                    val folders = getSelectedFolders()
+                    syncRepository.performIncrementalSync(folders).collect { progress ->
+                        if (progress.phase == "scanning" || progress.phase == "cloud_done") {
+                            loadFromRoom()
+                        }
+                    }
                     loadFromRoom()
                     _uiState.value = _uiState.value.copy(isRefreshing = false)
+                    // 后台补算 MD5
+                    launch { syncRepository.computeMd5InBackground() }
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         isRefreshing = false,
@@ -187,6 +267,26 @@ class GalleryViewModel(
                         )
                     }
                 )
+            }
+        }
+    }
+
+    /**
+     * 轻量级刷新：App 回到前台时调用。
+     * 仅做一次快速本地扫描（不计算 MD5），检测新增的媒体文件。
+     * 比 refresh() 更快，不显示刷新动画。
+     */
+    fun quickRefresh() {
+        if (syncRepository == null || !_uiState.value.isHybridMode) return
+        if (_uiState.value.isSyncing || _uiState.value.isRefreshing) return
+
+        viewModelScope.launch {
+            try {
+                val folders = getSelectedFolders()
+                syncRepository.performIncrementalSync(folders).collect { /* consume silently */ }
+                loadFromRoom()
+            } catch (e: Exception) {
+                Log.w(TAG, "Quick refresh failed", e)
             }
         }
     }
@@ -258,10 +358,11 @@ class GalleryViewModel(
      */
     fun triggerFullSync(localFolders: Set<String>? = null) {
         if (syncRepository == null) return
+        val folders = localFolders ?: getSelectedFolders()
         _uiState.value = _uiState.value.copy(isSyncing = true)
         viewModelScope.launch {
             try {
-                syncRepository.performFullSync(localFolders)
+                syncRepository.performFullSync(folders)
                 loadFromRoom()
                 _uiState.value = _uiState.value.copy(isSyncing = false)
             } catch (e: Exception) {
@@ -358,11 +459,12 @@ class GalleryViewModel(
 
     class Factory(
         private val galleryRepository: GalleryRepository,
-        private val syncRepository: SyncRepository? = null
+        private val syncRepository: SyncRepository? = null,
+        private val prefsManager: PrefsManager? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return GalleryViewModel(galleryRepository, syncRepository) as T
+            return GalleryViewModel(galleryRepository, syncRepository, prefsManager) as T
         }
     }
 }

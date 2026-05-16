@@ -5,13 +5,32 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
 /**
@@ -173,3 +192,121 @@ fun MediaPermissionRequester(
         launcher.launch(PermissionHelper.getMediaPermissions())
     }
 }
+
+/**
+ * 应用启动时的权限 Gate。
+ * 自动请求媒体权限 + 通知权限。
+ * - 授权后显示 [content]
+ * - 拒绝后显示说明页面，含重新授权和前往设置按钮，也可选择"仅云端模式"跳过
+ */
+@Composable
+fun AppPermissionGate(
+    onContinueCloudOnly: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+
+    var mediaGranted by remember {
+        mutableStateOf(PermissionHelper.hasMediaPermissions(context))
+    }
+    var notificationGranted by remember {
+        mutableStateOf(PermissionHelper.hasNotificationPermission(context))
+    }
+    var permissionRequested by remember { mutableStateOf(false) }
+    var skipped by remember { mutableStateOf(false) }
+
+    // 合并所有需要请求的权限
+    val allPermissions = remember {
+        PermissionHelper.getMediaPermissions() + PermissionHelper.getNotificationPermission()
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        permissionRequested = true
+        mediaGranted = PermissionHelper.getMediaPermissions().all { results[it] == true }
+        notificationGranted = PermissionHelper.getNotificationPermission().let { perms ->
+            perms.isEmpty() || perms.all { results[it] == true }
+        }
+    }
+
+    // 首次进入自动请求
+    LaunchedEffect(Unit) {
+        if (!mediaGranted) {
+            launcher.launch(allPermissions)
+        }
+    }
+
+    if (mediaGranted || skipped) {
+        // 权限已授予 或 用户跳过，显示主内容
+        content()
+    } else if (permissionRequested) {
+        // 权限被拒绝，显示说明页面
+        PermissionDeniedScreen(
+            onRetry = { launcher.launch(allPermissions) },
+            onOpenSettings = {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.fromParts("package", context.packageName, null)
+                )
+                context.startActivity(intent)
+            },
+            onSkip = {
+                skipped = true
+                onContinueCloudOnly()
+            }
+        )
+    }
+    // else: 正在等待权限请求结果，什么都不显示
+}
+
+@Composable
+private fun PermissionDeniedScreen(
+    onRetry: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onSkip: () -> Unit
+) {
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.PhotoLibrary,
+            contentDescription = null,
+            modifier = Modifier
+                .height(72.dp)
+                .width(72.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "需要媒体访问权限",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "MT Gallery 需要访问您设备上的照片和视频，以便在本地和云端之间管理和备份您的媒体文件。",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(onClick = onRetry) {
+            Text("授予权限")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(onClick = onOpenSettings) {
+            Text("前往系统设置")
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        TextButton(onClick = onSkip) {
+            Text("跳过，仅使用云端模式")
+        }
+    }
+}
+

@@ -15,23 +15,44 @@ import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.settings.BackupSettingsScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsViewModel
+import com.kqstone.mtphotos.ui.settings.FolderSetupScreen
 import com.kqstone.mtphotos.ui.settings.SettingsScreen
 import com.kqstone.mtphotos.ui.settings.SettingsViewModel
+import com.kqstone.mtphotos.ui.util.AppPermissionGate
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 
 @Composable
 fun AppNavigation() {
-    val navController = rememberNavController()
     val context = LocalContext.current
     val app = context.applicationContext as MTPhotosApp
     val container = app.container
+
+    // 权限请求包裹整个 App — 在登录页之前就弹出
+    AppPermissionGate(
+        onContinueCloudOnly = {
+            // 用户选择跳过权限，仍然可以进入（仅云端模式）
+        }
+    ) {
+        AppContent(container = container)
+    }
+}
+
+@Composable
+private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
+    val navController = rememberNavController()
 
     var startDestination by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val token = container.prefsManager.getTokenSync()
-        startDestination = if (token.isNotEmpty()) "main" else "settings"
+        if (token.isEmpty()) {
+            startDestination = "settings"
+        } else {
+            // 已登录：检查是否完成了文件夹选择
+            val folderSetupDone = container.prefsManager.isFolderSetupComplete()
+            startDestination = if (folderSetupDone) "main" else "folder_setup"
+        }
     }
 
     if (startDestination == null) return
@@ -40,7 +61,7 @@ fun AppNavigation() {
         factory = SettingsViewModel.Factory(container.authRepository)
     )
     val galleryViewModel: GalleryViewModel = viewModel(
-        factory = GalleryViewModel.Factory(container.galleryRepository, container.syncRepository)
+        factory = GalleryViewModel.Factory(container.galleryRepository, container.syncRepository, container.prefsManager)
     )
     val viewerViewModel: ViewerViewModel = viewModel(
         factory = ViewerViewModel.Factory(container.galleryRepository)
@@ -51,8 +72,23 @@ fun AppNavigation() {
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onConnected = {
-                    navController.navigate("main") {
+                    // 登录成功：检查是否需要文件夹选择
+                    val folderSetupDone = container.prefsManager.isFolderSetupComplete()
+                    val target = if (folderSetupDone) "main" else "folder_setup"
+                    navController.navigate(target) {
                         popUpTo("settings") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable("folder_setup") {
+            FolderSetupScreen(
+                prefsManager = container.prefsManager,
+                localMediaScanner = container.localMediaScanner,
+                onSetupComplete = {
+                    navController.navigate("main") {
+                        popUpTo("folder_setup") { inclusive = true }
                     }
                 }
             )

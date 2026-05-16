@@ -146,6 +146,132 @@ class SyncRepository(
     }
 
     /**
+     * 渐进式同步：流式扫描本地文件，每批次写入 Room 后 emit 进度。
+     * 不计算 MD5（速度快），用于首次加载和刷新。
+     * 通过 localMediaStoreId / cloudId 去重，不会产生重复记录。
+     */
+    fun performIncrementalSync(
+        localFolders: Set<String>? = null
+    ): Flow<SyncProgress> = kotlinx.coroutines.flow.flow {
+        try {
+            Log.d(TAG, "Starting incremental sync...")
+            emit(SyncProgress(0, 0, "cloud"))
+
+            // Step 1: 拉取云端数据
+            val cloudPhotos = fetchAllCloudPhotos()
+            Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
+
+            // 只插入尚不存在的云端记录
+            if (cloudPhotos.isNotEmpty()) {
+                val existingCloudIds = cloudPhotos
+                    .mapNotNull { it.cloudId }
+                    .chunked(500)
+                    .flatMap { mediaDao.findExistingCloudIds(it) }
+                    .toSet()
+                val newCloudPhotos = cloudPhotos.filter { it.cloudId !in existingCloudIds }
+                if (newCloudPhotos.isNotEmpty()) {
+                    mediaDao.insertAll(newCloudPhotos)
+                    Log.d(TAG, "Inserted ${newCloudPhotos.size} new cloud files (skipped ${cloudPhotos.size - newCloudPhotos.size} existing)")
+                }
+                emit(SyncProgress(0, 0, "cloud_done", cloudPhotos.size))
+            }
+
+            // Step 2: 流式扫描本地（去重）
+            val cloudFileKeys = cloudPhotos.map { "${it.fileName}_${it.fileSize}" }.toSet()
+            var scannedCount = 0
+
+            localScanner.scanMediaFlow(localFolders, batchSize = 50).collect { batch ->
+                scannedCount += batch.size
+
+                // 查询已存在的 localMediaStoreId
+                val batchLocalIds = batch.mapNotNull { it.localMediaStoreId }
+                val existingLocalIds = if (batchLocalIds.isNotEmpty()) {
+                    batchLocalIds.chunked(500).flatMap { mediaDao.findExistingLocalIds(it) }.toSet()
+                } else emptySet()
+
+                // 只插入不存在的本地文件
+                val newEntities = batch
+                    .filter { it.localMediaStoreId !in existingLocalIds }
+                    .map { local ->
+                        val fileKey = "${local.fileName}_${local.fileSize}"
+                        val probablyOnCloud = fileKey in cloudFileKeys
+                        local.copy(
+                            syncStatus = if (probablyOnCloud) SyncStatus.SYNCED else SyncStatus.LOCAL_ONLY,
+                            backupStatus = if (probablyOnCloud) BackupStatus.COMPLETED else BackupStatus.NOT_STARTED
+                        )
+                    }
+
+                if (newEntities.isNotEmpty()) {
+                    mediaDao.insertAll(newEntities)
+                }
+                emit(SyncProgress(scannedCount, 0, "scanning"))
+            }
+
+            emit(SyncProgress(scannedCount, scannedCount, "done"))
+            Log.d(TAG, "Incremental sync complete: $scannedCount local files processed")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Incremental sync failed", e)
+            throw e
+        }
+    }
+
+    /**
+     * 后台异步补算 MD5 并精确匹配云端。
+     * 在首次渐进式加载完成后调用。
+     */
+    suspend fun computeMd5InBackground() = withContext(Dispatchers.IO) {
+        try {
+            val needMd5 = mediaDao.getMediaBySyncStatus(SyncStatus.LOCAL_ONLY)
+                .filter { it.md5.isEmpty() && !it.localPath.isNullOrEmpty() }
+
+            if (needMd5.isEmpty()) {
+                Log.d(TAG, "No files need MD5 computation")
+                return@withContext
+            }
+
+            Log.d(TAG, "Computing MD5 for ${needMd5.size} files...")
+            val cloudPhotos = fetchAllCloudPhotos()
+            val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
+
+            var updated = 0
+            for (entity in needMd5) {
+                val md5 = LocalMediaScanner.computeFileMd5(entity.localPath!!)
+                if (md5.isEmpty()) continue
+
+                val cloud = cloudMd5Map[md5]
+                if (cloud != null) {
+                    // 精确匹配到云端文件
+                    mediaDao.update(entity.copy(
+                        md5 = md5,
+                        cloudId = cloud.cloudId,
+                        cloudMd5 = cloud.md5,
+                        syncStatus = SyncStatus.SYNCED,
+                        backupStatus = BackupStatus.COMPLETED,
+                        updatedAt = System.currentTimeMillis()
+                    ))
+                } else {
+                    mediaDao.update(entity.copy(
+                        md5 = md5,
+                        updatedAt = System.currentTimeMillis()
+                    ))
+                }
+                updated++
+            }
+            Log.d(TAG, "MD5 computation complete: $updated files updated")
+        } catch (e: Exception) {
+            Log.e(TAG, "MD5 background computation failed", e)
+        }
+    }
+
+    data class SyncProgress(
+        val scanned: Int,
+        val total: Int,
+        val phase: String,
+        val cloudCount: Int = 0
+    )
+
+    /**
      * 仅同步云端数据（不扫描本地），用于未开启备份模式时。
      */
     suspend fun syncCloudOnly() = withContext(Dispatchers.IO) {
