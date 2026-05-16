@@ -51,13 +51,12 @@ object BackupScheduler {
      */
     fun triggerImmediateBackup(context: Context, wifiOnly: Boolean = true) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(
-                if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
-            )
+            .setRequiredNetworkType(NetworkType.CONNECTED) // 手动触发时只需要网络连接
             .build()
 
         val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
             .setConstraints(constraints)
+            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
         WorkManager.getInstance(context).enqueue(workRequest)

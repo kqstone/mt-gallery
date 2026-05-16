@@ -68,7 +68,8 @@ object PermissionHelper {
 }
 
 /**
- * Compose 权限请求封装。
+ * Compose 权限请求封装 — 自动弹出请求。
+ * 会在首次进入时自动请求权限。
  * 使用方式：
  * ```
  * RequestMediaPermissions { granted ->
@@ -136,5 +137,39 @@ fun RequestNotificationPermission(
         } else {
             onResult(true)
         }
+    }
+}
+
+/**
+ * 按需请求媒体权限的 Composable。
+ * 不会自动弹出，而是由调用者通过 requestPermission lambda 手动触发。
+ *
+ * 使用方式：
+ * ```
+ * MediaPermissionRequester { hasPermission, requestPermission ->
+ *     Button(onClick = {
+ *         if (!hasPermission) requestPermission()
+ *         else doSomething()
+ *     }) { ... }
+ * }
+ * ```
+ */
+@Composable
+fun MediaPermissionRequester(
+    content: @Composable (hasPermission: Boolean, requestPermission: () -> Unit) -> Unit
+) {
+    val context = LocalContext.current
+    var hasPermission by remember {
+        mutableStateOf(PermissionHelper.hasMediaPermissions(context))
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasPermission = permissions.values.all { it }
+    }
+
+    content(hasPermission) {
+        launcher.launch(PermissionHelper.getMediaPermissions())
     }
 }

@@ -232,7 +232,12 @@ class SyncRepository(
         return mediaDao.getOptimizableSize()
     }
 
-    /** 获取已备份的文件数量 */
+    /** 获取已同步的文件数量（服务端已有的文件） */
+    suspend fun getSyncedCount(): Int {
+        return mediaDao.getCountBySyncStatus(SyncStatus.SYNCED)
+    }
+
+    /** 获取已备份的文件数量（APP 上传成功或已标记为完成的） */
     suspend fun getBackedUpCount(): Int {
         return mediaDao.getBackedUpCount()
     }

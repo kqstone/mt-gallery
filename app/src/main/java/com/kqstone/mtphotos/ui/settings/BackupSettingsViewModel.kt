@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,9 +15,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+private const val TAG = "BackupSettingsVM"
+
 data class BackupSettingsUiState(
     val backupEnabled: Boolean = false,
     val wifiOnly: Boolean = true,
+    val syncedCount: Int = 0,
     val backedUpCount: Int = 0,
     val backedUpSizeFormatted: String = "0 MB",
     val pendingCount: Int = 0,
@@ -24,6 +28,8 @@ data class BackupSettingsUiState(
     val optimizableSizeFormatted: String = "0 MB",
     val isBackingUp: Boolean = false,
     val isOptimizing: Boolean = false,
+    /** 是否正在执行初始扫描同步 */
+    val isSyncing: Boolean = false,
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
     val error: String? = null
@@ -54,15 +60,51 @@ class BackupSettingsViewModel(
         }
     }
 
+    /**
+     * 加载统计信息。如果 Room DB 为空，会先触发一次全量同步来扫描本地+云端文件。
+     */
     fun loadStats() {
         viewModelScope.launch {
             try {
+                // 检查 Room DB 是否为空，为空则先执行一次同步
+                val hasData = syncRepository.hasData()
+                if (!hasData) {
+                    Log.d(TAG, "Room DB is empty, triggering initial sync...")
+                    _uiState.value = _uiState.value.copy(isSyncing = true)
+                    try {
+                        // 获取用户选择的文件夹
+                        val savedFoldersJson = prefsManager.getBackupFoldersSync()
+                        val savedFolders: Set<String> = if (savedFoldersJson.isNotEmpty()) {
+                            try {
+                                val type = object : TypeToken<Set<String>>() {}.type
+                                gson.fromJson(savedFoldersJson, type)
+                            } catch (e: Exception) {
+                                emptySet()
+                            }
+                        } else {
+                            null // null 表示扫描全部
+                        } ?: emptySet()
+
+                        syncRepository.performFullSync(
+                            if (savedFolders.isEmpty()) null else savedFolders
+                        )
+                        Log.d(TAG, "Initial sync completed")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Initial sync failed", e)
+                    } finally {
+                        _uiState.value = _uiState.value.copy(isSyncing = false)
+                    }
+                }
+
+                // 加载统计数据
+                val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
                 val pending = syncRepository.getPendingBackupMedia().size
                 val stats = storageOptimizer.getOptimizationStats()
 
                 _uiState.value = _uiState.value.copy(
+                    syncedCount = synced,
                     backedUpCount = backedUp,
                     backedUpSizeFormatted = formatSize(backedUpSize),
                     pendingCount = pending,
@@ -70,6 +112,7 @@ class BackupSettingsViewModel(
                     optimizableSizeFormatted = stats.formattedSize()
                 )
             } catch (e: Exception) {
+                Log.e(TAG, "loadStats failed", e)
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
         }
@@ -105,6 +148,7 @@ class BackupSettingsViewModel(
                     selectedFolderCount = if (savedFolders.isEmpty()) 0 else savedFolders.size
                 )
             } catch (e: Exception) {
+                Log.e(TAG, "loadFolders failed", e)
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
         }
@@ -116,6 +160,11 @@ class BackupSettingsViewModel(
             if (enabled) {
                 val wifiOnly = prefsManager.getBackupWifiOnlySync()
                 BackupScheduler.schedulePeriodicBackup(prefsManager.context, wifiOnly)
+
+                // 开启备份后，如果 Room DB 为空，触发初始同步并刷新统计
+                if (!syncRepository.hasData()) {
+                    loadStats()
+                }
             } else {
                 BackupScheduler.cancelPeriodicBackup(prefsManager.context)
             }
@@ -164,6 +213,32 @@ class BackupSettingsViewModel(
                 .toSet()
             val json = gson.toJson(selected)
             prefsManager.saveBackupFolders(json)
+
+            // 文件夹选择改变后，需要重新同步以更新待备份文件统计
+            _uiState.value = _uiState.value.copy(isSyncing = true)
+            try {
+                syncRepository.performFullSync(
+                    if (selected.isEmpty()) null else selected
+                )
+                // 重新加载统计
+                val synced = syncRepository.getSyncedCount()
+                val backedUp = syncRepository.getBackedUpCount()
+                val backedUpSize = syncRepository.getBackedUpSize()
+                val pending = syncRepository.getPendingBackupMedia().size
+                val stats = storageOptimizer.getOptimizationStats()
+                _uiState.value = _uiState.value.copy(
+                    syncedCount = synced,
+                    backedUpCount = backedUp,
+                    backedUpSizeFormatted = formatSize(backedUpSize),
+                    pendingCount = pending,
+                    optimizableCount = stats.totalFiles,
+                    optimizableSizeFormatted = stats.formattedSize(),
+                    isSyncing = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Re-sync after folder change failed", e)
+                _uiState.value = _uiState.value.copy(isSyncing = false, error = e.message)
+            }
         }
     }
 

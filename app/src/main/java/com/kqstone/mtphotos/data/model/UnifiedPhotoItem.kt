@@ -52,10 +52,18 @@ data class UnifiedPhotoItem(
 ) {
     /**
      * 用于唯一标识此项（兼容旧 PhotoItem 的 id 字段）
-     * 优先使用 cloudId，没有则用 dbId
+     * 优先使用 cloudId，没有则用 dbId（Room 自增 ID）
+     * 注意：dbId 在未经 Room 插入前为 0，此时 id 也为 0
      */
     val id: Double
         get() = cloudId ?: dbId.toDouble()
+
+    /**
+     * 用于 LazyColumn/Grid 的唯一 key。
+     * 使用 md5（文件内容唯一）+ dbId 组合，确保不会重复。
+     */
+    val uniqueKey: String
+        get() = if (md5.isNotEmpty()) "md5_${md5}" else "db_${dbId}_${cloudId ?: 0.0}"
 
     /**
      * 是否为视频

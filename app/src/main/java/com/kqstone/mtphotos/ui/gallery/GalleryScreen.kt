@@ -163,7 +163,7 @@ private fun PhotoGrid(
                     for (day in month.days) {
                         items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
                         for (photo in day.photos) {
-                            items.add(GridItem("photo", "photo_${photo.id}", photo = photo))
+                            items.add(GridItem("photo", "photo_${photo.uniqueKey}", photo = photo))
                         }
                     }
                 }
