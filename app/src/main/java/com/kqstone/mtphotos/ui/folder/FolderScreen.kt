@@ -35,7 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.data.repository.FolderItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,10 +131,9 @@ private fun FolderCard(
                     .clip(MaterialTheme.shapes.medium)
             ) {
                 if (thumbUrl != null) {
-                    AsyncImage(
-                        model = thumbUrl,
+                    ThumbnailImage(
+                        url = thumbUrl,
                         contentDescription = folder.name,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

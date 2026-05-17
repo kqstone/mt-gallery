@@ -44,7 +44,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
@@ -244,10 +244,9 @@ private fun SubfolderCard(
                     .clip(MaterialTheme.shapes.small)
             ) {
                 if (thumbUrl != null) {
-                    AsyncImage(
-                        model = thumbUrl,
+                    ThumbnailImage(
+                        url = thumbUrl,
                         contentDescription = folder.name,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

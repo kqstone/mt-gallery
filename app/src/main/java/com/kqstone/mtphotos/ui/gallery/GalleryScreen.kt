@@ -210,7 +210,8 @@ private fun PhotoGrid(
     data class GridItem(
         val type: String,
         val key: String,
-        val monthYearMonth: String? = null,
+        val monthTitle: String? = null,
+        val monthCount: Int = 0,
         val dayGroup: DayGroup? = null,
         val photo: UnifiedPhotoItem? = null
     )
@@ -219,7 +220,7 @@ private fun PhotoGrid(
         derivedStateOf {
             val items = mutableListOf<GridItem>()
             for (month in months) {
-                items.add(GridItem("month", "month_${month.yearMonth}", monthYearMonth = month.yearMonth))
+                items.add(GridItem("month", "month_${month.yearMonth}", monthTitle = month.displayTitle, monthCount = month.totalCount))
                 if (month.isLoaded) {
                     for (day in month.days) {
                         items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
@@ -299,6 +300,7 @@ private fun PhotoGrid(
             items(
                 items = gridItems,
                 key = { it.key },
+                contentType = { it.type },
                 span = { item ->
                     if (item.type == "month" || item.type == "day") {
                         GridItemSpan(maxLineSpan)
@@ -309,8 +311,7 @@ private fun PhotoGrid(
             ) { item ->
                 when (item.type) {
                     "month" -> {
-                        val month = months.find { it.yearMonth == item.monthYearMonth }
-                        MonthHeader(month = month!!)
+                        MonthHeader(title = item.monthTitle!!, count = item.monthCount)
                     }
                     "day" -> {
                         DayHeader(dayGroup = item.dayGroup!!)
@@ -377,7 +378,7 @@ private fun AutoLoadVisibleMonths(
 }
 
 @Composable
-private fun MonthHeader(month: MonthGroup) {
+private fun MonthHeader(title: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -387,12 +388,12 @@ private fun MonthHeader(month: MonthGroup) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = month.displayTitle,
+            text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "${month.totalCount}张",
+            text = "${count}张",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

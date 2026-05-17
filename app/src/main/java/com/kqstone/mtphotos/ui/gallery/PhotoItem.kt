@@ -30,12 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Scale
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
@@ -68,7 +71,12 @@ fun PhotoThumbnail(
             )
     ) {
         AsyncImage(
-            model = thumbUrl,
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(thumbUrl)
+                .size(256)
+                .scale(Scale.FILL)
+                .crossfade(true)
+                .build(),
             contentDescription = photo.fileName,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -182,7 +190,7 @@ private fun SyncStatusIcon(
     ) {
         if (isUploading) {
             val infiniteTransition = rememberInfiniteTransition(label = "upload_rotate")
-            val rotation by infiniteTransition.animateFloat(
+            val rotationAngle by infiniteTransition.animateFloat(
                 initialValue = 0f,
                 targetValue = 360f,
                 animationSpec = infiniteRepeatable(
@@ -197,7 +205,7 @@ private fun SyncStatusIcon(
                 tint = tint,
                 modifier = Modifier
                     .size(14.dp)
-                    .rotate(rotation)
+                    .graphicsLayer { rotationZ = rotationAngle }
             )
         } else {
             Icon(

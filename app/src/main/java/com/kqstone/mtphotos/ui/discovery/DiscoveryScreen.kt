@@ -36,7 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
@@ -259,10 +259,9 @@ private fun DiscoveryCard(
                     .clip(MaterialTheme.shapes.small)
             ) {
                 if (thumbUrl != null) {
-                    AsyncImage(
-                        model = thumbUrl,
+                    ThumbnailImage(
+                        url = thumbUrl,
                         contentDescription = name,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {

@@ -1,6 +1,11 @@
 package com.kqstone.mtphotos
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
@@ -16,11 +21,31 @@ import com.kqstone.mtphotos.network.AuthInterceptor
 import com.kqstone.mtphotos.network.RetrofitClient
 import com.kqstone.mtphotos.worker.BackupScheduler
 
-class MTPhotosApp : Application() {
+class MTPhotosApp : Application(), ImageLoaderFactory {
 
     lateinit var container: AppContainer
         private set
     private var mediaChangeObserver: MediaChangeObserver? = null
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("coil_image_cache"))
+                    .maxSizePercent(0.03)
+                    .build()
+            }
+            .allowRgb565(true)
+            .crossfade(true)
+            .build()
+    }
 
     override fun onCreate() {
         super.onCreate()

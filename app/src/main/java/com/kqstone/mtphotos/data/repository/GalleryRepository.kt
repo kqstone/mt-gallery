@@ -58,6 +58,27 @@ class GalleryRepository(private val container: AppContainer) {
     private val prefsManager get() = container.prefsManager
     private val authRepository get() = container.authRepository
 
+    // URL 构建缓存：避免每次缩略图加载都读 SharedPreferences + URL 编码
+    @Volatile private var cachedServerUrl: String? = null
+    @Volatile private var cachedRawAuth: String? = null
+    @Volatile private var cachedSuffix: String? = null
+
+    private fun urlSuffix(): String {
+        val serverUrl = prefsManager.getServerUrlSync()
+        val authCode = authRepository.getAuthCode()
+        if (serverUrl == cachedServerUrl && authCode == cachedRawAuth && cachedSuffix != null) {
+            return cachedSuffix!!
+        }
+        val encoded = URLEncoder.encode(authCode, "UTF-8")
+        val suffix = "?auth_code=$encoded"
+        cachedServerUrl = serverUrl
+        cachedRawAuth = authCode
+        cachedSuffix = suffix
+        return suffix
+    }
+
+    private fun urlBase(): String = prefsManager.getServerUrlSync()
+
     suspend fun getTimeline(): Result<List<TimelineMonth>> {
         return try {
             val response = container.gatewayApi.GatewayControllerGetTimelineData()
@@ -111,27 +132,19 @@ class GalleryRepository(private val container: AppContainer) {
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
-        val serverUrl = prefsManager.getServerUrlSync()
-        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
-        return "$serverUrl/gateway/file/$fileId/$md5?auth_code=$authCode"
+        return "${urlBase()}/gateway/file/$fileId/$md5${urlSuffix()}"
     }
 
     fun getThumbUrlByMd5(md5: String): String {
-        val serverUrl = prefsManager.getServerUrlSync()
-        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
-        return "$serverUrl/gateway/s260/$md5?auth_code=$authCode"
+        return "${urlBase()}/gateway/s260/$md5${urlSuffix()}"
     }
 
     fun getVideoThumbUrl(md5: String): String {
-        val serverUrl = prefsManager.getServerUrlSync()
-        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
-        return "$serverUrl/gateway/h220/$md5?auth_code=$authCode"
+        return "${urlBase()}/gateway/h220/$md5${urlSuffix()}"
     }
 
     fun getFullImageUrl(id: Double, md5: String): String {
-        val serverUrl = prefsManager.getServerUrlSync()
-        val authCode = URLEncoder.encode(authRepository.getAuthCode(), "UTF-8")
-        return "$serverUrl/gateway/file/$id/$md5?auth_code=$authCode"
+        return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}"
     }
 
     suspend fun deleteFiles(ids: List<Double>): Result<Unit> {

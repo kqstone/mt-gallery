@@ -16,3 +16,5 @@ local.properties
 /scripts
 package*
 nul
+keystore.properties
+app/release-keystore.jks
