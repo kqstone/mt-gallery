@@ -1,11 +1,10 @@
 # MT Gallery - 非官方 MT-Photos 安卓客户端
-
-重要提醒，不建议作为日常使用，仅作测试，一切bug与可能导致的文件丢失，使用者自行承担，与作者无关
-
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)]()
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple.svg)]()
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack_Compose-orange.svg)]()
+
+**重要提醒，不建议作为日常使用，仅作测试，一切bug与可能导致的文件丢失，使用者自行承担，与作者无关**
 
 `MT Gallery` 是一款针对开源个人照片管理系统 **[MT-Photos](https://mtmt.tech/)** 的非官方开源 Android 客户端。
 
