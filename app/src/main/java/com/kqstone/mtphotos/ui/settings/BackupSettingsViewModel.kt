@@ -33,6 +33,7 @@ data class BackupSettingsUiState(
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
     val deleteMode: String = "", // "" = 未设置, "direct" = 直接删除, "confirm" = 确认删除
+    val syncInterval: Int = 60, // 同步间隔（分钟）
     val error: String? = null
 )
 
@@ -62,6 +63,11 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.deleteMode.collect { mode ->
                 _uiState.value = _uiState.value.copy(deleteMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.syncInterval.collect { interval ->
+                _uiState.value = _uiState.value.copy(syncInterval = interval)
             }
         }
     }
@@ -165,14 +171,15 @@ class BackupSettingsViewModel(
             prefsManager.saveBackupEnabled(enabled)
             if (enabled) {
                 val wifiOnly = prefsManager.getBackupWifiOnlySync()
-                BackupScheduler.schedulePeriodicBackup(prefsManager.context, wifiOnly)
+                val syncInterval = prefsManager.getSyncIntervalSync().toLong()
+                BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
 
                 // 开启备份后，如果 Room DB 为空，触发初始同步并刷新统计
                 if (!syncRepository.hasData()) {
                     loadStats()
                 }
             } else {
-                BackupScheduler.cancelPeriodicBackup(prefsManager.context)
+                BackupScheduler.cancelAll(prefsManager.context)
             }
         }
     }
@@ -181,7 +188,8 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.saveBackupWifiOnly(wifiOnly)
             if (prefsManager.getBackupEnabledSync()) {
-                BackupScheduler.schedulePeriodicBackup(prefsManager.context, wifiOnly)
+                val syncInterval = prefsManager.getSyncIntervalSync().toLong()
+                BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
             }
         }
     }
@@ -189,6 +197,16 @@ class BackupSettingsViewModel(
     fun setDeleteMode(mode: String) {
         viewModelScope.launch {
             prefsManager.saveDeleteMode(mode)
+        }
+    }
+
+    fun setSyncInterval(minutes: Int) {
+        viewModelScope.launch {
+            prefsManager.saveSyncInterval(minutes)
+            if (prefsManager.getBackupEnabledSync()) {
+                val wifiOnly = prefsManager.getBackupWifiOnlySync()
+                BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, minutes.toLong())
+            }
         }
     }
 

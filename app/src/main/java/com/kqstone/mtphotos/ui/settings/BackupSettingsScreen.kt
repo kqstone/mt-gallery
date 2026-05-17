@@ -28,6 +28,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
@@ -162,6 +163,15 @@ fun BackupSettingsScreen(
                     icon = Icons.Default.Cloud,
                     checked = uiState.wifiOnly,
                     onCheckedChange = { viewModel.setWifiOnly(it) },
+                    enabled = uiState.backupEnabled
+                )
+            }
+
+            // 同步间隔
+            item {
+                SyncIntervalSetting(
+                    currentInterval = uiState.syncInterval,
+                    onIntervalChange = { viewModel.setSyncInterval(it) },
                     enabled = uiState.backupEnabled
                 )
             }
@@ -599,6 +609,45 @@ private fun DeleteModeSetting(
                     "每次删除时系统弹窗确认，无需特殊权限",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncIntervalSetting(
+    currentInterval: Int,
+    onIntervalChange: (Int) -> Unit,
+    enabled: Boolean
+) {
+    val options = listOf(30, 60, 120)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Text(
+            text = "同步间隔",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        )
+        Text(
+            text = "定期扫描本地媒体变化，补充实时检测",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { minutes ->
+                val isSelected = currentInterval == minutes
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { if (enabled) onIntervalChange(minutes) },
+                    label = { Text("${minutes}分钟") },
+                    enabled = enabled
                 )
             }
         }

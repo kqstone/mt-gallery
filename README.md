@@ -46,17 +46,17 @@
 
 ## 🛠️ 技术栈
 
-本应用 100% 采用 Kotlin 编写：
+本应用采用 Kotlin 编写：
 
 | 维度 | 技术选型 | 说明 |
 | :--- | :--- | :--- |
-| **编程语言** | [Kotlin](https://kotlinlang.org/) | 现代、简洁、安全的 Android 官方开发语言 (JDK 17) |
+| **编程语言** | [Kotlin](https://kotlinlang.org/) | Android 官方开发语言 (JDK 17) |
 | **UI 框架** | [Jetpack Compose](https://developer.android.com/compose) | 声明式 UI，完全基于 [Material Design 3](https://m3.material.io/) 规范设计 |
 | **持久化数据库** | [Room Database](https://developer.android.com/training/data-storage/room) | SQLite 对象的本地映射层，作为本地与云端融合的 Single Source of Truth |
 | **后台异步任务** | [Jetpack WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager) | 负责离线备份与增量同步的标准后台执行引擎 |
 | **网络请求** | [Retrofit 2](https://square.github.io/retrofit/) & [OkHttp 3](https://square.github.io/okhttp/) | 负责与 MT-Photos REST APIs 进行高效通信。后端接口主要依据官方 Swagger API 文档实现，部分非公开的核心接口通过 Web 抓包逆向获取 |
 | **图片加载** | [Coil](https://coil-kt.github.io/coil/) | 基于 Kotlin 协程的高性能异步图片加载与多级缓存框架 |
-| **视频播放** | [Jetpack Media3 ExoPlayer](https://developer.android.com/media/media3) | 提供流畅稳定的视频流与本地视频点播体验 |
+| **视频播放** | [Jetpack Media3 ExoPlayer](https://developer.android.com/media/media3) | 提供流畅稳定的视频流与本地视频播放 |
 | **配置存储** | [DataStore Preferences](https://developer.android.com/topic/libraries/architecture/datastore) | 现代化的轻量级配置存储，用以替代传统的 SharedPreferences |
 
 ---

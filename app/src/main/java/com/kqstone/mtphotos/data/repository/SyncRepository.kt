@@ -229,6 +229,53 @@ class SyncRepository(
         }
     }
 
+    data class SyncResult(val newCount: Int, val removedCount: Int)
+
+    /**
+     * 轻量本地同步：仅扫描本地 MediaStore，不拉取云端数据。
+     * 用于后台 SyncWorker，速度快。
+     * 1. 扫描本地文件（不计算 MD5）
+     * 2. 新文件 → 插入 Room (LOCAL_ONLY, PENDING)
+     * 3. 本地已消失的记录 → 清理（LOCAL_ONLY 删除，SYNCED 变 CLOUD_ONLY）
+     *
+     * @return SyncResult 新增数 + 清理数
+     */
+    suspend fun syncLocalMedia(folders: Set<String>? = null): SyncResult = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting local-only sync...")
+
+            // 1. 扫描本地
+            val localMedia = localScanner.scanMedia(folders, computeMd5 = false)
+            Log.d(TAG, "Local scan found ${localMedia.size} files")
+
+            // 2. 查询 Room 已有的 localMediaStoreId
+            val existingLocalIds = if (localMedia.isNotEmpty()) {
+                val batchIds = localMedia.mapNotNull { it.localMediaStoreId }
+                batchIds.chunked(500).flatMap { mediaDao.findExistingLocalIds(it) }.toSet()
+            } else emptySet()
+
+            // 3. 插入新文件
+            val newEntities = localMedia
+                .filter { it.localMediaStoreId !in existingLocalIds }
+                .map { it.copy(
+                    syncStatus = SyncStatus.LOCAL_ONLY,
+                    backupStatus = BackupStatus.NOT_STARTED
+                ) }
+            if (newEntities.isNotEmpty()) {
+                mediaDao.insertAll(newEntities)
+                Log.d(TAG, "Inserted ${newEntities.size} new local files")
+            }
+
+            // 4. 清理孤立记录（本地已删除的文件）
+            val removed = cleanupOrphanedLocalRecords()
+
+            SyncResult(newEntities.size, removed)
+        } catch (e: Exception) {
+            Log.e(TAG, "Local sync failed", e)
+            throw e
+        }
+    }
+
     /**
      * 后台异步补算 MD5 并精确匹配云端。
      * 在首次渐进式加载完成后调用。

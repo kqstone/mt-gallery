@@ -14,6 +14,7 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
 import com.kqstone.mtphotos.network.RetrofitClient
+import com.kqstone.mtphotos.worker.BackupScheduler
 
 class MTPhotosApp : Application() {
 
@@ -24,7 +25,18 @@ class MTPhotosApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        mediaChangeObserver = MediaChangeObserver(this).also { it.register() }
+
+        // 注册 MediaStore 变化监听（备份启用时自动触发同步）
+        mediaChangeObserver = MediaChangeObserver(this) {
+            container.prefsManager.getBackupEnabledSync()
+        }.also { it.register() }
+
+        // 启动时自动恢复调度（备份已启用的情况下）
+        if (container.prefsManager.getBackupEnabledSync()) {
+            val wifiOnly = container.prefsManager.getBackupWifiOnlySync()
+            val syncInterval = container.prefsManager.getSyncIntervalSync().toLong()
+            BackupScheduler.scheduleAll(this, wifiOnly, syncInterval)
+        }
     }
 }
 
@@ -55,4 +67,3 @@ class AppContainer(context: android.content.Context) {
     // 存储优化器
     val storageOptimizer = StorageOptimizer(context, syncRepository)
 }
-

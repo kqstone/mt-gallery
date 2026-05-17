@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -35,6 +36,7 @@ class PrefsManager(val context: Context) {
         private val KEY_BACKUP_FOLDERS = stringPreferencesKey("backup_folders") // JSON array of paths
         private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
         private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
+        private val KEY_SYNC_INTERVAL = intPreferencesKey("sync_interval_minutes") // 默认 60
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
@@ -48,6 +50,7 @@ class PrefsManager(val context: Context) {
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
+    val syncInterval: Flow<Int> = context.dataStore.data.map { it[KEY_SYNC_INTERVAL] ?: 60 }
 
     fun getServerUrlSync(): String = runBlocking {
         serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
@@ -72,6 +75,7 @@ class PrefsManager(val context: Context) {
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
     fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
+    fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
@@ -138,6 +142,12 @@ class PrefsManager(val context: Context) {
     suspend fun saveDeviceName(name: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_DEVICE_NAME] = name.trim()
+        }
+    }
+
+    suspend fun saveSyncInterval(minutes: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SYNC_INTERVAL] = minutes
         }
     }
 
