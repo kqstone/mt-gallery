@@ -16,6 +16,7 @@ private const val TAG = "BackupScheduler"
 private const val PERIODIC_BACKUP_WORK = "periodic_backup"
 private const val PERIODIC_SYNC_WORK = "periodic_sync"
 private const val ONE_TIME_SYNC_WORK = "one_time_sync"
+private const val ONE_TIME_BACKUP_WORK = "one_time_backup"
 private const val DEFAULT_SYNC_INTERVAL_MINUTES = 60L
 
 /**
@@ -104,7 +105,9 @@ object BackupScheduler {
      */
     fun triggerImmediateBackup(context: Context, wifiOnly: Boolean = true) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiredNetworkType(
+                if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+            )
             .build()
 
         val workRequest = OneTimeWorkRequestBuilder<BackupWorker>()
@@ -112,7 +115,11 @@ object BackupScheduler {
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
-        WorkManager.getInstance(context).enqueue(workRequest)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            ONE_TIME_BACKUP_WORK,
+            ExistingWorkPolicy.KEEP,
+            workRequest
+        )
         Log.d(TAG, "Triggered immediate backup")
     }
 
@@ -148,6 +155,7 @@ object BackupScheduler {
         wm.cancelUniqueWork(PERIODIC_SYNC_WORK)
         wm.cancelUniqueWork(PERIODIC_BACKUP_WORK)
         wm.cancelUniqueWork(ONE_TIME_SYNC_WORK)
+        wm.cancelUniqueWork(ONE_TIME_BACKUP_WORK)
         Log.d(TAG, "Cancelled all work")
     }
 }

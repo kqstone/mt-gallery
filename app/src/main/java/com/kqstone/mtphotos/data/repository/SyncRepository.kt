@@ -375,6 +375,33 @@ class SyncRepository(
         return result
     }
 
+    suspend fun reconcileFolderSelection(localFolders: Set<String>?) = withContext(Dispatchers.IO) {
+        if (localFolders == null) return@withContext
+
+        val localRecords = mediaDao.getAllMedia().filter { it.localMediaStoreId != null }
+        val outOfScope = localRecords.filter { it.localFolderPath !in localFolders }
+        if (outOfScope.isEmpty()) return@withContext
+
+        val toDelete = outOfScope
+            .filter { it.syncStatus == SyncStatus.LOCAL_ONLY || it.cloudId == null }
+            .map { it.id }
+        val toClearLocal = outOfScope
+            .filter { it.syncStatus != SyncStatus.LOCAL_ONLY && it.cloudId != null }
+            .map { it.id }
+
+        if (toDelete.isNotEmpty()) {
+            mediaDao.deleteByIds(toDelete)
+        }
+        if (toClearLocal.isNotEmpty()) {
+            mediaDao.clearLocalFields(toClearLocal)
+        }
+
+        Log.d(
+            TAG,
+            "Reconciled folder selection: removed ${toDelete.size} local-only records, cleared ${toClearLocal.size} synced records"
+        )
+    }
+
     // ===== 数据查询接口 =====
 
     /** 获取时间线月份统计 */
@@ -402,8 +429,12 @@ class SyncRepository(
     }
 
     /** 获取待备份的文件列表 */
-    suspend fun getPendingBackupMedia(): List<MediaEntity> {
-        return mediaDao.getPendingBackupMedia()
+    suspend fun getPendingBackupMedia(localFolders: Set<String>? = null): List<MediaEntity> {
+        return when {
+            localFolders == null -> mediaDao.getPendingBackupMedia()
+            localFolders.isEmpty() -> emptyList()
+            else -> mediaDao.getPendingBackupMediaByFolders(localFolders.toList())
+        }
     }
 
     /** 获取可优化存储的文件列表 */
@@ -434,6 +465,14 @@ class SyncRepository(
     /** 标记文件备份完成 */
     suspend fun markAsBackedUp(dbId: Long, cloudId: Double, cloudMd5: String) {
         mediaDao.markAsBackedUp(dbId, cloudId = cloudId, cloudMd5 = cloudMd5)
+    }
+
+    suspend fun claimPendingUpload(dbId: Long): Boolean {
+        return mediaDao.claimForUpload(dbId) > 0
+    }
+
+    suspend fun resetStaleUploading(staleBefore: Long): Int {
+        return mediaDao.resetStaleUploading(staleBefore)
     }
 
     /** 标记文件存储已优化 */

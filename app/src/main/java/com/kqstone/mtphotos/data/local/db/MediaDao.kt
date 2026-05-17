@@ -111,6 +111,15 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus != 'UPLOADING' ORDER BY mtime DESC")
     suspend fun getPendingBackupMedia(): List<MediaEntity>
 
+    @Query("""
+        SELECT * FROM media
+        WHERE syncStatus = 'LOCAL_ONLY'
+        AND backupStatus != 'UPLOADING'
+        AND localFolderPath IN (:folderPaths)
+        ORDER BY mtime DESC
+    """)
+    suspend fun getPendingBackupMediaByFolders(folderPaths: List<String>): List<MediaEntity>
+
     /** 获取已备份但本地原图未清理的文件 */
     @Query("""
         SELECT * FROM media 
@@ -125,6 +134,30 @@ interface MediaDao {
 
     @Query("UPDATE media SET backupStatus = :status, updatedAt = :now WHERE id = :id")
     suspend fun updateBackupStatus(id: Long, status: BackupStatus, now: Long = System.currentTimeMillis())
+
+    @Query("""
+        UPDATE media
+        SET backupStatus = :status, updatedAt = :now
+        WHERE id = :id
+        AND syncStatus = 'LOCAL_ONLY'
+        AND backupStatus IN ('NOT_STARTED', 'FAILED')
+    """)
+    suspend fun claimForUpload(
+        id: Long,
+        status: BackupStatus = BackupStatus.UPLOADING,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("""
+        UPDATE media
+        SET backupStatus = 'FAILED', updatedAt = :now
+        WHERE backupStatus = 'UPLOADING'
+        AND updatedAt < :staleBefore
+    """)
+    suspend fun resetStaleUploading(
+        staleBefore: Long,
+        now: Long = System.currentTimeMillis()
+    ): Int
 
     @Query("UPDATE media SET syncStatus = :syncStatus, backupStatus = :backupStatus, cloudId = :cloudId, cloudMd5 = :cloudMd5, updatedAt = :now WHERE id = :id")
     suspend fun markAsBackedUp(

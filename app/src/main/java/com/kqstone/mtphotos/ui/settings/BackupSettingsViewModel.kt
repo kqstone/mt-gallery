@@ -97,9 +97,7 @@ class BackupSettingsViewModel(
                             null // null 表示扫描全部
                         } ?: emptySet()
 
-                        syncRepository.performFullSync(
-                            if (savedFolders.isEmpty()) null else savedFolders
-                        )
+                        syncRepository.performFullSync(parseSavedFolders(prefsManager.getBackupFoldersSync()))
                         Log.d(TAG, "Initial sync completed")
                     } catch (e: Exception) {
                         Log.e(TAG, "Initial sync failed", e)
@@ -112,7 +110,9 @@ class BackupSettingsViewModel(
                 val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
-                val pending = syncRepository.getPendingBackupMedia().size
+                val pending = syncRepository
+                    .getPendingBackupMedia(parseSavedFolders(prefsManager.getBackupFoldersSync()))
+                    .size
                 val stats = storageOptimizer.getOptimizationStats()
 
                 _uiState.value = _uiState.value.copy(
@@ -146,18 +146,20 @@ class BackupSettingsViewModel(
                     emptySet()
                 }
 
+                val effectiveSavedFolders = parseSavedFolders(prefsManager.getBackupFoldersSync())
+
                 val folderItems = folders.map { f ->
                     FolderUiItem(
                         path = f.path,
                         displayName = f.displayName,
                         fileCount = f.fileCount,
-                        isSelected = f.path in savedFolders
+                        isSelected = effectiveSavedFolders?.let { f.path in it } ?: true
                     )
                 }
 
                 _uiState.value = _uiState.value.copy(
                     folders = folderItems,
-                    selectedFolderCount = savedFolders.size
+                    selectedFolderCount = effectiveSavedFolders?.size ?: folders.size
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadFolders failed", e)
@@ -247,14 +249,13 @@ class BackupSettingsViewModel(
             // 文件夹选择改变后，需要重新同步以更新待备份文件统计
             _uiState.value = _uiState.value.copy(isSyncing = true)
             try {
-                syncRepository.performFullSync(
-                    if (selected.isEmpty()) null else selected
-                )
+                syncRepository.reconcileFolderSelection(selected)
+                syncRepository.performFullSync(selected)
                 // 重新加载统计
                 val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
-                val pending = syncRepository.getPendingBackupMedia().size
+                val pending = syncRepository.getPendingBackupMedia(selected).size
                 val stats = storageOptimizer.getOptimizationStats()
                 _uiState.value = _uiState.value.copy(
                     syncedCount = synced,
@@ -269,6 +270,17 @@ class BackupSettingsViewModel(
                 Log.e(TAG, "Re-sync after folder change failed", e)
                 _uiState.value = _uiState.value.copy(isSyncing = false, error = e.message)
             }
+        }
+    }
+
+    private fun parseSavedFolders(savedFoldersJson: String): Set<String>? {
+        if (savedFoldersJson.isBlank()) return null
+        return try {
+            val type = object : TypeToken<Set<String>>() {}.type
+            gson.fromJson<Set<String>>(savedFoldersJson, type) ?: emptySet()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse saved folders, falling back to all folders", e)
+            null
         }
     }
 

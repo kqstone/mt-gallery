@@ -46,13 +46,11 @@ class SyncWorker(
             } else null
 
             // 执行轻量本地同步
-            val result = syncRepo.syncLocalMedia(
-                if (folders.isNullOrEmpty()) null else folders
-            )
+            val result = syncRepo.syncLocalMedia(folders)
             Log.d(TAG, "Sync complete: ${result.newCount} new, ${result.removedCount} removed")
 
             // 有待备份文件 → 触发备份
-            val pending = syncRepo.getPendingBackupMedia()
+            val pending = syncRepo.getPendingBackupMedia(folders)
             if (pending.isNotEmpty()) {
                 Log.d(TAG, "Found ${pending.size} files pending backup, triggering backup")
                 val wifiOnly = prefsManager.getBackupWifiOnlySync()

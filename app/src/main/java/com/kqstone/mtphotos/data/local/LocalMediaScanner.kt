@@ -39,6 +39,10 @@ class LocalMediaScanner(private val context: Context) {
         folderPaths: Set<String>? = null,
         computeMd5: Boolean = true
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
+        if (folderPaths != null && folderPaths.isEmpty()) {
+            Log.d(TAG, "Folder filter is empty, returning no media")
+            return@withContext emptyList()
+        }
         val results = mutableListOf<MediaEntity>()
         results.addAll(scanImages(folderPaths, computeMd5))
         results.addAll(scanVideos(folderPaths, computeMd5))
@@ -55,6 +59,10 @@ class LocalMediaScanner(private val context: Context) {
         folderPaths: Set<String>? = null,
         batchSize: Int = 50
     ): Flow<List<MediaEntity>> = flow {
+        if (folderPaths != null && folderPaths.isEmpty()) {
+            Log.d(TAG, "Folder filter is empty, skipping flow scan")
+            return@flow
+        }
         // 先扫描图片
         val imageBatch = mutableListOf<MediaEntity>()
         queryMediaFlow(
@@ -129,6 +137,7 @@ class LocalMediaScanner(private val context: Context) {
         isVideo: Boolean,
         onItem: suspend (MediaEntity) -> Unit
     ) {
+        if (folderPaths != null && folderPaths.isEmpty()) return
         var selection: String? = null
         var selectionArgs: Array<String>? = null
         if (folderPaths != null && folderPaths.isNotEmpty()) {
@@ -268,6 +277,7 @@ class LocalMediaScanner(private val context: Context) {
         computeMd5: Boolean,
         isVideo: Boolean
     ): List<MediaEntity> {
+        if (folderPaths != null && folderPaths.isEmpty()) return emptyList()
         val results = mutableListOf<MediaEntity>()
 
         // 构建选择条件（按文件夹过滤）

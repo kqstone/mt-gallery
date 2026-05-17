@@ -9,6 +9,8 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.local.db.BackupStatus
@@ -24,6 +26,7 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "BackupWorker"
 private const val NOTIFICATION_CHANNEL_ID = "backup_channel"
 private const val NOTIFICATION_ID = 1001
+private const val STALE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000L
 
 /**
  * 后台备份 Worker。
@@ -40,6 +43,7 @@ class BackupWorker(
             val container = app.container
             val syncRepo = container.syncRepository
             val prefsManager = container.prefsManager
+            val selectedFolders = parseSelectedFolders(prefsManager.getBackupFoldersSync())
 
             // 检查备份是否启用
             if (!prefsManager.getBackupEnabledSync()) {
@@ -48,7 +52,14 @@ class BackupWorker(
             }
 
             // 获取待备份文件
-            val pendingFiles = syncRepo.getPendingBackupMedia()
+            val resetCount = syncRepo.resetStaleUploading(
+                System.currentTimeMillis() - STALE_UPLOAD_TIMEOUT_MS
+            )
+            if (resetCount > 0) {
+                Log.w(TAG, "Reset $resetCount stale uploading records")
+            }
+
+            val pendingFiles = syncRepo.getPendingBackupMedia(selectedFolders)
             if (pendingFiles.isEmpty()) {
                 Log.d(TAG, "No files pending backup")
                 return@withContext Result.success()
@@ -92,7 +103,10 @@ class BackupWorker(
                     } catch (_: Exception) { /* 通知更新失败不阻塞备份 */ }
 
                     // 仅标记为上传中（不改变 syncStatus！）
-                    container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.UPLOADING)
+                    if (!syncRepo.claimPendingUpload(media.id)) {
+                        Log.d(TAG, "Skip ${media.fileName}, already claimed by another worker")
+                        continue
+                    }
 
                     // 执行上传
                     val uploadResult = uploadFile(media, serverUrl, token, uploadClient)
@@ -155,6 +169,7 @@ class BackupWorker(
         }
 
         val deviceName = container.prefsManager.getDeviceNameSync()
+        val ctimeMs = resolveUploadCtime(media.mtime)
 
         // Step 1: 检查文件是否已存在于服务端（通过 checkPathForUpload API）
         try {
@@ -165,7 +180,7 @@ class BackupWorker(
                 put("name_type", "")
                 put("duplicate", 0)
                 if (media.md5.isNotEmpty()) put("md5", media.md5)
-                put("ctime", media.mtime)
+                put("ctime", ctimeMs)
                 put("v", "1.0")
             }
 
@@ -209,7 +224,7 @@ class BackupWorker(
 
             // mtextra 参数
             val folderName = media.localFolderPath?.let { java.io.File(it).name } ?: "__NO_SUB_FOLDER__"
-            val mtextra = """{"dist_id":1,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":1}"""
+            val mtextra = """{"dist_id":1,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
             val encodedMtextra = java.net.URLEncoder.encode(mtextra, "UTF-8")
 
             val request = okhttp3.Request.Builder()
@@ -257,6 +272,26 @@ class BackupWorker(
         } catch (e: Exception) {
             Log.e(TAG, "Upload exception for ${media.fileName}", e)
             return null
+        }
+    }
+
+    private fun parseSelectedFolders(foldersJson: String): Set<String>? {
+        if (foldersJson.isBlank()) return null
+        return try {
+            val type = object : TypeToken<Set<String>>() {}.type
+            Gson().fromJson<Set<String>>(foldersJson, type) ?: emptySet()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse backup folders, falling back to all folders", e)
+            null
+        }
+    }
+
+    private fun resolveUploadCtime(mtime: String): String {
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            (sdf.parse(mtime)?.time ?: System.currentTimeMillis()).toString()
+        } catch (_: Exception) {
+            System.currentTimeMillis().toString()
         }
     }
 
