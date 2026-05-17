@@ -213,12 +213,10 @@ class SyncRepository(
                 emit(SyncProgress(scannedCount, 0, "scanning"))
             }
 
-            // Step 3: 如果检测到外部变化，清理孤立记录
-            if (MediaChangeObserver.isDirty) {
-                emit(SyncProgress(scannedCount, scannedCount, "cleanup"))
-                val cleaned = cleanupOrphanedLocalRecords()
-                Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
-            }
+            // Step 3: 清理孤立记录（本地文件已被外部删除的记录）
+            emit(SyncProgress(scannedCount, scannedCount, "cleanup"))
+            val cleaned = cleanupOrphanedLocalRecords()
+            if (cleaned > 0) Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
 
             emit(SyncProgress(scannedCount, scannedCount, "done"))
             Log.d(TAG, "Incremental sync complete: $scannedCount local files processed")

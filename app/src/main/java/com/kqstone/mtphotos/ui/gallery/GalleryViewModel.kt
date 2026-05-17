@@ -16,6 +16,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 private const val TAG = "GalleryVM"
 
@@ -406,8 +407,10 @@ class GalleryViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        // 优先使用本地缩略图缓存
-        photo.thumbCachePath?.let { if (it.isNotEmpty()) return "file://$it" }
+        // 优先使用本地缩略图缓存（验证文件存在）
+        photo.thumbCachePath?.let {
+            if (it.isNotEmpty() && isLocalFileValid(it)) return "file://$it"
+        }
         // 有本地 URI 且未存储优化 → 使用本地 URI
         photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
         // 使用云端缩略图
@@ -425,6 +428,19 @@ class GalleryViewModel(
         // 使用云端原图
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
+    }
+
+    /**
+     * 检查本地文件路径是否有效（存在且可读）。
+     * 用于验证 thumbCachePath 等本地缓存文件。
+     */
+    private fun isLocalFileValid(path: String): Boolean {
+        return try {
+            val file = File(path)
+            file.exists() && file.length() > 0
+        } catch (_: Exception) {
+            false
+        }
     }
 
     // 兼容旧代码的方法
