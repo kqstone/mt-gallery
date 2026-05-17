@@ -29,6 +29,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -208,6 +209,25 @@ fun BackupSettingsScreen(
                     optimizableSize = uiState.optimizableSizeFormatted,
                     onOptimize = { showCleanupConfirm = true },
                     isOptimizing = uiState.isOptimizing
+                )
+            }
+
+            // ===== 删除方式 =====
+            item {
+                SectionTitle("删除方式")
+            }
+
+            item {
+                DeleteModeSetting(
+                    currentMode = uiState.deleteMode,
+                    onModeChange = { mode ->
+                        if (mode == "direct" && !com.kqstone.mtphotos.ui.util.PermissionHelper.hasManageStoragePermission()) {
+                            // 跳转系统设置授权
+                            val intent = com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(context)
+                            context.startActivity(intent)
+                        }
+                        viewModel.setDeleteMode(mode)
+                    }
                 )
             }
         }
@@ -529,3 +549,58 @@ data class FolderUiItem(
     val fileCount: Int,
     val isSelected: Boolean
 )
+
+@Composable
+private fun DeleteModeSetting(
+    currentMode: String,
+    onModeChange: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onModeChange("direct") }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = currentMode == "direct",
+                onClick = { onModeChange("direct") }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("直接删除", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "需授权「所有文件访问权限」，删除时无弹窗",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onModeChange("confirm") }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = currentMode == "confirm",
+                onClick = { onModeChange("confirm") }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("确认后删除", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "每次删除时系统弹窗确认，无需特殊权限",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}

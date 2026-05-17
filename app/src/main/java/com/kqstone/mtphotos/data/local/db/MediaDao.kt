@@ -15,6 +15,14 @@ interface MediaDao {
     @Query("DELETE FROM media WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    /** 批量按 Room 主键查询 */
+    @Query("SELECT * FROM media WHERE id IN (:ids)")
+    suspend fun findByIds(ids: List<Long>): List<MediaEntity>
+
+    /** 批量按 cloudId 查询 */
+    @Query("SELECT * FROM media WHERE cloudId IN (:cloudIds)")
+    suspend fun findByCloudIds(cloudIds: List<Double>): List<MediaEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(entities: List<MediaEntity>)
 
@@ -161,6 +169,16 @@ interface MediaDao {
 
     @Query("SELECT * FROM media WHERE localFolderPath = :folderPath ORDER BY mtime DESC")
     suspend fun getMediaByFolder(folderPath: String): List<MediaEntity>
+
+    // ===== 孤立记录清理 =====
+
+    /** 查询所有有 localMediaStoreId 的记录（仅返回清理所需字段） */
+    @Query("SELECT id, localMediaStoreId, syncStatus, cloudId FROM media WHERE localMediaStoreId IS NOT NULL")
+    suspend fun getLocalFileRefs(): List<LocalFileRef>
+
+    /** 批量清除本地文件字段（SYNCED → CLOUD_ONLY） */
+    @Query("UPDATE media SET syncStatus = 'CLOUD_ONLY', localUri = NULL, localPath = NULL, localMediaStoreId = NULL, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun clearLocalFields(ids: List<Long>, now: Long = System.currentTimeMillis())
 }
 
 /**
@@ -169,4 +187,14 @@ interface MediaDao {
 data class TimelineMonthCount(
     val yearMonth: String,
     val count: Int
+)
+
+/**
+ * 孤立记录清理用的轻量数据类
+ */
+data class LocalFileRef(
+    val id: Long,
+    val localMediaStoreId: Long,
+    val syncStatus: SyncStatus,
+    val cloudId: Double?
 )

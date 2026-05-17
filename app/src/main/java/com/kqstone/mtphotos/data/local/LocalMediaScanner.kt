@@ -136,6 +136,13 @@ class LocalMediaScanner(private val context: Context) {
             selection = conditions.joinToString(" OR ")
             selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
         }
+        // 过滤正在写入和已标记删除的文件
+        val pendingFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
+        } else null
+        if (pendingFilter != null) {
+            selection = if (selection != null) "($selection) AND $pendingFilter" else pendingFilter
+        }
 
         val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
 
@@ -271,6 +278,13 @@ class LocalMediaScanner(private val context: Context) {
             selection = conditions.joinToString(" OR ")
             selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
         }
+        // 过滤正在写入和已标记删除的文件
+        val pendingFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
+        } else null
+        if (pendingFilter != null) {
+            selection = if (selection != null) "($selection) AND $pendingFilter" else pendingFilter
+        }
 
         val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
 
@@ -379,6 +393,37 @@ class LocalMediaScanner(private val context: Context) {
                 ""
             }
         }
+    }
+
+    /**
+     * 批量验证 MediaStore ID 是否仍存在。
+     * 返回仍存在的 ID 集合。分批 950 个查询避免 SQLite 参数限制。
+     */
+    suspend fun verifyIdsExist(localIds: Set<Long>): Set<Long> = withContext(Dispatchers.IO) {
+        if (localIds.isEmpty()) return@withContext emptySet()
+        val existing = mutableSetOf<Long>()
+
+        localIds.chunked(950).forEach { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            for (collection in listOf(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            )) {
+                context.contentResolver.query(
+                    collection,
+                    arrayOf(MediaStore.MediaColumns._ID),
+                    "${MediaStore.MediaColumns._ID} IN ($placeholders)",
+                    chunk.map { it.toString() }.toTypedArray(),
+                    null
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    while (cursor.moveToNext()) {
+                        existing.add(cursor.getLong(idCol))
+                    }
+                }
+            }
+        }
+        existing
     }
 }
 

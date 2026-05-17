@@ -1,8 +1,12 @@
 package com.kqstone.mtphotos.ui.util
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +86,24 @@ object PermissionHelper {
         if (perms.isEmpty()) return true
         return perms.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * 检查是否有所有文件访问权限（直接删除模式需要）
+     */
+    fun hasManageStoragePermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else true
+    }
+
+    /**
+     * 获取跳转至所有文件访问权限设置页的 Intent
+     */
+    fun getManageStorageIntent(context: android.content.Context): Intent {
+        return Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:${context.packageName}")
         }
     }
 }

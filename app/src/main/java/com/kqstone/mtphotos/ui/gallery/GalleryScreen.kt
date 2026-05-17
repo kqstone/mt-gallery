@@ -62,6 +62,8 @@ fun GalleryScreen(
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showDeleteModeDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // App 回到前台时自动检测新增媒体（如相机拍的照片）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
@@ -164,9 +166,32 @@ fun GalleryScreen(
             selectedCount = selectedIds.size,
             onConfirm = {
                 showDeleteDialog = false
-                viewModel.deleteSelected()
+                if (viewModel.getDeleteMode().isEmpty()) {
+                    showDeleteModeDialog = true
+                } else {
+                    viewModel.deleteSelected()
+                }
             },
             onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    if (showDeleteModeDialog) {
+        DeleteModeDialog(
+            onChooseDirect = {
+                showDeleteModeDialog = false
+                viewModel.saveDeleteMode("direct")
+                // 跳转到系统设置授权所有文件访问权限
+                val intent = com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(context)
+                context.startActivity(intent)
+                viewModel.deleteSelected()
+            },
+            onChooseConfirm = {
+                showDeleteModeDialog = false
+                viewModel.saveDeleteMode("confirm")
+                viewModel.deleteSelected()
+            },
+            onDismiss = { showDeleteModeDialog = false }
         )
     }
 }

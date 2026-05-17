@@ -32,6 +32,7 @@ data class BackupSettingsUiState(
     val isSyncing: Boolean = false,
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
+    val deleteMode: String = "", // "" = 未设置, "direct" = 直接删除, "confirm" = 确认删除
     val error: String? = null
 )
 
@@ -56,6 +57,11 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.backupWifiOnly.collect { wifiOnly ->
                 _uiState.value = _uiState.value.copy(wifiOnly = wifiOnly)
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.deleteMode.collect { mode ->
+                _uiState.value = _uiState.value.copy(deleteMode = mode)
             }
         }
     }
@@ -177,6 +183,12 @@ class BackupSettingsViewModel(
             if (prefsManager.getBackupEnabledSync()) {
                 BackupScheduler.schedulePeriodicBackup(prefsManager.context, wifiOnly)
             }
+        }
+    }
+
+    fun setDeleteMode(mode: String) {
+        viewModelScope.launch {
+            prefsManager.saveDeleteMode(mode)
         }
     }
 

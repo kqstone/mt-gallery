@@ -4,6 +4,7 @@ import android.app.Application
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
+import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.local.ThumbnailCacheManager
@@ -18,10 +19,12 @@ class MTPhotosApp : Application() {
 
     lateinit var container: AppContainer
         private set
+    private var mediaChangeObserver: MediaChangeObserver? = null
 
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        mediaChangeObserver = MediaChangeObserver(this).also { it.register() }
     }
 }
 

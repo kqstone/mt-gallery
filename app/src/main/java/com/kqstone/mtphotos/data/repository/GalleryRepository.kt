@@ -136,14 +136,27 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun deleteFiles(ids: List<Double>): Result<Unit> {
         return try {
-            val body: Map<String, Any> = mapOf("fileIds" to ids.map { it.toInt() })
-            val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-            val code = response["code"] as? String
-            if (code != null) {
-                Result.failure(Exception(code))
-            } else {
-                Result.success(Unit)
+            val syncRepo = container.syncRepository
+
+            // 查找 Room 中的实体（按 cloudId 和 dbId 查询，覆盖所有同步状态）
+            val entities = syncRepo.findMediaEntitiesByIds(ids)
+
+            // 仅将有 cloudId 的文件发送到云端 API 删除
+            val cloudIds = entities.mapNotNull { it.cloudId }.filter { it > 0 }
+            if (cloudIds.isNotEmpty()) {
+                val body: Map<String, Any> = mapOf("fileIds" to cloudIds.map { it.toInt() })
+                val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
+                val code = response["code"] as? String
+                if (code != null) {
+                    return Result.failure(Exception(code))
+                }
             }
+
+            // 清理本地文件和 Room 记录
+            val deleteMode = container.prefsManager.getDeleteModeSync()
+            val useDirectDelete = deleteMode == "direct"
+            syncRepo.deleteLocalMediaFiles(entities, useDirectDelete)
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }

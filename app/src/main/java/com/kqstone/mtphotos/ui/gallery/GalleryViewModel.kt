@@ -457,6 +457,16 @@ class GalleryViewModel(
         return mtime.take(10) // "2024-01-15" from "2024-01-15T12:30:00"
     }
 
+    /** 获取删除模式，空字符串表示用户尚未选择 */
+    fun getDeleteMode(): String = prefsManager?.getDeleteModeSync() ?: ""
+
+    /** 保存删除模式 */
+    fun saveDeleteMode(mode: String) {
+        viewModelScope.launch {
+            prefsManager?.saveDeleteMode(mode)
+        }
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,

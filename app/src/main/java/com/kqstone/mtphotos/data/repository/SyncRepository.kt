@@ -1,10 +1,16 @@
 package com.kqstone.mtphotos.data.repository
 
+import android.content.ContentUris
+import android.os.Build
+import android.provider.MediaStore
 import android.util.Log
+import java.io.File
 import com.kqstone.mtphotos.AppContainer
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
+import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.local.db.BackupStatus
+import com.kqstone.mtphotos.data.local.db.LocalFileRef
 import com.kqstone.mtphotos.data.local.db.MediaDao
 import com.kqstone.mtphotos.data.local.db.MediaEntity
 import com.kqstone.mtphotos.data.local.db.SyncStatus
@@ -205,6 +211,13 @@ class SyncRepository(
                     mediaDao.insertAll(newEntities)
                 }
                 emit(SyncProgress(scannedCount, 0, "scanning"))
+            }
+
+            // Step 3: 如果检测到外部变化，清理孤立记录
+            if (MediaChangeObserver.isDirty) {
+                emit(SyncProgress(scannedCount, scannedCount, "cleanup"))
+                val cleaned = cleanupOrphanedLocalRecords()
+                Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
             }
 
             emit(SyncProgress(scannedCount, scannedCount, "done"))
@@ -411,6 +424,137 @@ class SyncRepository(
     /** 数据库中是否有数据 */
     suspend fun hasData(): Boolean {
         return mediaDao.getTotalCount() > 0
+    }
+
+    /**
+     * 根据 UI 层的 UnifiedPhotoItem.id（cloudId 或 dbId）查找 Room 实体。
+     * 同时按 cloudId 和 dbId 查询，覆盖 SYNCED/CLOUD_ONLY/LOCAL_ONLY 所有情况。
+     */
+    suspend fun findMediaEntitiesByIds(ids: List<Double>): List<MediaEntity> {
+        if (ids.isEmpty()) return emptyList()
+        val cloudIds = ids.filter { it > 0 }
+        val dbIds = ids.map { it.toLong() }.filter { it > 0 }
+        return (mediaDao.findByCloudIds(cloudIds) + mediaDao.findByIds(dbIds)).distinctBy { it.id }
+    }
+
+    /**
+     * 删除本地媒体文件、缩略图缓存和 Room 记录。
+     * 云端删除由调用方负责。
+     * @param useDirectDelete true = 直接删除（需 MANAGE_EXTERNAL_STORAGE），false = 系统确认删除
+     */
+    suspend fun deleteLocalMediaFiles(entities: List<MediaEntity>, useDirectDelete: Boolean = false) {
+        if (entities.isEmpty()) return
+        val context = container.prefsManager.context
+
+        // 收集需要删除的本地文件 URI
+        val urisToDelete = mutableListOf<android.net.Uri>()
+        for (entity in entities) {
+            val localId = entity.localMediaStoreId ?: continue
+            val contentUri = if (entity.fileType.startsWith("video")) {
+                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, localId)
+            } else {
+                ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, localId)
+            }
+            urisToDelete.add(contentUri)
+        }
+
+        // 删除本地文件
+        if (urisToDelete.isNotEmpty()) {
+            if (useDirectDelete && isManageStorageGranted()) {
+                // 直接删除模式：有 MANAGE_EXTERNAL_STORAGE 权限
+                for (uri in urisToDelete) {
+                    try {
+                        context.contentResolver.delete(uri, null, null)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "直接删除本地文件失败: $uri", e)
+                    }
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // 系统确认删除模式：使用 createDeleteRequest
+                try {
+                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, urisToDelete)
+                    pendingIntent.send()
+                } catch (e: Exception) {
+                    Log.w(TAG, "createDeleteRequest 失败", e)
+                }
+            } else {
+                // API 30 以下直接删除
+                for (uri in urisToDelete) {
+                    try {
+                        context.contentResolver.delete(uri, null, null)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "删除本地文件失败: $uri", e)
+                    }
+                }
+            }
+        }
+
+        // 删除缩略图缓存
+        for (entity in entities) {
+            entity.thumbCachePath?.let { path ->
+                try { File(path).delete() } catch (_: Exception) {}
+            }
+        }
+
+        // 删除 Room 记录
+        val dbIds = entities.map { it.id }
+        mediaDao.deleteByIds(dbIds)
+    }
+
+    private fun isManageStorageGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.Environment.isExternalStorageManager()
+        } else true
+    }
+
+    /**
+     * 轻量级孤立记录清理：验证 Room 中 localMediaStoreId 是否仍存在于 MediaStore。
+     * 仅在 ContentObserver 检测到变化时调用，避免每次刷新都执行。
+     * @return 清理的记录数
+     */
+    suspend fun cleanupOrphanedLocalRecords(): Int {
+        val refs = mediaDao.getLocalFileRefs()
+        if (refs.isEmpty()) return 0
+
+        val trackedIds = refs.map { it.localMediaStoreId }.toSet()
+        val existingIds = localScanner.verifyIdsExist(trackedIds)
+        val orphanedRefs = refs.filter { it.localMediaStoreId !in existingIds }
+        if (orphanedRefs.isEmpty()) return 0
+
+        Log.d(TAG, "Found ${orphanedRefs.size} orphaned local records")
+
+        // 分类处理
+        val toDelete = mutableListOf<Long>()      // LOCAL_ONLY 或无 cloudId 的 SYNCED → 删除
+        val toClearLocal = mutableListOf<Long>()   // 有 cloudId 的 SYNCED → 变为 CLOUD_ONLY
+
+        for (ref in orphanedRefs) {
+            if (ref.syncStatus == SyncStatus.LOCAL_ONLY || ref.cloudId == null) {
+                toDelete.add(ref.id)
+            } else {
+                toClearLocal.add(ref.id)
+            }
+        }
+
+        // 删除 LOCAL_ONLY 记录 + 缩略图缓存
+        if (toDelete.isNotEmpty()) {
+            val entities = mediaDao.findByIds(toDelete)
+            for (entity in entities) {
+                entity.thumbCachePath?.let { path ->
+                    try { File(path).delete() } catch (_: Exception) {}
+                }
+            }
+            mediaDao.deleteByIds(toDelete)
+            Log.d(TAG, "Deleted ${toDelete.size} orphaned LOCAL_ONLY records")
+        }
+
+        // SYNCED → CLOUD_ONLY（清除本地字段，保留云端引用）
+        if (toClearLocal.isNotEmpty()) {
+            mediaDao.clearLocalFields(toClearLocal)
+            Log.d(TAG, "Cleared local fields for ${toClearLocal.size} SYNCED records → CLOUD_ONLY")
+        }
+
+        MediaChangeObserver.clearDirty()
+        return orphanedRefs.size
     }
 }
 
