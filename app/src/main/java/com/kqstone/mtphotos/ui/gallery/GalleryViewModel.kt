@@ -90,13 +90,17 @@ class GalleryViewModel(
         viewModelScope.launch {
             if (syncRepository != null) {
                 try {
+                    if (prefsManager != null && !prefsManager.isFolderSetupComplete()) {
+                        loadFromCloud()
+                        return@launch
+                    }
                     val hasData = syncRepository.hasData()
                     if (hasData) {
                         loadFromRoom()
                         return@launch
                     }
                     // 首次加载：使用渐进式同步
-                    triggerIncrementalSync()
+                    triggerInitialSync()
                 } catch (e: Exception) {
                     Log.e(TAG, "Hybrid load failed, falling back to cloud", e)
                     loadFromCloud()
@@ -110,19 +114,19 @@ class GalleryViewModel(
     /**
      * 触发渐进式同步 — 边扫描边显示
      */
-    private fun triggerIncrementalSync() {
+    private fun triggerInitialSync() {
         if (syncRepository == null) return
         val folders = getSelectedFolders()
         _uiState.value = _uiState.value.copy(isSyncing = true, isLoading = false, syncProgressText = "正在加载云端数据...")
 
         viewModelScope.launch {
             try {
-                syncRepository.performIncrementalSync(folders).collect { progress ->
+                syncRepository.performInitialSync(folders).collect { progress ->
                     when (progress.phase) {
                         "cloud" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "正在加载云端数据...")
                         }
-                        "cloud_done" -> {
+                        "cloud_indexed" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地...")
                             // 云端数据已写入 Room，先加载显示
                             loadFromRoom()

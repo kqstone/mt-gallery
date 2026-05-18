@@ -38,9 +38,9 @@ enum class BackupStatus {
 @Entity(
     tableName = "media",
     indices = [
-        Index(value = ["md5"]),
-        Index(value = ["cloudId"]),
-        Index(value = ["localMediaStoreId"]),
+        Index(value = ["md5"], unique = true),
+        Index(value = ["cloudId"], unique = true),
+        Index(value = ["localMediaStoreId"], unique = true),
         Index(value = ["syncStatus"]),
         Index(value = ["backupStatus"]),
         Index(value = ["mtime"])

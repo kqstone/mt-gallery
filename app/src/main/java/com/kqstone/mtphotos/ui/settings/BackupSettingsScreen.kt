@@ -29,12 +29,11 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -67,10 +66,16 @@ fun BackupSettingsScreen(
     var showCleanupConfirm by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
 
-    // 进入页面时直接加载数据（权限已在 AppPermissionGate 中授予）
     LaunchedEffect(Unit) {
         viewModel.loadStats()
         viewModel.loadFolders()
+    }
+
+    val folderSubtitle = when {
+        uiState.selectedFolderCount <= 0 -> "未选择任何文件夹"
+        uiState.historicalSelectedFolderCount > 0 ->
+            "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
+        else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
     }
 
     Scaffold(
@@ -92,7 +97,6 @@ fun BackupSettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ===== 同步扫描中提示 =====
             if (uiState.isSyncing) {
                 item {
                     Card(
@@ -119,7 +123,7 @@ fun BackupSettingsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    "首次扫描需要一些时间，请稍候",
+                                    "首次扫描可能需要一点时间，请稍候。",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -129,7 +133,6 @@ fun BackupSettingsScreen(
                 }
             }
 
-            // ===== 备份概况卡片 =====
             item {
                 BackupStatusCard(
                     syncedCount = uiState.syncedCount,
@@ -139,10 +142,7 @@ fun BackupSettingsScreen(
                 )
             }
 
-            // ===== 自动备份开关 =====
-            item {
-                SectionTitle("自动备份")
-            }
+            item { SectionTitle("自动备份") }
 
             item {
                 SettingSwitchRow(
@@ -150,15 +150,13 @@ fun BackupSettingsScreen(
                     subtitle = "自动将设备照片和视频备份到服务器",
                     icon = Icons.Default.Backup,
                     checked = uiState.backupEnabled,
-                    onCheckedChange = { enabled ->
-                        viewModel.setBackupEnabled(enabled)
-                    }
+                    onCheckedChange = { viewModel.setBackupEnabled(it) }
                 )
             }
 
             item {
                 SettingSwitchRow(
-                    title = "仅 Wi-Fi 备份",
+                    title = "仅在 Wi-Fi 下备份",
                     subtitle = "关闭后也可使用移动数据备份",
                     icon = Icons.Default.Cloud,
                     checked = uiState.wifiOnly,
@@ -167,7 +165,6 @@ fun BackupSettingsScreen(
                 )
             }
 
-            // 同步间隔
             item {
                 SyncIntervalSetting(
                     currentInterval = uiState.syncInterval,
@@ -176,42 +173,33 @@ fun BackupSettingsScreen(
                 )
             }
 
-            // 手动触发备份
             item {
                 SettingActionRow(
                     title = "立即备份",
-                    subtitle = if (uiState.pendingCount > 0) "${uiState.pendingCount} 个文件待备份" else "所有文件已备份",
-                    icon = Icons.Default.Backup,
-                    onClick = {
-                        viewModel.triggerBackupNow()
+                    subtitle = if (uiState.pendingCount > 0) {
+                        "${uiState.pendingCount} 个文件待备份"
+                    } else {
+                        "所有文件已备份"
                     },
+                    icon = Icons.Default.Backup,
+                    onClick = { viewModel.triggerBackupNow() },
                     enabled = uiState.backupEnabled && uiState.pendingCount > 0
                 )
             }
 
-            // ===== 备份文件夹选择 =====
-            item {
-                SectionTitle("备份文件夹")
-            }
+            item { SectionTitle("备份文件夹") }
 
             item {
                 SettingActionRow(
                     title = "选择备份文件夹",
-                    subtitle = if (uiState.selectedFolderCount > 0) {
-                        "已选择 ${uiState.selectedFolderCount} 个文件夹"
-                    } else {
-                        "未选择任何文件夹"
-                    },
+                    subtitle = folderSubtitle,
                     icon = Icons.Default.Folder,
                     onClick = { showFolderDialog = true },
                     enabled = uiState.backupEnabled
                 )
             }
 
-            // ===== 存储管理 =====
-            item {
-                SectionTitle("存储管理")
-            }
+            item { SectionTitle("存储管理") }
 
             item {
                 StorageOptimizationCard(
@@ -222,18 +210,19 @@ fun BackupSettingsScreen(
                 )
             }
 
-            // ===== 删除方式 =====
-            item {
-                SectionTitle("删除方式")
-            }
+            item { SectionTitle("删除方式") }
 
             item {
                 DeleteModeSetting(
                     currentMode = uiState.deleteMode,
                     onModeChange = { mode ->
-                        if (mode == "direct" && !com.kqstone.mtphotos.ui.util.PermissionHelper.hasManageStoragePermission()) {
-                            // 跳转系统设置授权
-                            val intent = com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(context)
+                        if (mode == "direct" &&
+                            !com.kqstone.mtphotos.ui.util.PermissionHelper.hasManageStoragePermission()
+                        ) {
+                            val intent =
+                                com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(
+                                    context
+                                )
                             context.startActivity(intent)
                         }
                         viewModel.setDeleteMode(mode)
@@ -243,7 +232,6 @@ fun BackupSettingsScreen(
         }
     }
 
-    // 二次确认对话框 — 存储优化
     if (showCleanupConfirm) {
         AlertDialog(
             onDismissRequest = { showCleanupConfirm = false },
@@ -253,7 +241,7 @@ fun BackupSettingsScreen(
             title = { Text("释放存储空间") },
             text = {
                 Column {
-                    Text("即将删除 ${uiState.optimizableCount} 个已备份的本地原图/视频文件。")
+                    Text("即将删除 ${uiState.optimizableCount} 个已备份的本地原图或视频文件。")
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         "可释放约 ${uiState.optimizableSizeFormatted}",
@@ -261,9 +249,15 @@ fun BackupSettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "⚠️ 删除后将无法恢复本地文件，但云端备份和缩略图缓存不受影响。",
+                        "删除后将无法恢复本地原文件，但云端备份和缩略图缓存不受影响。",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "已选择的备份文件夹配置会被保留，即使该文件夹中的本地文件已被清理。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
@@ -285,7 +279,6 @@ fun BackupSettingsScreen(
         )
     }
 
-    // 文件夹选择对话框
     if (showFolderDialog) {
         FolderSelectionDialog(
             folders = uiState.folders,
@@ -330,9 +323,9 @@ private fun BackupStatusCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem(label = "已同步", value = "$syncedCount 张")
-                StatItem(label = "已上传", value = "$backedUpCount 张")
-                StatItem(label = "待备份", value = "$pendingCount 张")
+                StatItem(label = "已同步", value = "$syncedCount 项")
+                StatItem(label = "已上传", value = "$backedUpCount 项")
+                StatItem(label = "待备份", value = "$pendingCount 项")
             }
             if (isBackingUp) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -373,9 +366,11 @@ private fun StorageOptimizationCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (optimizableCount > 0)
+            containerColor = if (optimizableCount > 0) {
                 MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -387,11 +382,17 @@ private fun StorageOptimizationCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             if (optimizableCount > 0) {
-                Text("有 $optimizableCount 个已备份的文件可以删除本地原图")
+                Text("共有 $optimizableCount 个已备份文件可以删除本地原件。")
                 Text(
                     "可释放约 $optimizableSize",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "不会移除备份文件夹配置。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -441,19 +442,29 @@ private fun SettingSwitchRow(
         Icon(
             icon,
             contentDescription = null,
-            tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            }
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                }
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled) 1f else 0.38f
+                )
             )
         }
         Switch(
@@ -482,19 +493,29 @@ private fun SettingActionRow(
         Icon(
             icon,
             contentDescription = null,
-            tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            }
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                }
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (enabled) 1f else 0.38f
+                )
             )
         }
     }
@@ -512,7 +533,9 @@ private fun FolderSelectionDialog(
         text = {
             if (folders.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator()
@@ -533,11 +556,18 @@ private fun FolderSelectionDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
-                                Text(folder.displayName, style = MaterialTheme.typography.bodyMedium)
                                 Text(
-                                    "${folder.fileCount} 个文件",
+                                    folder.displayName,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = folderStatusText(folder),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (folder.isHistoricalOnly) {
+                                        MaterialTheme.colorScheme.secondary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
                                 )
                             }
                         }
@@ -553,11 +583,21 @@ private fun FolderSelectionDialog(
     )
 }
 
+private fun folderStatusText(folder: FolderUiItem): String {
+    return when {
+        folder.hasLocalMedia -> "${folder.fileCount} 个文件"
+        folder.isSelected -> "本地文件已清理，仍保留为已选备份文件夹"
+        else -> "历史文件夹，当前未发现本地文件"
+    }
+}
+
 data class FolderUiItem(
     val path: String,
     val displayName: String,
     val fileCount: Int,
-    val isSelected: Boolean
+    val isSelected: Boolean,
+    val hasLocalMedia: Boolean,
+    val isHistoricalOnly: Boolean
 )
 
 @Composable
@@ -585,7 +625,7 @@ private fun DeleteModeSetting(
             Column {
                 Text("直接删除", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "需授权「所有文件访问权限」，删除时无弹窗",
+                    "需要“所有文件访问权限”，删除时无弹窗",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -622,6 +662,7 @@ private fun SyncIntervalSetting(
     enabled: Boolean
 ) {
     val options = listOf(30, 60, 120)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -630,23 +671,26 @@ private fun SyncIntervalSetting(
         Text(
             text = "同步间隔",
             style = MaterialTheme.typography.bodyLarge,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            }
         )
         Text(
             text = "定期扫描本地媒体变化，补充实时检测",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                alpha = if (enabled) 1f else 0.38f
+            )
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { minutes ->
-                val isSelected = currentInterval == minutes
                 FilterChip(
-                    selected = isSelected,
-                    onClick = { if (enabled) onIntervalChange(minutes) },
-                    label = { Text("${minutes}分钟") },
+                    selected = currentInterval == minutes,
+                    onClick = { onIntervalChange(minutes) },
+                    label = { Text("${minutes} 分钟") },
                     enabled = enabled
                 )
             }

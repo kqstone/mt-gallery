@@ -57,7 +57,8 @@ class LocalMediaScanner(private val context: Context) {
      */
     fun scanMediaFlow(
         folderPaths: Set<String>? = null,
-        batchSize: Int = 50
+        batchSize: Int = 50,
+        computeMd5: Boolean = false
     ): Flow<List<MediaEntity>> = flow {
         if (folderPaths != null && folderPaths.isEmpty()) {
             Log.d(TAG, "Folder filter is empty, skipping flow scan")
@@ -81,7 +82,8 @@ class LocalMediaScanner(private val context: Context) {
                 MediaStore.Images.Media.DATA
             ),
             folderPaths = folderPaths,
-            isVideo = false
+            isVideo = false,
+            computeMd5 = computeMd5
         ) { entity ->
             imageBatch.add(entity)
             if (imageBatch.size >= batchSize) {
@@ -113,7 +115,8 @@ class LocalMediaScanner(private val context: Context) {
                 MediaStore.Video.Media.DURATION
             ),
             folderPaths = folderPaths,
-            isVideo = true
+            isVideo = true,
+            computeMd5 = computeMd5
         ) { entity ->
             videoBatch.add(entity)
             if (videoBatch.size >= batchSize) {
@@ -135,6 +138,7 @@ class LocalMediaScanner(private val context: Context) {
         projection: Array<String>,
         folderPaths: Set<String>?,
         isVideo: Boolean,
+        computeMd5: Boolean,
         onItem: suspend (MediaEntity) -> Unit
     ) {
         if (folderPaths != null && folderPaths.isEmpty()) return
@@ -174,7 +178,7 @@ class LocalMediaScanner(private val context: Context) {
                     val entity = parseCursorRow(
                         cursor, idColumn, nameColumn, mimeColumn,
                         dateModifiedColumn, dateTakenColumn, widthColumn, heightColumn,
-                        sizeColumn, dataColumn, durationColumn, isVideo, computeMd5 = false
+                        sizeColumn, dataColumn, durationColumn, isVideo, computeMd5
                     )
                     if (entity != null) onItem(entity)
                 } catch (e: Exception) {

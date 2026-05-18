@@ -4,16 +4,17 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.worker.BackupScheduler
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 private const val TAG = "BackupSettingsVM"
 
@@ -28,12 +29,12 @@ data class BackupSettingsUiState(
     val optimizableSizeFormatted: String = "0 MB",
     val isBackingUp: Boolean = false,
     val isOptimizing: Boolean = false,
-    /** 是否正在执行初始扫描同步 */
     val isSyncing: Boolean = false,
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
-    val deleteMode: String = "", // "" = 未设置, "direct" = 直接删除, "confirm" = 确认删除
-    val syncInterval: Int = 60, // 同步间隔（分钟）
+    val historicalSelectedFolderCount: Int = 0,
+    val deleteMode: String = "",
+    val syncInterval: Int = 60,
     val error: String? = null
 )
 
@@ -72,31 +73,13 @@ class BackupSettingsViewModel(
         }
     }
 
-    /**
-     * 加载统计信息。如果 Room DB 为空，会先触发一次全量同步来扫描本地+云端文件。
-     */
     fun loadStats() {
         viewModelScope.launch {
             try {
-                // 检查 Room DB 是否为空，为空则先执行一次同步
-                val hasData = syncRepository.hasData()
-                if (!hasData) {
+                if (!syncRepository.hasData()) {
                     Log.d(TAG, "Room DB is empty, triggering initial sync...")
                     _uiState.value = _uiState.value.copy(isSyncing = true)
                     try {
-                        // 获取用户选择的文件夹
-                        val savedFoldersJson = prefsManager.getBackupFoldersSync()
-                        val savedFolders: Set<String> = if (savedFoldersJson.isNotEmpty()) {
-                            try {
-                                val type = object : TypeToken<Set<String>>() {}.type
-                                gson.fromJson(savedFoldersJson, type)
-                            } catch (e: Exception) {
-                                emptySet()
-                            }
-                        } else {
-                            null // null 表示扫描全部
-                        } ?: emptySet()
-
                         syncRepository.performFullSync(parseSavedFolders(prefsManager.getBackupFoldersSync()))
                         Log.d(TAG, "Initial sync completed")
                     } catch (e: Exception) {
@@ -106,7 +89,6 @@ class BackupSettingsViewModel(
                     }
                 }
 
-                // 加载统计数据
                 val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
@@ -133,33 +115,38 @@ class BackupSettingsViewModel(
     fun loadFolders() {
         viewModelScope.launch {
             try {
-                val folders = localMediaScanner.getMediaFolders()
-                val savedFoldersJson = prefsManager.getBackupFoldersSync()
-                val savedFolders: Set<String> = if (savedFoldersJson.isNotEmpty()) {
-                    try {
-                        val type = object : TypeToken<Set<String>>() {}.type
-                        gson.fromJson(savedFoldersJson, type)
-                    } catch (e: Exception) {
-                        emptySet()
-                    }
+                val scannedFolders = localMediaScanner.getMediaFolders()
+                val scannedByPath = scannedFolders.associateBy { it.path }
+                val savedFolders = parseSavedFolders(prefsManager.getBackupFoldersSync())
+                val historicalPaths = if (savedFolders != null) {
+                    syncRepository.getKnownLocalFolders()
                 } else {
-                    emptySet()
+                    emptyList()
                 }
 
-                val effectiveSavedFolders = parseSavedFolders(prefsManager.getBackupFoldersSync())
+                val mergedPaths = linkedSetOf<String>()
+                scannedFolders.mapTo(mergedPaths) { it.path }
+                savedFolders?.forEach { mergedPaths.add(it) }
+                historicalPaths.forEach { mergedPaths.add(it) }
 
-                val folderItems = folders.map { f ->
+                val folderItems = mergedPaths.map { path ->
+                    val scanned = scannedByPath[path]
                     FolderUiItem(
-                        path = f.path,
-                        displayName = f.displayName,
-                        fileCount = f.fileCount,
-                        isSelected = effectiveSavedFolders?.let { f.path in it } ?: true
+                        path = path,
+                        displayName = scanned?.displayName ?: File(path).name.ifBlank { path },
+                        fileCount = scanned?.fileCount ?: 0,
+                        isSelected = savedFolders?.let { path in it } ?: true,
+                        hasLocalMedia = scanned != null,
+                        isHistoricalOnly = scanned == null
                     )
                 }
 
                 _uiState.value = _uiState.value.copy(
                     folders = folderItems,
-                    selectedFolderCount = effectiveSavedFolders?.size ?: folders.size
+                    selectedFolderCount = folderItems.count { it.isSelected },
+                    historicalSelectedFolderCount = folderItems.count {
+                        it.isSelected && it.isHistoricalOnly
+                    }
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadFolders failed", e)
@@ -175,8 +162,6 @@ class BackupSettingsViewModel(
                 val wifiOnly = prefsManager.getBackupWifiOnlySync()
                 val syncInterval = prefsManager.getSyncIntervalSync().toLong()
                 BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
-
-                // 开启备份后，如果 Room DB 为空，触发初始同步并刷新统计
                 if (!syncRepository.hasData()) {
                     loadStats()
                 }
@@ -216,8 +201,6 @@ class BackupSettingsViewModel(
         val wifiOnly = _uiState.value.wifiOnly
         _uiState.value = _uiState.value.copy(isBackingUp = true)
         BackupScheduler.triggerImmediateBackup(prefsManager.context, wifiOnly)
-        // 备份是异步的，状态会通过 WorkManager 观察更新
-        // 这里简单延迟重置状态
         viewModelScope.launch {
             kotlinx.coroutines.delay(2000)
             _uiState.value = _uiState.value.copy(isBackingUp = false)
@@ -232,7 +215,10 @@ class BackupSettingsViewModel(
             current[index] = current[index].copy(isSelected = !current[index].isSelected)
             _uiState.value = _uiState.value.copy(
                 folders = current,
-                selectedFolderCount = current.count { it.isSelected }
+                selectedFolderCount = current.count { it.isSelected },
+                historicalSelectedFolderCount = current.count {
+                    it.isSelected && it.isHistoricalOnly
+                }
             )
         }
     }
@@ -243,20 +229,19 @@ class BackupSettingsViewModel(
                 .filter { it.isSelected }
                 .map { it.path }
                 .toSet()
-            val json = gson.toJson(selected)
-            prefsManager.saveBackupFolders(json)
+            prefsManager.saveBackupFolders(gson.toJson(selected))
 
-            // 文件夹选择改变后，需要重新同步以更新待备份文件统计
             _uiState.value = _uiState.value.copy(isSyncing = true)
             try {
                 syncRepository.reconcileFolderSelection(selected)
                 syncRepository.performFullSync(selected)
-                // 重新加载统计
+
                 val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
                 val pending = syncRepository.getPendingBackupMedia(selected).size
                 val stats = storageOptimizer.getOptimizationStats()
+
                 _uiState.value = _uiState.value.copy(
                     syncedCount = synced,
                     backedUpCount = backedUp,
@@ -266,10 +251,26 @@ class BackupSettingsViewModel(
                     optimizableSizeFormatted = stats.formattedSize(),
                     isSyncing = false
                 )
+                loadFolders()
             } catch (e: Exception) {
                 Log.e(TAG, "Re-sync after folder change failed", e)
                 _uiState.value = _uiState.value.copy(isSyncing = false, error = e.message)
             }
+        }
+    }
+
+    fun optimizeStorage() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isOptimizing = true)
+            try {
+                val stats = storageOptimizer.getOptimizationStats()
+                storageOptimizer.optimizeStorage(stats.files)
+                loadStats()
+                loadFolders()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message)
+            }
+            _uiState.value = _uiState.value.copy(isOptimizing = false)
         }
     }
 
@@ -281,20 +282,6 @@ class BackupSettingsViewModel(
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse saved folders, falling back to all folders", e)
             null
-        }
-    }
-
-    fun optimizeStorage() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isOptimizing = true)
-            try {
-                val stats = storageOptimizer.getOptimizationStats()
-                storageOptimizer.optimizeStorage(stats.files)
-                loadStats() // 刷新统计
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message)
-            }
-            _uiState.value = _uiState.value.copy(isOptimizing = false)
         }
     }
 
@@ -312,7 +299,12 @@ class BackupSettingsViewModel(
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return BackupSettingsViewModel(prefsManager, syncRepository, storageOptimizer, localMediaScanner) as T
+            return BackupSettingsViewModel(
+                prefsManager,
+                syncRepository,
+                storageOptimizer,
+                localMediaScanner
+            ) as T
         }
     }
 }

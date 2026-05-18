@@ -60,9 +60,6 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(container.authRepository)
     )
-    val galleryViewModel: GalleryViewModel = viewModel(
-        factory = GalleryViewModel.Factory(container.galleryRepository, container.syncRepository, container.prefsManager)
-    )
     val viewerViewModel: ViewerViewModel = viewModel(
         factory = ViewerViewModel.Factory(container.galleryRepository)
     )
@@ -95,6 +92,13 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         }
 
         composable("main") {
+            val galleryViewModel: GalleryViewModel = viewModel(
+                factory = GalleryViewModel.Factory(
+                    container.galleryRepository,
+                    container.syncRepository,
+                    container.prefsManager
+                )
+            )
             MainScreen(
                 container = container,
                 galleryViewModel = galleryViewModel,
