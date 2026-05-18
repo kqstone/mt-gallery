@@ -21,6 +21,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "BackupWorker"
@@ -28,10 +31,6 @@ private const val NOTIFICATION_CHANNEL_ID = "backup_channel"
 private const val NOTIFICATION_ID = 1001
 private const val STALE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000L
 
-/**
- * 后台备份 Worker。
- * 扫描本地待备份文件，通过 Multipart 上传到服务端。
- */
 class BackupWorker(
     context: Context,
     params: WorkerParameters
@@ -45,13 +44,11 @@ class BackupWorker(
             val prefsManager = container.prefsManager
             val selectedFolders = parseSelectedFolders(prefsManager.getBackupFoldersSync())
 
-            // 检查备份是否启用
             if (!prefsManager.getBackupEnabledSync()) {
                 Log.d(TAG, "Backup not enabled, skipping")
                 return@withContext Result.success()
             }
 
-            // 获取待备份文件
             val resetCount = syncRepo.resetStaleUploading(
                 System.currentTimeMillis() - STALE_UPLOAD_TIMEOUT_MS
             )
@@ -67,9 +64,8 @@ class BackupWorker(
 
             Log.d(TAG, "Found ${pendingFiles.size} files to backup")
 
-            // 设置前台通知（部分设备可能不支持，降级处理）
             try {
-                setForeground(createForegroundInfo("准备备份...", 0, pendingFiles.size))
+                setForeground(createForegroundInfo("Preparing backup...", 0, pendingFiles.size))
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to set foreground, continuing in background", e)
             }
@@ -79,7 +75,6 @@ class BackupWorker(
             var successCount = 0
             var failCount = 0
 
-            // 构建共享的 OkHttpClient（带认证和合理超时）
             val uploadClient = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(120, TimeUnit.SECONDS)
@@ -93,30 +88,32 @@ class BackupWorker(
                 }
 
                 try {
-                    // 更新通知
                     try {
-                        setForeground(createForegroundInfo(
-                            "正在备份 (${index + 1}/${pendingFiles.size}): ${media.fileName}",
-                            index + 1,
-                            pendingFiles.size
-                        ))
-                    } catch (_: Exception) { /* 通知更新失败不阻塞备份 */ }
+                        setForeground(
+                            createForegroundInfo(
+                                "Uploading (${index + 1}/${pendingFiles.size}): ${media.fileName}",
+                                index + 1,
+                                pendingFiles.size
+                            )
+                        )
+                    } catch (_: Exception) {
+                    }
 
-                    // 仅标记为上传中（不改变 syncStatus！）
                     if (!syncRepo.claimPendingUpload(media.id)) {
                         Log.d(TAG, "Skip ${media.fileName}, already claimed by another worker")
                         continue
                     }
 
-                    // 执行上传
                     val uploadResult = uploadFile(media, serverUrl, token, uploadClient)
                     if (uploadResult != null) {
-                        // 上传成功 → 标记为已备份 + 已同步
-                        syncRepo.markAsBackedUp(media.id, cloudId = uploadResult.first, cloudMd5 = uploadResult.second)
+                        syncRepo.markAsBackedUp(
+                            media.id,
+                            cloudId = uploadResult.first,
+                            cloudMd5 = uploadResult.second
+                        )
                         successCount++
                         Log.d(TAG, "Uploaded: ${media.fileName} -> cloudId=${uploadResult.first}")
                     } else {
-                        // 上传失败 → 标记为失败，保持 syncStatus=LOCAL_ONLY 以便重试
                         container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.FAILED)
                         failCount++
                         Log.w(TAG, "Upload failed: ${media.fileName}")
@@ -130,7 +127,6 @@ class BackupWorker(
 
             Log.d(TAG, "Backup complete: $successCount success, $failCount failed")
 
-            // 触发服务器扫描新上传的文件
             if (successCount > 0) {
                 try {
                     container.gatewayApi.GatewayControllerPart5ScanAfterUpload()
@@ -141,17 +137,12 @@ class BackupWorker(
             }
 
             if (failCount > 0) Result.retry() else Result.success()
-
         } catch (e: Exception) {
             Log.e(TAG, "BackupWorker failed", e)
             Result.retry()
         }
     }
 
-    /**
-     * 上传单个文件到服务端。
-     * @return Pair<cloudId, cloudMd5> 或 null（上传失败）
-     */
     private suspend fun uploadFile(
         media: MediaEntity,
         serverUrl: String,
@@ -171,7 +162,6 @@ class BackupWorker(
         val deviceName = container.prefsManager.getDeviceNameSync()
         val ctimeMs = resolveUploadCtime(media.mtime)
 
-        // Step 1: 检查文件是否已存在于服务端（通过 checkPathForUpload API）
         try {
             val checkBody: Map<String, Any> = buildMap {
                 put("fileName", media.fileName)
@@ -191,7 +181,6 @@ class BackupWorker(
             val abort = checkResult["abort"] as? Boolean ?: false
 
             if (existingId > 0 || abort) {
-                // 文件已存在于服务端，直接标记为已备份
                 Log.d(TAG, "File already exists on server: ${media.fileName}, id=$existingId")
                 return Pair(existingId, media.md5)
             }
@@ -199,33 +188,20 @@ class BackupWorker(
             Log.w(TAG, "checkPathForUpload failed for ${media.fileName}, proceeding with upload", e)
         }
 
-        // Step 2: 通过 Multipart 上传
         try {
             val mimeType = media.fileType.ifEmpty { "application/octet-stream" }
             val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
-
-            // 将 ISO 8601 时间转为 Unix 时间戳（毫秒）
-            val ctimeMs = try {
-                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
-                sdf.parse(media.mtime)?.time ?: System.currentTimeMillis()
-            } catch (_: Exception) {
-                System.currentTimeMillis()
-            }.toString()
-
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("file", media.fileName, requestFile)
                 .addFormDataPart("c_time", ctimeMs)
                 .build()
 
-            // URL 编码文件名
-            val encodedFileName = java.net.URLEncoder.encode(media.fileName, "UTF-8")
-                .replace("+", "%20")
-
-            // mtextra 参数
-            val folderName = media.localFolderPath?.let { java.io.File(it).name } ?: "__NO_SUB_FOLDER__"
-            val mtextra = """{"dist_id":1,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
-            val encodedMtextra = java.net.URLEncoder.encode(mtextra, "UTF-8")
+            val encodedFileName = URLEncoder.encode(media.fileName, "UTF-8").replace("+", "%20")
+            val folderName = media.localFolderPath?.let { File(it).name } ?: "__NO_SUB_FOLDER__"
+            val mtextra =
+                """{"dist_id":1,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
+            val encodedMtextra = URLEncoder.encode(mtextra, "UTF-8")
 
             val request = okhttp3.Request.Builder()
                 .url("$serverUrl/gateway/upload")
@@ -244,31 +220,29 @@ class BackupWorker(
 
             Log.d(TAG, "Upload response [${response.code}]: $respBody")
 
-            if (response.isSuccessful) {
-                // 解析返回的 file ID
-                val gson = com.google.gson.Gson()
-                @Suppress("UNCHECKED_CAST")
-                val map = gson.fromJson(respBody, Map::class.java) as? Map<String, Any>
-
-                // 检查服务端是否返回了错误消息
-                val msg = map?.get("msg") as? String
-                if (!msg.isNullOrEmpty()) {
-                    Log.w(TAG, "Upload server error: $msg for ${media.fileName}")
-                    return null
-                }
-
-                val fileId = (map?.get("id") as? Double) ?: (map?.get("fileId") as? Double) ?: 0.0
-                if (fileId <= 0) {
-                    Log.w(TAG, "Upload returned invalid fileId=$fileId for ${media.fileName}, response: $respBody")
-                    return null
-                }
-
-                Log.d(TAG, "Upload success: ${media.fileName}, cloudId=$fileId")
-                return Pair(fileId, media.md5)
-            } else {
+            if (!response.isSuccessful) {
                 Log.w(TAG, "Upload HTTP error: ${response.code} ${response.message} - body: $respBody")
                 return null
             }
+
+            val gson = Gson()
+            @Suppress("UNCHECKED_CAST")
+            val map = gson.fromJson(respBody, Map::class.java) as? Map<String, Any>
+
+            val msg = map?.get("msg") as? String
+            if (!msg.isNullOrEmpty()) {
+                Log.w(TAG, "Upload server error: $msg for ${media.fileName}")
+                return null
+            }
+
+            val fileId = (map?.get("id") as? Double) ?: (map?.get("fileId") as? Double) ?: 0.0
+            if (fileId <= 0) {
+                Log.w(TAG, "Upload returned invalid fileId=$fileId for ${media.fileName}, response: $respBody")
+                return null
+            }
+
+            Log.d(TAG, "Upload success: ${media.fileName}, cloudId=$fileId")
+            return Pair(fileId, media.md5)
         } catch (e: Exception) {
             Log.e(TAG, "Upload exception for ${media.fileName}", e)
             return null
@@ -288,7 +262,7 @@ class BackupWorker(
 
     private fun resolveUploadCtime(mtime: String): String {
         return try {
-            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
             (sdf.parse(mtime)?.time ?: System.currentTimeMillis()).toString()
         } catch (_: Exception) {
             System.currentTimeMillis().toString()
@@ -303,7 +277,7 @@ class BackupWorker(
         createNotificationChannel()
 
         val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("MT Gallery 备份")
+            .setContentTitle("MT Gallery Backup")
             .setContentText(message)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
@@ -312,7 +286,11 @@ class BackupWorker(
             .build()
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ForegroundInfo(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
         } else {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
@@ -322,12 +300,13 @@ class BackupWorker(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "照片备份",
+                "Photo Backup",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "显示照片备份进度"
+                description = "Shows photo backup progress"
             }
-            val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val manager =
+                applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
         }
     }
