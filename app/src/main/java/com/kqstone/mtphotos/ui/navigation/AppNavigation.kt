@@ -126,7 +126,8 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                     container.prefsManager,
                     container.syncRepository,
                     container.storageOptimizer,
-                    container.localMediaScanner
+                    container.localMediaScanner,
+                    container.backupDestinationRepository
                 )
             )
             BackupSettingsScreen(

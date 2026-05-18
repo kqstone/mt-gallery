@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.data.repository.BackupDestinationNode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +66,7 @@ fun BackupSettingsScreen(
 
     var showCleanupConfirm by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
+    var showDestinationDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadStats()
@@ -76,6 +78,15 @@ fun BackupSettingsScreen(
         uiState.historicalSelectedFolderCount > 0 ->
             "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
         else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
+    }
+    val backupDestinationSubtitle = when {
+        uiState.backupDestinationPath == "/" -> uiState.backupDestinationLabel
+        uiState.backupDestinationPath.isNotBlank() &&
+            uiState.backupDestinationPath != "/" &&
+            uiState.backupDestinationPath != uiState.backupDestinationLabel ->
+            "${uiState.backupDestinationLabel} · ${uiState.backupDestinationPath}"
+        uiState.backupDestinationPath.isNotBlank() -> uiState.backupDestinationPath
+        else -> uiState.backupDestinationLabel
     }
 
     Scaffold(
@@ -187,6 +198,20 @@ fun BackupSettingsScreen(
                 )
             }
 
+            item { SectionTitle("备份目标") }
+
+            item {
+                SettingActionRow(
+                    title = "备份到..",
+                    subtitle = backupDestinationSubtitle,
+                    icon = Icons.Default.Cloud,
+                    onClick = {
+                        showDestinationDialog = true
+                        viewModel.loadBackupDestinationRoot()
+                    }
+                )
+            }
+
             item { SectionTitle("备份文件夹") }
 
             item {
@@ -286,6 +311,33 @@ fun BackupSettingsScreen(
             onDismiss = {
                 showFolderDialog = false
                 viewModel.saveFolderSelection()
+            }
+        )
+    }
+
+    if (showDestinationDialog) {
+        BackupDestinationDialog(
+            selectedDestinationId = uiState.backupDestinationId,
+            selectedDestinationSummary = backupDestinationSubtitle,
+            nodes = uiState.backupDestinationNodes,
+            breadcrumbs = uiState.backupDestinationBreadcrumbs,
+            isLoading = uiState.isLoadingBackupDestinations,
+            error = uiState.backupDestinationError,
+            onDismiss = { showDestinationDialog = false },
+            onReload = { viewModel.loadBackupDestinationRoot() },
+            onNavigateUp = { viewModel.navigateUpBackupDestination() },
+            onOpen = { node -> viewModel.openBackupDestination(node) },
+            onSelectCurrent = {
+                viewModel.selectCurrentBackupDestination()
+                showDestinationDialog = false
+            },
+            onSelect = { node ->
+                viewModel.selectBackupDestination(node)
+                showDestinationDialog = false
+            },
+            onSelectRoot = {
+                viewModel.selectRootBackupDestination()
+                showDestinationDialog = false
             }
         )
     }
@@ -581,6 +633,140 @@ private fun FolderSelectionDialog(
             }
         }
     )
+}
+
+@Composable
+private fun BackupDestinationDialog(
+    selectedDestinationId: Long,
+    selectedDestinationSummary: String,
+    nodes: List<BackupDestinationNode>,
+    breadcrumbs: List<BackupDestinationBreadcrumb>,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onReload: () -> Unit,
+    onNavigateUp: () -> Unit,
+    onOpen: (BackupDestinationNode) -> Unit,
+    onSelectCurrent: () -> Unit,
+    onSelect: (BackupDestinationNode) -> Unit,
+    onSelectRoot: () -> Unit
+) {
+    val currentLocation = breadcrumbs.lastOrNull()?.path ?: "/"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择备份到..") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "当前已选：$selectedDestinationSummary",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "当前位置：$currentLocation",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onSelectCurrent) {
+                        Text("选择当前目录")
+                    }
+                    TextButton(onClick = onSelectRoot) {
+                        Text("使用根目录")
+                    }
+                    if (breadcrumbs.size > 1) {
+                        TextButton(onClick = onNavigateUp) {
+                            Text("上一级")
+                        }
+                    }
+                }
+
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+
+                    error != null -> {
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    nodes.isEmpty() -> {
+                        Text(
+                            text = "当前目录下没有可选子目录",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    else -> {
+                        LazyColumn(modifier = Modifier.height(320.dp)) {
+                            items(nodes) { node ->
+                                BackupDestinationRow(
+                                    node = node,
+                                    selected = node.id == selectedDestinationId,
+                                    onOpen = { onOpen(node) },
+                                    onSelect = { onSelect(node) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onReload) {
+                Text("刷新")
+            }
+        }
+    )
+}
+
+@Composable
+private fun BackupDestinationRow(
+    node: BackupDestinationNode,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = node.name,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = node.path,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        TextButton(onClick = onOpen) {
+            Text("进入")
+        }
+        RadioButton(selected = selected, onClick = onSelect)
+    }
 }
 
 private fun folderStatusText(folder: FolderUiItem): String {

@@ -43,6 +43,7 @@ class BackupWorker(
             val syncRepo = container.syncRepository
             val prefsManager = container.prefsManager
             val selectedFolders = parseSelectedFolders(prefsManager.getBackupFoldersSync())
+            val backupDestinationId = prefsManager.getBackupDestinationIdSync()
 
             if (!prefsManager.getBackupEnabledSync()) {
                 Log.d(TAG, "Backup not enabled, skipping")
@@ -104,7 +105,13 @@ class BackupWorker(
                         continue
                     }
 
-                    val uploadResult = uploadFile(media, serverUrl, token, uploadClient)
+                    val uploadResult = uploadFile(
+                        media = media,
+                        serverUrl = serverUrl,
+                        token = token,
+                        client = uploadClient,
+                        backupDestinationId = backupDestinationId
+                    )
                     if (uploadResult != null) {
                         syncRepo.markAsBackedUp(
                             media.id,
@@ -147,7 +154,8 @@ class BackupWorker(
         media: MediaEntity,
         serverUrl: String,
         token: String,
-        client: okhttp3.OkHttpClient
+        client: okhttp3.OkHttpClient,
+        backupDestinationId: Long
     ): Pair<Double, String>? {
         val app = applicationContext as MTPhotosApp
         val container = app.container
@@ -161,6 +169,7 @@ class BackupWorker(
 
         val deviceName = container.prefsManager.getDeviceNameSync()
         val ctimeMs = resolveUploadCtime(media.mtime)
+        val folderName = media.localFolderPath?.let { File(it).name } ?: "__NO_SUB_FOLDER__"
 
         try {
             val checkBody: Map<String, Any> = buildMap {
@@ -169,6 +178,8 @@ class BackupWorker(
                 put("deviceName", deviceName)
                 put("name_type", "")
                 put("duplicate", 0)
+                put("dist_id", backupDestinationId)
+                put("source_folder_path", folderName)
                 if (media.md5.isNotEmpty()) put("md5", media.md5)
                 put("ctime", ctimeMs)
                 put("v", "1.0")
@@ -198,9 +209,8 @@ class BackupWorker(
                 .build()
 
             val encodedFileName = URLEncoder.encode(media.fileName, "UTF-8").replace("+", "%20")
-            val folderName = media.localFolderPath?.let { File(it).name } ?: "__NO_SUB_FOLDER__"
             val mtextra =
-                """{"dist_id":1,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
+                """{"dist_id":$backupDestinationId,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
             val encodedMtextra = URLEncoder.encode(mtextra, "UTF-8")
 
             val request = okhttp3.Request.Builder()

@@ -34,6 +34,9 @@ class PrefsManager(val context: Context) {
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
         private val KEY_BACKUP_FOLDERS = stringPreferencesKey("backup_folders") // JSON array of paths
+        private val KEY_BACKUP_DEST_ID = longPreferencesKey("backup_destination_id")
+        private val KEY_BACKUP_DEST_LABEL = stringPreferencesKey("backup_destination_label")
+        private val KEY_BACKUP_DEST_PATH = stringPreferencesKey("backup_destination_path")
         private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
         private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
         private val KEY_SYNC_INTERVAL = intPreferencesKey("sync_interval_minutes") // 默认 60
@@ -48,6 +51,13 @@ class PrefsManager(val context: Context) {
     val backupEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
     val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
+    val backupDestinationId: Flow<Long> = context.dataStore.data.map { it[KEY_BACKUP_DEST_ID] ?: 1L }
+    val backupDestinationLabel: Flow<String> = context.dataStore.data.map {
+        it[KEY_BACKUP_DEST_LABEL] ?: "服务器根目录"
+    }
+    val backupDestinationPath: Flow<String> = context.dataStore.data.map {
+        it[KEY_BACKUP_DEST_PATH] ?: "/"
+    }
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
     val syncInterval: Flow<Int> = context.dataStore.data.map { it[KEY_SYNC_INTERVAL] ?: 60 }
@@ -73,6 +83,9 @@ class PrefsManager(val context: Context) {
     fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
+    fun getBackupDestinationIdSync(): Long = runBlocking { backupDestinationId.first() }
+    fun getBackupDestinationLabelSync(): String = runBlocking { backupDestinationLabel.first() }
+    fun getBackupDestinationPathSync(): String = runBlocking { backupDestinationPath.first() }
     fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
     fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
@@ -130,6 +143,14 @@ class PrefsManager(val context: Context) {
     suspend fun saveBackupFolders(foldersJson: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_BACKUP_FOLDERS] = foldersJson
+        }
+    }
+
+    suspend fun saveBackupDestination(id: Long, label: String, path: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKUP_DEST_ID] = id
+            prefs[KEY_BACKUP_DEST_LABEL] = label.trim().ifEmpty { "服务器根目录" }
+            prefs[KEY_BACKUP_DEST_PATH] = path.trim().ifEmpty { "/" }
         }
     }
 

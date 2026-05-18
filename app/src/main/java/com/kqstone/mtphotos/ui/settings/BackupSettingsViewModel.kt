@@ -9,6 +9,8 @@ import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
+import com.kqstone.mtphotos.data.repository.BackupDestinationNode
+import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +19,15 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 private const val TAG = "BackupSettingsVM"
+private const val DEFAULT_BACKUP_DEST_ID = 1L
+private const val DEFAULT_BACKUP_DEST_LABEL = "服务器根目录"
+private const val DEFAULT_BACKUP_DEST_PATH = "/"
+
+data class BackupDestinationBreadcrumb(
+    val id: Long,
+    val label: String,
+    val path: String
+)
 
 data class BackupSettingsUiState(
     val backupEnabled: Boolean = false,
@@ -33,6 +44,13 @@ data class BackupSettingsUiState(
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
     val historicalSelectedFolderCount: Int = 0,
+    val backupDestinationId: Long = DEFAULT_BACKUP_DEST_ID,
+    val backupDestinationLabel: String = DEFAULT_BACKUP_DEST_LABEL,
+    val backupDestinationPath: String = DEFAULT_BACKUP_DEST_PATH,
+    val backupDestinationNodes: List<BackupDestinationNode> = emptyList(),
+    val backupDestinationBreadcrumbs: List<BackupDestinationBreadcrumb> = emptyList(),
+    val isLoadingBackupDestinations: Boolean = false,
+    val backupDestinationError: String? = null,
     val deleteMode: String = "",
     val syncInterval: Int = 60,
     val error: String? = null
@@ -42,7 +60,8 @@ class BackupSettingsViewModel(
     private val prefsManager: PrefsManager,
     private val syncRepository: SyncRepository,
     private val storageOptimizer: StorageOptimizer,
-    private val localMediaScanner: LocalMediaScanner
+    private val localMediaScanner: LocalMediaScanner,
+    private val backupDestinationRepository: BackupDestinationRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupSettingsUiState())
@@ -69,6 +88,25 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.syncInterval.collect { interval ->
                 _uiState.value = _uiState.value.copy(syncInterval = interval)
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.backupDestinationId.collect { id ->
+                _uiState.value = _uiState.value.copy(backupDestinationId = id)
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.backupDestinationLabel.collect { label ->
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationLabel = label.ifBlank { DEFAULT_BACKUP_DEST_LABEL }
+                )
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.backupDestinationPath.collect { path ->
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH }
+                )
             }
         }
     }
@@ -274,6 +312,115 @@ class BackupSettingsViewModel(
         }
     }
 
+    fun loadBackupDestinationRoot() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isLoadingBackupDestinations = true,
+                backupDestinationError = null,
+                backupDestinationBreadcrumbs = listOf(rootBreadcrumb())
+            )
+            try {
+                val nodes = backupDestinationRepository.getRootDestinations()
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationNodes = nodes,
+                    isLoadingBackupDestinations = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "loadBackupDestinationRoot failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoadingBackupDestinations = false,
+                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                )
+            }
+        }
+    }
+
+    fun openBackupDestination(node: BackupDestinationNode) {
+        viewModelScope.launch {
+            val breadcrumbs = buildList {
+                val current = _uiState.value.backupDestinationBreadcrumbs
+                if (current.isEmpty()) {
+                    add(rootBreadcrumb())
+                } else {
+                    addAll(current)
+                }
+                add(node.toBreadcrumb())
+            }
+
+            _uiState.value = _uiState.value.copy(
+                isLoadingBackupDestinations = true,
+                backupDestinationError = null,
+                backupDestinationBreadcrumbs = breadcrumbs
+            )
+            try {
+                val nodes = backupDestinationRepository.getSubDestinations(node.id, node.path)
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationNodes = nodes,
+                    isLoadingBackupDestinations = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "openBackupDestination failed", e)
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationBreadcrumbs = breadcrumbs.dropLast(1).ifEmpty { listOf(rootBreadcrumb()) },
+                    isLoadingBackupDestinations = false,
+                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                )
+            }
+        }
+    }
+
+    fun navigateUpBackupDestination() {
+        val breadcrumbs = _uiState.value.backupDestinationBreadcrumbs
+        if (breadcrumbs.size <= 1) {
+            loadBackupDestinationRoot()
+            return
+        }
+
+        val parent = breadcrumbs[breadcrumbs.lastIndex - 1]
+        val trimmed = breadcrumbs.dropLast(1)
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isLoadingBackupDestinations = true,
+                backupDestinationError = null,
+                backupDestinationBreadcrumbs = trimmed
+            )
+            try {
+                val nodes = if (parent.id == DEFAULT_BACKUP_DEST_ID && parent.path == DEFAULT_BACKUP_DEST_PATH) {
+                    backupDestinationRepository.getRootDestinations()
+                } else {
+                    backupDestinationRepository.getSubDestinations(parent.id, parent.path)
+                }
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationNodes = nodes,
+                    isLoadingBackupDestinations = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "navigateUpBackupDestination failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoadingBackupDestinations = false,
+                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                )
+            }
+        }
+    }
+
+    fun selectCurrentBackupDestination() {
+        val current = _uiState.value.backupDestinationBreadcrumbs.lastOrNull() ?: rootBreadcrumb()
+        saveBackupDestination(current.id, current.label, current.path)
+    }
+
+    fun selectBackupDestination(node: BackupDestinationNode) {
+        saveBackupDestination(node.id, node.name, node.path)
+    }
+
+    fun selectRootBackupDestination() {
+        saveBackupDestination(
+            id = DEFAULT_BACKUP_DEST_ID,
+            label = DEFAULT_BACKUP_DEST_LABEL,
+            path = DEFAULT_BACKUP_DEST_PATH
+        )
+    }
+
     private fun parseSavedFolders(savedFoldersJson: String): Set<String>? {
         if (savedFoldersJson.isBlank()) return null
         return try {
@@ -291,11 +438,43 @@ class BackupSettingsViewModel(
         return if (gb >= 1.0) "%.2f GB".format(gb) else "%.1f MB".format(mb)
     }
 
+    private fun saveBackupDestination(id: Long, label: String, path: String) {
+        viewModelScope.launch {
+            try {
+                prefsManager.saveBackupDestination(id, label, path)
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationId = id,
+                    backupDestinationLabel = label.ifBlank { DEFAULT_BACKUP_DEST_LABEL },
+                    backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH },
+                    backupDestinationError = null
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "saveBackupDestination failed", e)
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationError = e.message ?: "保存服务端目录失败"
+                )
+            }
+        }
+    }
+
+    private fun rootBreadcrumb(): BackupDestinationBreadcrumb {
+        return BackupDestinationBreadcrumb(
+            id = DEFAULT_BACKUP_DEST_ID,
+            label = DEFAULT_BACKUP_DEST_LABEL,
+            path = DEFAULT_BACKUP_DEST_PATH
+        )
+    }
+
+    private fun BackupDestinationNode.toBreadcrumb(): BackupDestinationBreadcrumb {
+        return BackupDestinationBreadcrumb(id = id, label = name, path = path)
+    }
+
     class Factory(
         private val prefsManager: PrefsManager,
         private val syncRepository: SyncRepository,
         private val storageOptimizer: StorageOptimizer,
-        private val localMediaScanner: LocalMediaScanner
+        private val localMediaScanner: LocalMediaScanner,
+        private val backupDestinationRepository: BackupDestinationRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -303,7 +482,8 @@ class BackupSettingsViewModel(
                 prefsManager,
                 syncRepository,
                 storageOptimizer,
-                localMediaScanner
+                localMediaScanner,
+                backupDestinationRepository
             ) as T
         }
     }

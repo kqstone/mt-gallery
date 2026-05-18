@@ -15,6 +15,7 @@ import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.local.ThumbnailCacheManager
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.repository.AuthRepository
+import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
@@ -75,6 +76,7 @@ class AppContainer(context: android.content.Context) {
     val gatewayApi: GatewayApi get() = retrofitClient.create()
 
     val authRepository = AuthRepository(this)
+    val backupDestinationRepository = BackupDestinationRepository(this)
     val galleryRepository = GalleryRepository(this)
 
     // Room 数据库
