@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.data.local
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -9,12 +10,20 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "mtphotos_prefs")
+private const val TAG = "PrefsManager"
+
+data class BackupFolderSelection(
+    val folders: Set<String>?,
+    val isConfigured: Boolean
+)
 
 class PrefsManager(val context: Context) {
 
@@ -53,10 +62,10 @@ class PrefsManager(val context: Context) {
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
     val backupDestinationId: Flow<Long> = context.dataStore.data.map { it[KEY_BACKUP_DEST_ID] ?: 1L }
     val backupDestinationLabel: Flow<String> = context.dataStore.data.map {
-        it[KEY_BACKUP_DEST_LABEL] ?: "服务器根目录"
+        it[KEY_BACKUP_DEST_LABEL] ?: android.os.Build.MODEL
     }
     val backupDestinationPath: Flow<String> = context.dataStore.data.map {
-        it[KEY_BACKUP_DEST_PATH] ?: "/"
+        it[KEY_BACKUP_DEST_PATH] ?: "/${android.os.Build.MODEL}"
     }
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
@@ -83,6 +92,12 @@ class PrefsManager(val context: Context) {
     fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
+    fun getBackupFolderSelectionSync(): BackupFolderSelection = runBlocking {
+        val prefs = context.dataStore.data.first()
+        val foldersJson = prefs[KEY_BACKUP_FOLDERS] ?: ""
+        val setupComplete = prefs[KEY_FOLDER_SETUP_COMPLETE] ?: false
+        parseBackupFolderSelection(foldersJson, setupComplete)
+    }
     fun getBackupDestinationIdSync(): Long = runBlocking { backupDestinationId.first() }
     fun getBackupDestinationLabelSync(): String = runBlocking { backupDestinationLabel.first() }
     fun getBackupDestinationPathSync(): String = runBlocking { backupDestinationPath.first() }
@@ -149,7 +164,7 @@ class PrefsManager(val context: Context) {
     suspend fun saveBackupDestination(id: Long, label: String, path: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_BACKUP_DEST_ID] = id
-            prefs[KEY_BACKUP_DEST_LABEL] = label.trim().ifEmpty { "服务器根目录" }
+            prefs[KEY_BACKUP_DEST_LABEL] = label.trim().ifEmpty { android.os.Build.MODEL }
             prefs[KEY_BACKUP_DEST_PATH] = path.trim().ifEmpty { "/" }
         }
     }
@@ -174,6 +189,31 @@ class PrefsManager(val context: Context) {
 
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+    }
+
+    private fun parseBackupFolderSelection(
+        foldersJson: String,
+        setupComplete: Boolean
+    ): BackupFolderSelection {
+        if (foldersJson.isBlank()) {
+            return if (setupComplete) {
+                BackupFolderSelection(emptySet(), true)
+            } else {
+                BackupFolderSelection(null, false)
+            }
+        }
+
+        return try {
+            val type = object : TypeToken<Set<String>>() {}.type
+            BackupFolderSelection(Gson().fromJson<Set<String>>(foldersJson, type) ?: emptySet(), true)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse backup folders", e)
+            if (setupComplete) {
+                BackupFolderSelection(emptySet(), true)
+            } else {
+                BackupFolderSelection(null, false)
+            }
+        }
     }
 }
 

@@ -16,8 +16,14 @@ class BackupDestinationRepository(private val container: AppContainer) {
     }
 
     suspend fun getSubDestinations(parentId: Long, parentPath: String): List<BackupDestinationNode> {
-        val response = container.gatewayApi.GatewayControllerPart4BackupDistSubDir(parentId.toDouble())
+        val response = container.gatewayApi.GatewayControllerPart4BackupDistSubDir(parentId.toInt())
         return parseNodes(response, parentPath)
+    }
+
+    suspend fun createFolder(parentId: Long, name: String): Map<String, Any> {
+        return container.gatewayApi.GatewayControllerPart5FolderCreate(
+            mapOf("pid" to parentId.toInt(), "name" to name)
+        )
     }
 
     private fun parseNodes(

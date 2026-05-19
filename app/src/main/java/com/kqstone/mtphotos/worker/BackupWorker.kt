@@ -10,7 +10,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.local.db.BackupStatus
@@ -42,7 +41,7 @@ class BackupWorker(
             val container = app.container
             val syncRepo = container.syncRepository
             val prefsManager = container.prefsManager
-            val selectedFolders = parseSelectedFolders(prefsManager.getBackupFoldersSync())
+            val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
             val backupDestinationId = prefsManager.getBackupDestinationIdSync()
 
             if (!prefsManager.getBackupEnabledSync()) {
@@ -256,17 +255,6 @@ class BackupWorker(
         } catch (e: Exception) {
             Log.e(TAG, "Upload exception for ${media.fileName}", e)
             return null
-        }
-    }
-
-    private fun parseSelectedFolders(foldersJson: String): Set<String>? {
-        if (foldersJson.isBlank()) return null
-        return try {
-            val type = object : TypeToken<Set<String>>() {}.type
-            Gson().fromJson<Set<String>>(foldersJson, type) ?: emptySet()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse backup folders, falling back to all folders", e)
-            null
         }
     }
 

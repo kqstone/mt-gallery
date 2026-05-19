@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -322,11 +323,13 @@ fun BackupSettingsScreen(
             nodes = uiState.backupDestinationNodes,
             breadcrumbs = uiState.backupDestinationBreadcrumbs,
             isLoading = uiState.isLoadingBackupDestinations,
+            isCreatingFolder = uiState.isCreatingFolder,
             error = uiState.backupDestinationError,
             onDismiss = { showDestinationDialog = false },
             onReload = { viewModel.loadBackupDestinationRoot() },
             onNavigateUp = { viewModel.navigateUpBackupDestination() },
             onOpen = { node -> viewModel.openBackupDestination(node) },
+            onCreateFolder = { name -> viewModel.createFolder(name) },
             onSelectCurrent = {
                 viewModel.selectCurrentBackupDestination()
                 showDestinationDialog = false
@@ -642,16 +645,19 @@ private fun BackupDestinationDialog(
     nodes: List<BackupDestinationNode>,
     breadcrumbs: List<BackupDestinationBreadcrumb>,
     isLoading: Boolean,
+    isCreatingFolder: Boolean,
     error: String?,
     onDismiss: () -> Unit,
     onReload: () -> Unit,
     onNavigateUp: () -> Unit,
     onOpen: (BackupDestinationNode) -> Unit,
+    onCreateFolder: (String) -> Unit,
     onSelectCurrent: () -> Unit,
     onSelect: (BackupDestinationNode) -> Unit,
     onSelectRoot: () -> Unit
 ) {
     val currentLocation = breadcrumbs.lastOrNull()?.path ?: "/"
+    var showCreateDialog by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -679,6 +685,12 @@ private fun BackupDestinationDialog(
                         TextButton(onClick = onNavigateUp) {
                             Text("上一级")
                         }
+                    }
+                    TextButton(
+                        onClick = { showCreateDialog = true },
+                        enabled = !isCreatingFolder
+                    ) {
+                        Text(if (isCreatingFolder) "创建中…" else "新建文件夹")
                     }
                 }
 
@@ -736,6 +748,41 @@ private fun BackupDestinationDialog(
             }
         }
     )
+
+    if (showCreateDialog) {
+        var folderName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("新建文件夹") },
+            text = {
+                OutlinedTextField(
+                    value = folderName,
+                    onValueChange = { folderName = it },
+                    placeholder = { Text("输入文件夹名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (folderName.isNotBlank()) {
+                            onCreateFolder(folderName.trim())
+                            showCreateDialog = false
+                        }
+                    },
+                    enabled = folderName.isNotBlank()
+                ) {
+                    Text("创建")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @Composable

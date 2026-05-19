@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.data.local.BackupFolderSelection
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
@@ -11,8 +12,6 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.TimelineMonth
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -69,15 +68,8 @@ class GalleryViewModel(
     /**
      * 获取用户选择的文件夹路径
      */
-    private fun getSelectedFolders(): Set<String>? {
-        val json = prefsManager?.getBackupFoldersSync() ?: return null
-        if (json.isEmpty()) return null
-        return try {
-            val type = object : TypeToken<Set<String>>() {}.type
-            Gson().fromJson<Set<String>>(json, type)
-        } catch (e: Exception) {
-            null
-        }
+    private fun getFolderSelectionState(): BackupFolderSelection {
+        return prefsManager?.getBackupFolderSelectionSync() ?: BackupFolderSelection(null, false)
     }
 
     /**
@@ -94,13 +86,23 @@ class GalleryViewModel(
                         loadFromCloud()
                         return@launch
                     }
+                    val folderSelection = getFolderSelectionState()
+                    if (prefsManager != null && !folderSelection.isConfigured) {
+                        Log.w(
+                            TAG,
+                            "Folder setup is marked complete but backup folder selection is missing, fallback to cloud-only"
+                        )
+                        loadFromCloud()
+                        return@launch
+                    }
                     val hasData = syncRepository.hasData()
                     if (hasData) {
-                        loadFromRoom()
+                        syncRepository.reconcileFolderSelection(folderSelection.folders)
+                        loadFromRoom(folderSelection.folders)
                         return@launch
                     }
                     // 首次加载：使用渐进式同步
-                    triggerInitialSync()
+                    triggerInitialSync(folderSelection.folders)
                 } catch (e: Exception) {
                     Log.e(TAG, "Hybrid load failed, falling back to cloud", e)
                     loadFromCloud()
@@ -114,9 +116,8 @@ class GalleryViewModel(
     /**
      * 触发渐进式同步 — 边扫描边显示
      */
-    private fun triggerInitialSync() {
+    private fun triggerInitialSync(folders: Set<String>?) {
         if (syncRepository == null) return
-        val folders = getSelectedFolders()
         _uiState.value = _uiState.value.copy(isSyncing = true, isLoading = false, syncProgressText = "正在加载云端数据...")
 
         viewModelScope.launch {
@@ -129,24 +130,24 @@ class GalleryViewModel(
                         "cloud_indexed" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地...")
                             // 云端数据已写入 Room，先加载显示
-                            loadFromRoom()
+                            loadFromRoom(folders)
                         }
                         "scanning" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "已扫描 ${progress.scanned} 个本地文件...")
                             // 每批次刷新 UI
-                            loadFromRoom()
+                            loadFromRoom(folders)
                         }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(
                                 isSyncing = false,
                                 syncProgressText = null
                             )
-                            loadFromRoom()
+                            loadFromRoom(folders)
                             // 后台补算 MD5
                             launch {
                                 syncRepository.computeMd5InBackground()
                                 // MD5 计算完后刷新一次
-                                loadFromRoom()
+                                loadFromRoom(folders)
                             }
                         }
                     }
@@ -165,9 +166,9 @@ class GalleryViewModel(
     /**
      * 从 Room DB 加载时间线（混合模式）
      */
-    private suspend fun loadFromRoom() {
+    private suspend fun loadFromRoom(folders: Set<String>?) {
         try {
-            val months = syncRepository!!.getTimelineMonths()
+            val months = syncRepository!!.getTimelineMonths(folders)
             val groups = months.map { tm ->
                 MonthGroup(
                     yearMonth = tm.yearMonth,
@@ -182,7 +183,7 @@ class GalleryViewModel(
             )
             // 自动加载第一个月
             if (groups.isNotEmpty()) {
-                loadMonthFiles(groups.first().yearMonth)
+                loadMonthFiles(groups.first().yearMonth, folders)
             }
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
@@ -230,13 +231,21 @@ class GalleryViewModel(
             if (_uiState.value.isHybridMode && syncRepository != null) {
                 // 混合模式：使用增量同步（不计算 MD5，速度快）
                 try {
-                    val folders = getSelectedFolders()
+                    val folderSelection = getFolderSelectionState()
+                    if (!folderSelection.isConfigured) {
+                        Log.w(TAG, "Refresh skipped local scope because backup folder selection is missing")
+                        loadFromCloud()
+                        _uiState.value = _uiState.value.copy(isRefreshing = false)
+                        return@launch
+                    }
+                    syncRepository.reconcileFolderSelection(folderSelection.folders)
+                    val folders = folderSelection.folders
                     syncRepository.performIncrementalSync(folders).collect { progress ->
                         if (progress.phase == "scanning" || progress.phase == "cloud_done") {
-                            loadFromRoom()
+                            loadFromRoom(folders)
                         }
                     }
-                    loadFromRoom()
+                    loadFromRoom(folders)
                     _uiState.value = _uiState.value.copy(isRefreshing = false)
                     // 后台补算 MD5
                     launch { syncRepository.computeMd5InBackground() }
@@ -287,16 +296,23 @@ class GalleryViewModel(
 
         viewModelScope.launch {
             try {
-                val folders = getSelectedFolders()
+                val folderSelection = getFolderSelectionState()
+                if (!folderSelection.isConfigured) {
+                    Log.w(TAG, "Quick refresh skipped local scope because backup folder selection is missing")
+                    loadFromCloud()
+                    return@launch
+                }
+                syncRepository.reconcileFolderSelection(folderSelection.folders)
+                val folders = folderSelection.folders
                 syncRepository.performIncrementalSync(folders).collect { /* consume silently */ }
-                loadFromRoom()
+                loadFromRoom(folders)
             } catch (e: Exception) {
                 Log.w(TAG, "Quick refresh failed", e)
             }
         }
     }
 
-    fun loadMonthFiles(yearMonth: String) {
+    fun loadMonthFiles(yearMonth: String, scopedFolders: Set<String>? = null) {
         val current = _uiState.value
         if (current.months.any { it.yearMonth == yearMonth && it.isLoaded }) return
 
@@ -304,7 +320,13 @@ class GalleryViewModel(
             if (current.isHybridMode && syncRepository != null) {
                 // 从 Room 加载
                 try {
-                    val photos = syncRepository.getMonthPhotos(yearMonth)
+                    val folderSelection = getFolderSelectionState()
+                    val folders = scopedFolders ?: if (folderSelection.isConfigured) {
+                        folderSelection.folders
+                    } else {
+                        emptySet()
+                    }
+                    val photos = syncRepository.getMonthPhotos(yearMonth, folders)
                     updateMonthWithPhotos(yearMonth, photos)
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
@@ -363,12 +385,22 @@ class GalleryViewModel(
      */
     fun triggerFullSync(localFolders: Set<String>? = null) {
         if (syncRepository == null) return
-        val folders = localFolders ?: getSelectedFolders()
         _uiState.value = _uiState.value.copy(isSyncing = true)
         viewModelScope.launch {
             try {
+                val folders = localFolders ?: run {
+                    val folderSelection = getFolderSelectionState()
+                    if (!folderSelection.isConfigured) {
+                        Log.w(TAG, "Full sync skipped local scope because backup folder selection is missing")
+                        loadFromCloud()
+                        _uiState.value = _uiState.value.copy(isSyncing = false)
+                        return@launch
+                    }
+                    folderSelection.folders
+                }
+                syncRepository.reconcileFolderSelection(folders)
                 syncRepository.performFullSync(folders)
-                loadFromRoom()
+                loadFromRoom(folders)
                 _uiState.value = _uiState.value.copy(isSyncing = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

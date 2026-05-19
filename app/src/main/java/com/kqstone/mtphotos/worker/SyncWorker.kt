@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.MTPhotosApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,15 +33,11 @@ class SyncWorker(
             }
 
             // 获取用户选择的备份文件夹
-            val foldersJson = prefsManager.getBackupFoldersSync()
-            val folders: Set<String>? = if (foldersJson.isNotEmpty()) {
-                try {
-                    val type = object : TypeToken<Set<String>>() {}.type
-                    Gson().fromJson<Set<String>>(foldersJson, type)
-                } catch (e: Exception) {
-                    null
-                }
-            } else null
+            val folderSelection = prefsManager.getBackupFolderSelectionSync()
+            val folders = folderSelection.folders
+            if (folderSelection.isConfigured) {
+                syncRepo.reconcileFolderSelection(folders)
+            }
 
             // 执行轻量本地同步
             val result = syncRepo.syncLocalMedia(folders)

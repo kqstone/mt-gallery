@@ -72,9 +72,46 @@ interface MediaDao {
     """)
     suspend fun getTimelineMonths(): List<TimelineMonthCount>
 
+    @Query("""
+        SELECT SUBSTR(mtime, 1, 7) AS yearMonth, COUNT(*) AS count
+        FROM media
+        WHERE cloudId IS NOT NULL
+        GROUP BY SUBSTR(mtime, 1, 7)
+        ORDER BY yearMonth DESC
+    """)
+    suspend fun getCloudTimelineMonths(): List<TimelineMonthCount>
+
+    @Query("""
+        SELECT SUBSTR(mtime, 1, 7) AS yearMonth, COUNT(*) AS count
+        FROM media
+        WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)
+        GROUP BY SUBSTR(mtime, 1, 7)
+        ORDER BY yearMonth DESC
+    """)
+    suspend fun getTimelineMonthsByVisibleFolders(folderPaths: List<String>): List<TimelineMonthCount>
+
     /** 获取指定月份的所有媒体 */
     @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC")
     suspend fun getMediaByMonth(yearMonth: String): List<MediaEntity>
+
+    @Query("""
+        SELECT * FROM media
+        WHERE mtime LIKE :yearMonth || '%'
+        AND cloudId IS NOT NULL
+        ORDER BY mtime DESC
+    """)
+    suspend fun getCloudMediaByMonth(yearMonth: String): List<MediaEntity>
+
+    @Query("""
+        SELECT * FROM media
+        WHERE mtime LIKE :yearMonth || '%'
+        AND (cloudId IS NOT NULL OR localFolderPath IN (:folderPaths))
+        ORDER BY mtime DESC
+    """)
+    suspend fun getMediaByMonthVisibleFolders(
+        yearMonth: String,
+        folderPaths: List<String>
+    ): List<MediaEntity>
 
     /** 获取指定月份的所有媒体（Flow） */
     @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC")

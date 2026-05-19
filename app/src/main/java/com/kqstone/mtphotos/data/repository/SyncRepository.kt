@@ -475,12 +475,24 @@ class SyncRepository(
         )
     }
 
-    suspend fun getTimelineMonths(): List<TimelineMonthCount> {
-        return mediaDao.getTimelineMonths()
+    suspend fun getTimelineMonths(localFolders: Set<String>? = null): List<TimelineMonthCount> {
+        return when {
+            localFolders == null -> mediaDao.getTimelineMonths()
+            localFolders.isEmpty() -> mediaDao.getCloudTimelineMonths()
+            else -> mediaDao.getTimelineMonthsByVisibleFolders(localFolders.toList())
+        }
     }
 
-    suspend fun getMonthPhotos(yearMonth: String): List<UnifiedPhotoItem> {
-        return mediaDao.getMediaByMonth(yearMonth).map { it.toUnifiedPhotoItem() }
+    suspend fun getMonthPhotos(
+        yearMonth: String,
+        localFolders: Set<String>? = null
+    ): List<UnifiedPhotoItem> {
+        val entities = when {
+            localFolders == null -> mediaDao.getMediaByMonth(yearMonth)
+            localFolders.isEmpty() -> mediaDao.getCloudMediaByMonth(yearMonth)
+            else -> mediaDao.getMediaByMonthVisibleFolders(yearMonth, localFolders.toList())
+        }
+        return entities.map { it.toUnifiedPhotoItem(localFolders) }
     }
 
     fun getMonthPhotosFlow(yearMonth: String): Flow<List<UnifiedPhotoItem>> {
@@ -682,7 +694,10 @@ class SyncRepository(
     }
 }
 
-fun MediaEntity.toUnifiedPhotoItem(): UnifiedPhotoItem {
+fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPhotoItem {
+    val localVisible = localFolders == null || localFolderPath in localFolders
+    val hideOutOfScopeLocal = !localVisible && cloudId != null
+
     return UnifiedPhotoItem(
         dbId = id,
         cloudId = cloudId,
@@ -692,11 +707,11 @@ fun MediaEntity.toUnifiedPhotoItem(): UnifiedPhotoItem {
         mtime = mtime,
         width = width.toDouble(),
         height = height.toDouble(),
-        syncStatus = syncStatus,
+        syncStatus = if (hideOutOfScopeLocal) SyncStatus.CLOUD_ONLY else syncStatus,
         backupStatus = backupStatus,
-        localUri = localUri,
+        localUri = if (localVisible) localUri else null,
         thumbCachePath = thumbCachePath,
-        isStorageOptimized = isStorageOptimized,
+        isStorageOptimized = if (localVisible) isStorageOptimized else true,
         fileSize = fileSize
     )
 }

@@ -1,11 +1,11 @@
 package com.kqstone.mtphotos.ui.settings
 
+import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
@@ -20,8 +20,8 @@ import java.io.File
 
 private const val TAG = "BackupSettingsVM"
 private const val DEFAULT_BACKUP_DEST_ID = 1L
-private const val DEFAULT_BACKUP_DEST_LABEL = "服务器根目录"
-private const val DEFAULT_BACKUP_DEST_PATH = "/"
+private val DEFAULT_BACKUP_DEST_LABEL = Build.MODEL
+private val DEFAULT_BACKUP_DEST_PATH = "/${Build.MODEL}"
 
 data class BackupDestinationBreadcrumb(
     val id: Long,
@@ -50,6 +50,7 @@ data class BackupSettingsUiState(
     val backupDestinationNodes: List<BackupDestinationNode> = emptyList(),
     val backupDestinationBreadcrumbs: List<BackupDestinationBreadcrumb> = emptyList(),
     val isLoadingBackupDestinations: Boolean = false,
+    val isCreatingFolder: Boolean = false,
     val backupDestinationError: String? = null,
     val deleteMode: String = "",
     val syncInterval: Int = 60,
@@ -118,7 +119,7 @@ class BackupSettingsViewModel(
                     Log.d(TAG, "Room DB is empty, triggering initial sync...")
                     _uiState.value = _uiState.value.copy(isSyncing = true)
                     try {
-                        syncRepository.performFullSync(parseSavedFolders(prefsManager.getBackupFoldersSync()))
+                        syncRepository.performFullSync(prefsManager.getBackupFolderSelectionSync().folders)
                         Log.d(TAG, "Initial sync completed")
                     } catch (e: Exception) {
                         Log.e(TAG, "Initial sync failed", e)
@@ -131,7 +132,7 @@ class BackupSettingsViewModel(
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
                 val pending = syncRepository
-                    .getPendingBackupMedia(parseSavedFolders(prefsManager.getBackupFoldersSync()))
+                    .getPendingBackupMedia(prefsManager.getBackupFolderSelectionSync().folders)
                     .size
                 val stats = storageOptimizer.getOptimizationStats()
 
@@ -155,8 +156,9 @@ class BackupSettingsViewModel(
             try {
                 val scannedFolders = localMediaScanner.getMediaFolders()
                 val scannedByPath = scannedFolders.associateBy { it.path }
-                val savedFolders = parseSavedFolders(prefsManager.getBackupFoldersSync())
-                val historicalPaths = if (savedFolders != null) {
+                val folderSelection = prefsManager.getBackupFolderSelectionSync()
+                val savedFolders = if (folderSelection.isConfigured) folderSelection.folders else null
+                val historicalPaths = if (folderSelection.isConfigured) {
                     syncRepository.getKnownLocalFolders()
                 } else {
                     emptyList()
@@ -325,6 +327,7 @@ class BackupSettingsViewModel(
                     backupDestinationNodes = nodes,
                     isLoadingBackupDestinations = false
                 )
+                ensureDeviceFolder(nodes)
             } catch (e: Exception) {
                 Log.e(TAG, "loadBackupDestinationRoot failed", e)
                 _uiState.value = _uiState.value.copy(
@@ -421,14 +424,28 @@ class BackupSettingsViewModel(
         )
     }
 
-    private fun parseSavedFolders(savedFoldersJson: String): Set<String>? {
-        if (savedFoldersJson.isBlank()) return null
-        return try {
-            val type = object : TypeToken<Set<String>>() {}.type
-            gson.fromJson<Set<String>>(savedFoldersJson, type) ?: emptySet()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse saved folders, falling back to all folders", e)
-            null
+    fun createFolder(name: String) {
+        viewModelScope.launch {
+            val parent = _uiState.value.backupDestinationBreadcrumbs.lastOrNull() ?: rootBreadcrumb()
+            _uiState.value = _uiState.value.copy(isCreatingFolder = true, backupDestinationError = null)
+            try {
+                backupDestinationRepository.createFolder(parent.id, name)
+                val nodes = if (parent.id == DEFAULT_BACKUP_DEST_ID && parent.path == DEFAULT_BACKUP_DEST_PATH) {
+                    backupDestinationRepository.getRootDestinations()
+                } else {
+                    backupDestinationRepository.getSubDestinations(parent.id, parent.path)
+                }
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationNodes = nodes,
+                    isCreatingFolder = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "createFolder failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isCreatingFolder = false,
+                    backupDestinationError = e.message ?: "创建文件夹失败"
+                )
+            }
         }
     }
 
@@ -454,6 +471,30 @@ class BackupSettingsViewModel(
                     backupDestinationError = e.message ?: "保存服务端目录失败"
                 )
             }
+        }
+    }
+
+    private suspend fun ensureDeviceFolder(rootNodes: List<BackupDestinationNode>) {
+        val currentId = prefsManager.getBackupDestinationIdSync()
+        if (currentId != DEFAULT_BACKUP_DEST_ID) return
+
+        val modelName = Build.MODEL
+        val existing = rootNodes.find { it.name == modelName }
+        if (existing != null) {
+            saveBackupDestination(existing.id, existing.name, existing.path)
+            return
+        }
+
+        try {
+            backupDestinationRepository.createFolder(DEFAULT_BACKUP_DEST_ID, modelName)
+            val refreshed = backupDestinationRepository.getRootDestinations()
+            val created = refreshed.find { it.name == modelName }
+            if (created != null) {
+                saveBackupDestination(created.id, created.name, created.path)
+                _uiState.value = _uiState.value.copy(backupDestinationNodes = refreshed)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "ensureDeviceFolder failed", e)
         }
     }
 

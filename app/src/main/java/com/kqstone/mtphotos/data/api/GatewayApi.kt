@@ -507,11 +507,11 @@ interface GatewayApi {
 
     /** 备份目的地-子目录 */
     @GET("/gateway/backupDist/sub")
-    suspend fun GatewayControllerPart4BackupDistSubDir(@Query("pid") pid: Double): List<Map<String, Any>>
+    suspend fun GatewayControllerPart4BackupDistSubDir(@Query("pid") pid: Int): List<Map<String, Any>>
 
     /** 备份目的地-刷新 */
     @GET("/gateway/backupDist/refresh")
-    suspend fun GatewayControllerPart4BackupDistRefreshDir(@Query("pid") pid: Double): Map<String, Any>
+    suspend fun GatewayControllerPart4BackupDistRefreshDir(@Query("pid") pid: Int): Map<String, Any>
 
     /** 备份目的地-验证 */
     @POST("/gateway/backupDist/verify")
@@ -635,7 +635,7 @@ interface GatewayApi {
 
     /** 文件夹视图-新建文件夹 */
     @POST("/gateway/folders/create")
-    suspend fun GatewayControllerPart5FolderCreate(): Map<String, Any>
+    suspend fun GatewayControllerPart5FolderCreate(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 文件夹视图-重命名、移动、删除 */
     @POST("/gateway/folderPathEdit")
