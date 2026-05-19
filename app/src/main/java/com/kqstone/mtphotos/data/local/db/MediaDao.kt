@@ -61,6 +61,16 @@ interface MediaDao {
     @Query("SELECT * FROM media ORDER BY mtime DESC")
     suspend fun getAllMedia(): List<MediaEntity>
 
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC")
+    suspend fun getAllCloudMedia(): List<MediaEntity>
+
+    @Query("""
+        SELECT * FROM media
+        WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)
+        ORDER BY mtime DESC
+    """)
+    suspend fun getAllVisibleMediaByFolders(folderPaths: List<String>): List<MediaEntity>
+
     // ===== 按时间分组查询（时间线视图） =====
 
     /** 获取月份分组统计 (返回 yearMonth 和 count) */

@@ -10,8 +10,8 @@ import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SyncRepository
-import com.kqstone.mtphotos.data.repository.TimelineMonth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,8 +28,7 @@ data class MonthGroup(
     val yearMonth: String,
     val displayTitle: String,
     val totalCount: Int,
-    val days: List<DayGroup> = emptyList(),
-    val isLoaded: Boolean = false
+    val days: List<DayGroup> = emptyList()
 )
 
 data class GalleryUiState(
@@ -130,12 +129,10 @@ class GalleryViewModel(
                         "cloud_indexed" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地...")
                             // 云端数据已写入 Room，先加载显示
-                            loadFromRoom(folders)
                         }
                         "scanning" -> {
                             _uiState.value = _uiState.value.copy(syncProgressText = "已扫描 ${progress.scanned} 个本地文件...")
                             // 每批次刷新 UI
-                            loadFromRoom(folders)
                         }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(
@@ -168,23 +165,12 @@ class GalleryViewModel(
      */
     private suspend fun loadFromRoom(folders: Set<String>?) {
         try {
-            val months = syncRepository!!.getTimelineMonths(folders)
-            val groups = months.map { tm ->
-                MonthGroup(
-                    yearMonth = tm.yearMonth,
-                    displayTitle = formatYearMonth(tm.yearMonth),
-                    totalCount = tm.count
-                )
-            }
+            val photos = syncRepository!!.getAllPhotos(folders)
             _uiState.value = _uiState.value.copy(
-                months = groups,
+                months = buildMonthGroups(photos),
                 isLoading = false,
                 isHybridMode = true
             )
-            // 自动加载第一个月
-            if (groups.isNotEmpty()) {
-                loadMonthFiles(groups.first().yearMonth, folders)
-            }
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
@@ -197,24 +183,14 @@ class GalleryViewModel(
      * 从云端 API 加载时间线（纯云端模式，兼容原始逻辑）
      */
     private suspend fun loadFromCloud() {
-        val result = galleryRepository.getTimeline()
+        val result = galleryRepository.getTimelineSnapshot()
         result.fold(
-            onSuccess = { timelineMonths ->
-                val groups = timelineMonths.map { tm ->
-                    MonthGroup(
-                        yearMonth = tm.yearMonth,
-                        displayTitle = formatYearMonth(tm.yearMonth),
-                        totalCount = tm.count
-                    )
-                }
+            onSuccess = { snapshot ->
                 _uiState.value = _uiState.value.copy(
-                    months = groups,
+                    months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
                     isLoading = false,
                     isHybridMode = false
                 )
-                if (groups.isNotEmpty()) {
-                    loadMonthFiles(groups.first().yearMonth)
-                }
             },
             onFailure = { e ->
                 _uiState.value = _uiState.value.copy(
@@ -238,17 +214,11 @@ class GalleryViewModel(
                         _uiState.value = _uiState.value.copy(isRefreshing = false)
                         return@launch
                     }
-                    syncRepository.reconcileFolderSelection(folderSelection.folders)
                     val folders = folderSelection.folders
-                    syncRepository.performIncrementalSync(folders).collect { progress ->
-                        if (progress.phase == "scanning" || progress.phase == "cloud_done") {
-                            loadFromRoom(folders)
-                        }
-                    }
+                    syncRepository.reconcileFolderSelection(folders)
+                    syncRepository.refreshCloudState()
                     loadFromRoom(folders)
                     _uiState.value = _uiState.value.copy(isRefreshing = false)
-                    // 后台补算 MD5
-                    launch { syncRepository.computeMd5InBackground() }
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
                         isRefreshing = false,
@@ -257,23 +227,13 @@ class GalleryViewModel(
                 }
             } else {
                 // 纯云端模式
-                val result = galleryRepository.getTimeline()
+                val result = galleryRepository.getTimelineSnapshot()
                 result.fold(
-                    onSuccess = { timelineMonths ->
-                        val groups = timelineMonths.map { tm ->
-                            MonthGroup(
-                                yearMonth = tm.yearMonth,
-                                displayTitle = formatYearMonth(tm.yearMonth),
-                                totalCount = tm.count
-                            )
-                        }
+                    onSuccess = { snapshot ->
                         _uiState.value = _uiState.value.copy(
-                            months = groups,
+                            months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
                             isRefreshing = false
                         )
-                        if (groups.isNotEmpty()) {
-                            loadMonthFiles(groups.first().yearMonth)
-                        }
                     },
                     onFailure = { e ->
                         _uiState.value = _uiState.value.copy(
@@ -305,7 +265,7 @@ class GalleryViewModel(
                 }
                 syncRepository.reconcileFolderSelection(folderSelection.folders)
                 val folders = folderSelection.folders
-                syncRepository.performIncrementalSync(folders).collect { /* consume silently */ }
+                syncRepository.syncLocalMedia(folders)
                 loadFromRoom(folders)
             } catch (e: Exception) {
                 Log.w(TAG, "Quick refresh failed", e)
@@ -313,72 +273,36 @@ class GalleryViewModel(
         }
     }
 
-    fun loadMonthFiles(yearMonth: String, scopedFolders: Set<String>? = null) {
-        val current = _uiState.value
-        if (current.months.any { it.yearMonth == yearMonth && it.isLoaded }) return
-
-        viewModelScope.launch {
-            if (current.isHybridMode && syncRepository != null) {
-                // 从 Room 加载
-                try {
-                    val folderSelection = getFolderSelectionState()
-                    val folders = scopedFolders ?: if (folderSelection.isConfigured) {
-                        folderSelection.folders
-                    } else {
-                        emptySet()
-                    }
-                    val photos = syncRepository.getMonthPhotos(yearMonth, folders)
-                    updateMonthWithPhotos(yearMonth, photos)
-                } catch (e: Exception) {
-                    _uiState.value = _uiState.value.copy(
-                        error = "加载 ${formatYearMonth(yearMonth)} 失败: ${e.message}"
-                    )
-                }
-            } else {
-                // 从云端加载
-                val result = galleryRepository.getMonthFiles(yearMonth)
-                result.fold(
-                    onSuccess = { files ->
-                        val photos = files.map { p ->
-                            UnifiedPhotoItem(
-                                cloudId = p.id,
-                                md5 = p.md5,
-                                fileName = p.fileName,
-                                fileType = p.fileType,
-                                mtime = p.mtime,
-                                width = p.width,
-                                height = p.height,
-                                syncStatus = SyncStatus.CLOUD_ONLY,
-                                backupStatus = BackupStatus.NOT_STARTED
-                            )
-                        }
-                        updateMonthWithPhotos(yearMonth, photos)
-                    },
-                    onFailure = { e ->
-                        _uiState.value = _uiState.value.copy(
-                            error = "加载 ${formatYearMonth(yearMonth)} 失败: ${e.message}"
-                        )
-                    }
+    private fun buildMonthGroups(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
+        return photos
+            .groupBy { it.mtime.take(7) }
+            .toSortedMap(compareByDescending { it })
+            .map { (yearMonth, monthPhotos) ->
+                val days = monthPhotos
+                    .groupBy { extractDate(it.mtime) }
+                    .toSortedMap(compareByDescending { it })
+                    .map { (date, dayPhotos) -> DayGroup(date, dayPhotos) }
+                MonthGroup(
+                    yearMonth = yearMonth,
+                    displayTitle = formatYearMonth(yearMonth),
+                    totalCount = monthPhotos.size,
+                    days = days
                 )
             }
-        }
     }
 
-    private fun updateMonthWithPhotos(yearMonth: String, photos: List<UnifiedPhotoItem>) {
-        val days = photos
-            .groupBy { extractDate(it.mtime) }
-            .toSortedMap(compareByDescending { it })
-            .map { (date, dayPhotos) -> DayGroup(date, dayPhotos) }
-
-        val current = _uiState.value
-        val updatedMonths = current.months.map { month ->
-            if (month.yearMonth == yearMonth) {
-                month.copy(days = days, isLoaded = true)
-            } else {
-                month
-            }
-        }
-        _uiState.value = _uiState.value.copy(months = updatedMonths)
+    private fun PhotoItem.toUnifiedPhotoItem(): UnifiedPhotoItem {
+        return UnifiedPhotoItem(
+            cloudId = id,
+            md5 = md5,
+            fileName = fileName,
+            fileType = fileType,
+            mtime = mtime,
+            width = width,
+            height = height,
+            syncStatus = SyncStatus.CLOUD_ONLY,
+            backupStatus = BackupStatus.NOT_STARTED
+        )
     }
 
     /**
@@ -428,9 +352,9 @@ class GalleryViewModel(
                 val newTotal = updatedDays.sumOf { it.photos.size }
                 month.copy(
                     days = updatedDays,
-                    totalCount = if (month.isLoaded) newTotal else month.totalCount
+                    totalCount = newTotal
                 )
-            }.filter { !it.isLoaded || it.days.isNotEmpty() }
+            }.filter { it.days.isNotEmpty() }
             _uiState.value = _uiState.value.copy(months = updatedMonths)
         }
     }
@@ -495,7 +419,6 @@ class GalleryViewModel(
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> {
         return _uiState.value.months
-            .filter { it.isLoaded }
             .flatMap { month ->
                 month.days.flatMap { it.photos }
             }

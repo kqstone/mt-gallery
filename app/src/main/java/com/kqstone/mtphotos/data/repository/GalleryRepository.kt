@@ -8,6 +8,11 @@ data class TimelineMonth(
     val count: Int
 )
 
+data class TimelineSnapshot(
+    val months: List<TimelineMonth>,
+    val photos: List<PhotoItem>
+)
+
 data class PhotoItem(
     val id: Double,
     val md5: String,
@@ -82,16 +87,21 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getTimeline(): Result<List<TimelineMonth>> {
         return try {
             val response = container.gatewayApi.GatewayControllerGetTimelineData()
-            val list = response["list"] as? List<*> ?: emptyList<Any>()
-            val months = list.mapNotNull { item ->
-                val map = item as? Map<*, *> ?: return@mapNotNull null
-                val year = (map["year"] as? Double)?.toInt() ?: return@mapNotNull null
-                val month = (map["month"] as? Double)?.toInt() ?: return@mapNotNull null
-                val count = (map["count"] as? Double)?.toInt() ?: return@mapNotNull null
-                val ym = "$year-${month.toString().padStart(2, '0')}"
-                TimelineMonth(ym, count)
-            }
-            Result.success(months)
+            Result.success(parseTimelineMonths(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getTimelineSnapshot(): Result<TimelineSnapshot> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerGetTimelineData()
+            Result.success(
+                TimelineSnapshot(
+                    months = parseTimelineMonths(response),
+                    photos = parseTimelinePhotos(response)
+                )
+            )
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -101,34 +111,46 @@ class GalleryRepository(private val container: AppContainer) {
         return try {
             // Get timeline data which includes photo details in "extra"
             val response = container.gatewayApi.GatewayControllerGetTimelineData()
-            val extra = response["extra"] as? Map<*, *> ?: return Result.success(emptyList())
-
-            // Find the matching month key in extra (keys are ISO date strings like "2026-04-30T16:00:00.000Z")
-            val photos = mutableListOf<PhotoItem>()
-            for ((key, value) in extra) {
-                val monthData = value as? Map<*, *> ?: continue
-                val result = monthData["result"] as? List<*> ?: continue
-                for (dayEntry in result) {
-                    val dayMap = dayEntry as? Map<*, *> ?: continue
-                    val day = dayMap["day"] as? String ?: continue
-                    // Filter by yearMonth
-                    if (!day.startsWith(yearMonth)) continue
-                    val photoList = dayMap["list"] as? List<*> ?: continue
-                    for (photo in photoList) {
-                        val photoMap = photo as? Map<*, *> ?: continue
-                        val id = photoMap["id"] as? Double ?: continue
-                        val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                        val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                        val width = photoMap["width"] as? Double ?: 0.0
-                        val height = photoMap["height"] as? Double ?: 0.0
-                        photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
-                    }
-                }
-            }
-            Result.success(photos)
+            Result.success(parseTimelinePhotos(response).filter { it.mtime.startsWith(yearMonth) })
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun parseTimelineMonths(response: Map<String, Any>): List<TimelineMonth> {
+        val list = response["list"] as? List<*> ?: emptyList<Any>()
+        return list.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val year = (map["year"] as? Double)?.toInt() ?: return@mapNotNull null
+            val month = (map["month"] as? Double)?.toInt() ?: return@mapNotNull null
+            val count = (map["count"] as? Double)?.toInt() ?: return@mapNotNull null
+            val ym = "$year-${month.toString().padStart(2, '0')}"
+            TimelineMonth(ym, count)
+        }
+    }
+
+    private fun parseTimelinePhotos(response: Map<String, Any>): List<PhotoItem> {
+        val extra = response["extra"] as? Map<*, *> ?: return emptyList()
+        val photos = mutableListOf<PhotoItem>()
+        for ((_, value) in extra) {
+            val monthData = value as? Map<*, *> ?: continue
+            val result = monthData["result"] as? List<*> ?: continue
+            for (dayEntry in result) {
+                val dayMap = dayEntry as? Map<*, *> ?: continue
+                val day = dayMap["day"] as? String ?: continue
+                val photoList = dayMap["list"] as? List<*> ?: continue
+                for (photo in photoList) {
+                    val photoMap = photo as? Map<*, *> ?: continue
+                    val id = photoMap["id"] as? Double ?: continue
+                    val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
+                    val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
+                    val width = photoMap["width"] as? Double ?: 0.0
+                    val height = photoMap["height"] as? Double ?: 0.0
+                    photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
+                }
+            }
+        }
+        return photos
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {

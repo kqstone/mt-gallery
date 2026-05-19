@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -31,7 +30,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -39,7 +37,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -221,12 +218,10 @@ private fun PhotoGrid(
             val items = mutableListOf<GridItem>()
             for (month in months) {
                 items.add(GridItem("month", "month_${month.yearMonth}", monthTitle = month.displayTitle, monthCount = month.totalCount))
-                if (month.isLoaded) {
-                    for (day in month.days) {
-                        items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
-                        for (photo in day.photos) {
-                            items.add(GridItem("photo", "photo_${photo.uniqueKey}", photo = photo))
-                        }
+                for (day in month.days) {
+                    items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
+                    for (photo in day.photos) {
+                        items.add(GridItem("photo", "photo_${photo.uniqueKey}", photo = photo))
                     }
                 }
             }
@@ -235,7 +230,6 @@ private fun PhotoGrid(
     }
 
     val gridState = rememberLazyGridState()
-    AutoLoadVisibleMonths(gridState, months, viewModel)
 
     // Pinch-to-zoom state via Android MotionEvent
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
@@ -350,30 +344,6 @@ private fun PhotoGrid(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AutoLoadVisibleMonths(
-    gridState: LazyGridState,
-    months: List<MonthGroup>,
-    viewModel: GalleryViewModel
-) {
-    val loadedMonths = months.filter { it.isLoaded }.map { it.yearMonth }.toSet()
-
-    LaunchedEffect(gridState, months) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo }
-            .collect { visibleItems ->
-                for (item in visibleItems) {
-                    val key = item.key as? String ?: continue
-                    if (key.startsWith("month_")) {
-                        val yearMonth = key.removePrefix("month_")
-                        if (yearMonth !in loadedMonths) {
-                            viewModel.loadMonthFiles(yearMonth)
-                        }
-                    }
-                }
-            }
     }
 }
 

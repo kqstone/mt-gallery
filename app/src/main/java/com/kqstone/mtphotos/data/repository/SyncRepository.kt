@@ -285,35 +285,51 @@ class SyncRepository(
         }
     }
 
-    private suspend fun fetchAllCloudPhotos(): List<MediaEntity> {
-        val result = mutableListOf<MediaEntity>()
-        val timelineResult = galleryRepository.getTimeline()
-        val months = timelineResult.getOrElse { throw it }
-
-        for (month in months) {
-            val filesResult = galleryRepository.getMonthFiles(month.yearMonth)
-            val files = filesResult.getOrElse { throw it }
-            for (photo in files) {
-                result.add(
-                    MediaEntity(
-                        cloudId = photo.id,
-                        md5 = photo.md5,
-                        cloudMd5 = photo.md5,
-                        fileName = photo.fileName,
-                        fileType = photo.fileType,
-                        mtime = photo.mtime,
-                        width = photo.width.toInt(),
-                        height = photo.height.toInt(),
-                        syncStatus = SyncStatus.CLOUD_ONLY,
-                        backupStatus = BackupStatus.NOT_STARTED
-                    )
-                )
+    suspend fun refreshCloudState() = withContext(Dispatchers.IO) {
+        try {
+            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
+            val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
+            if (cloudDeleteChanges.changed > 0) {
+                Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
             }
+            upsertCloudPhotos(cloudPhotos)
+            Log.d(TAG, "Cloud state refresh complete: ${cloudPhotos.size} files")
+        } catch (e: Exception) {
+            Log.e(TAG, "Cloud state refresh failed", e)
+            throw e
         }
-        if (months.sumOf { it.count } > 0 && result.isEmpty()) {
+    }
+
+    private suspend fun fetchAllCloudPhotos(): List<MediaEntity> {
+        val snapshot = galleryRepository.getTimelineSnapshot().getOrElse { throw it }
+        val result = snapshot.photos.map { photo ->
+            MediaEntity(
+                cloudId = photo.id,
+                md5 = photo.md5,
+                cloudMd5 = photo.md5,
+                fileName = photo.fileName,
+                fileType = photo.fileType,
+                mtime = photo.mtime,
+                width = photo.width.toInt(),
+                height = photo.height.toInt(),
+                syncStatus = SyncStatus.CLOUD_ONLY,
+                backupStatus = BackupStatus.NOT_STARTED
+            )
+        }
+        if (snapshot.months.sumOf { it.count } > 0 && result.isEmpty()) {
             throw IllegalStateException("Cloud timeline has items, but no cloud file details were parsed")
         }
         return result
+    }
+
+    suspend fun getAllPhotos(localFolders: Set<String>? = null): List<UnifiedPhotoItem> {
+        val entities = when {
+            localFolders == null -> mediaDao.getAllMedia()
+            localFolders.isEmpty() -> mediaDao.getAllCloudMedia()
+            else -> mediaDao.getAllVisibleMediaByFolders(localFolders.toList())
+        }
+        return entities.map { it.toUnifiedPhotoItem(localFolders) }
     }
 
     private fun normalizeCloudPhotos(cloudPhotos: List<MediaEntity>): List<MediaEntity> {
