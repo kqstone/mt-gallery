@@ -145,17 +145,20 @@ interface MediaDao {
     fun getMediaBySyncStatusFlow(status: SyncStatus): Flow<List<MediaEntity>>
 
     /** 获取所有仅本地的文件（待备份） */
-    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus != 'UPLOADING' ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') ORDER BY mtime DESC")
     suspend fun getPendingBackupMedia(): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
         WHERE syncStatus = 'LOCAL_ONLY'
-        AND backupStatus != 'UPLOADING'
+        AND backupStatus IN ('NOT_STARTED', 'FAILED')
         AND localFolderPath IN (:folderPaths)
         ORDER BY mtime DESC
     """)
     suspend fun getPendingBackupMediaByFolders(folderPaths: List<String>): List<MediaEntity>
+
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL")
+    suspend fun getCloudBoundMedia(): List<MediaEntity>
 
     /** 获取已备份但本地原图未清理的文件 */
     @Query("""
@@ -249,6 +252,9 @@ interface MediaDao {
     /** 批量清除本地文件字段（SYNCED → CLOUD_ONLY） */
     @Query("UPDATE media SET syncStatus = 'CLOUD_ONLY', localUri = NULL, localPath = NULL, localMediaStoreId = NULL, updatedAt = :now WHERE id IN (:ids)")
     suspend fun clearLocalFields(ids: List<Long>, now: Long = System.currentTimeMillis())
+
+    @Query("UPDATE media SET syncStatus = 'LOCAL_ONLY', backupStatus = 'REMOTE_DELETED', cloudId = NULL, cloudMd5 = NULL, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun clearCloudFieldsAsRemoteDeleted(ids: List<Long>, now: Long = System.currentTimeMillis())
 }
 
 /**

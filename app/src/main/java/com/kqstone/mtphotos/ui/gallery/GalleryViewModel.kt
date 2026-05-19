@@ -260,10 +260,8 @@ class GalleryViewModel(
                 val result = galleryRepository.getTimeline()
                 result.fold(
                     onSuccess = { timelineMonths ->
-                        val existingLoaded = _uiState.value.months.filter { it.isLoaded }
                         val groups = timelineMonths.map { tm ->
-                            val existing = existingLoaded.find { it.yearMonth == tm.yearMonth }
-                            existing ?: MonthGroup(
+                            MonthGroup(
                                 yearMonth = tm.yearMonth,
                                 displayTitle = formatYearMonth(tm.yearMonth),
                                 totalCount = tm.count
@@ -273,6 +271,9 @@ class GalleryViewModel(
                             months = groups,
                             isRefreshing = false
                         )
+                        if (groups.isNotEmpty()) {
+                            loadMonthFiles(groups.first().yearMonth)
+                        }
                     },
                     onFailure = { e ->
                         _uiState.value = _uiState.value.copy(

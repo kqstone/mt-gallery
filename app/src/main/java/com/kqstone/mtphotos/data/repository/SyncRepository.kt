@@ -39,8 +39,13 @@ class SyncRepository(
             val localMedia = localScanner.scanMedia(localFolders, computeMd5 = true)
             Log.d(TAG, "Local scan found ${localMedia.size} files")
 
-            val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
+            val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
+            if (cloudDeleteChanges.changed > 0) {
+                Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
+            }
 
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
             val mergedLocal = prepareLocalEntities(localMedia, cloudMd5Map = cloudMd5Map)
@@ -69,8 +74,13 @@ class SyncRepository(
             Log.d(TAG, "Starting initial sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
+            val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
+            if (cloudDeleteChanges.changed > 0) {
+                Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
+            }
             emit(SyncProgress(0, 0, "cloud_indexed", cloudPhotos.size))
 
             val matchedMd5s = mutableSetOf<String>()
@@ -127,8 +137,13 @@ class SyncRepository(
             Log.d(TAG, "Starting incremental sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
+            val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
+            if (cloudDeleteChanges.changed > 0) {
+                Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
+            }
 
             upsertCloudPhotos(cloudPhotos)
             emit(SyncProgress(0, 0, "cloud_done", cloudPhotos.size))
@@ -172,6 +187,13 @@ class SyncRepository(
     }
 
     data class SyncResult(val newCount: Int, val removedCount: Int)
+
+    private data class CloudDeleteChanges(
+        val deletedCloudOnly: Int = 0,
+        val localRetained: Int = 0
+    ) {
+        val changed: Int get() = deletedCloudOnly + localRetained
+    }
 
     suspend fun syncLocalMedia(folders: Set<String>? = null): SyncResult = withContext(Dispatchers.IO) {
         try {
@@ -249,8 +271,13 @@ class SyncRepository(
 
     suspend fun syncCloudOnly() = withContext(Dispatchers.IO) {
         try {
-            val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
+            val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud-only sync: ${cloudPhotos.size} files")
+            if (cloudDeleteChanges.changed > 0) {
+                Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
+            }
             upsertCloudPhotos(cloudPhotos)
         } catch (e: Exception) {
             Log.e(TAG, "Cloud-only sync failed", e)
@@ -261,11 +288,11 @@ class SyncRepository(
     private suspend fun fetchAllCloudPhotos(): List<MediaEntity> {
         val result = mutableListOf<MediaEntity>()
         val timelineResult = galleryRepository.getTimeline()
-        val months = timelineResult.getOrNull() ?: return result
+        val months = timelineResult.getOrElse { throw it }
 
         for (month in months) {
             val filesResult = galleryRepository.getMonthFiles(month.yearMonth)
-            val files = filesResult.getOrNull() ?: continue
+            val files = filesResult.getOrElse { throw it }
             for (photo in files) {
                 result.add(
                     MediaEntity(
@@ -283,6 +310,9 @@ class SyncRepository(
                 )
             }
         }
+        if (months.sumOf { it.count } > 0 && result.isEmpty()) {
+            throw IllegalStateException("Cloud timeline has items, but no cloud file details were parsed")
+        }
         return result
     }
 
@@ -290,6 +320,46 @@ class SyncRepository(
         return cloudPhotos
             .filter { it.md5.isNotEmpty() }
             .distinctBy { it.md5 }
+    }
+
+    private suspend fun reconcileCloudDeletions(cloudPhotos: List<MediaEntity>): CloudDeleteChanges {
+        val currentCloudIds = cloudPhotos.mapNotNull { it.cloudId }.toSet()
+        val currentMd5s = cloudPhotos.map { it.md5 }.filter { it.isNotEmpty() }.toSet()
+        val cloudBound = mediaDao.getCloudBoundMedia()
+        if (cloudBound.isEmpty()) return CloudDeleteChanges()
+
+        val removed = cloudBound.filter { entity ->
+            val cloudIdMissing = entity.cloudId?.let { it !in currentCloudIds } ?: false
+            val md5Missing = entity.cloudId == null &&
+                (entity.cloudMd5 ?: entity.md5).let { it.isNotEmpty() && it !in currentMd5s }
+            cloudIdMissing || md5Missing
+        }
+        if (removed.isEmpty()) return CloudDeleteChanges()
+
+        val deleteIds = mutableListOf<Long>()
+        val retainLocalIds = mutableListOf<Long>()
+
+        for (entity in removed) {
+            if (entity.hasLocalBinding()) {
+                retainLocalIds.add(entity.id)
+            } else {
+                deleteIds.add(entity.id)
+            }
+        }
+
+        if (deleteIds.isNotEmpty()) {
+            val entities = mediaDao.findByIds(deleteIds)
+            deleteThumbCaches(entities)
+            mediaDao.deleteByIds(deleteIds)
+        }
+        if (retainLocalIds.isNotEmpty()) {
+            mediaDao.clearCloudFieldsAsRemoteDeleted(retainLocalIds)
+        }
+
+        return CloudDeleteChanges(
+            deletedCloudOnly = deleteIds.size,
+            localRetained = retainLocalIds.size
+        )
     }
 
     private suspend fun prepareLocalEntities(
@@ -427,6 +497,7 @@ class SyncRepository(
             backupStatus = when {
                 hasLocal && hasCloud -> BackupStatus.COMPLETED
                 hasLocal && existing?.backupStatus == BackupStatus.UPLOADING -> BackupStatus.UPLOADING
+                hasLocal && existing?.backupStatus == BackupStatus.REMOTE_DELETED -> BackupStatus.REMOTE_DELETED
                 hasLocal -> BackupStatus.NOT_STARTED
                 else -> existing?.backupStatus ?: BackupStatus.NOT_STARTED
             },
@@ -445,6 +516,17 @@ class SyncRepository(
 
     private fun MediaEntity?.hasCloudBinding(): Boolean {
         return this?.cloudId != null || !this?.cloudMd5.isNullOrEmpty()
+    }
+
+    private fun deleteThumbCaches(entities: List<MediaEntity>) {
+        for (entity in entities) {
+            entity.thumbCachePath?.let { path ->
+                try {
+                    File(path).delete()
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     suspend fun reconcileFolderSelection(localFolders: Set<String>?) = withContext(Dispatchers.IO) {

@@ -19,3 +19,4 @@ nul
 keystore.properties
 app/release-keystore.jks
 .gradle-user-home/*
+AGENTS.md

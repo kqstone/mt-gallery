@@ -27,7 +27,9 @@ enum class BackupStatus {
     /** 备份完成 */
     COMPLETED,
     /** 备份失败 */
-    FAILED
+    FAILED,
+    /** Cloud copy was deleted elsewhere; keep local copy without auto re-uploading. */
+    REMOTE_DELETED
 }
 
 /**
