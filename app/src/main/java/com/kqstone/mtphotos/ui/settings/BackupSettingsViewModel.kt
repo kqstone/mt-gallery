@@ -20,8 +20,16 @@ import java.io.File
 
 private const val TAG = "BackupSettingsVM"
 private const val DEFAULT_BACKUP_DEST_ID = 1L
+private const val ROOT_BACKUP_DEST_PATH = "/"
+private const val ROOT_BACKUP_DEST_LABEL = "/"
 private val DEFAULT_BACKUP_DEST_LABEL = Build.MODEL
-private val DEFAULT_BACKUP_DEST_PATH = "/${Build.MODEL}"
+private val DEFAULT_BACKUP_DEST_PATH = defaultBackupDestPath()
+
+private fun defaultBackupDestPath(username: String = ""): String {
+    val cleanUser = username.trim().trim('/')
+    val cleanModel = Build.MODEL.trim().trim('/').ifEmpty { "Android" }
+    return if (cleanUser.isNotEmpty()) "/$cleanUser/$cleanModel" else "/$cleanModel"
+}
 
 data class BackupDestinationBreadcrumb(
     val id: Long,
@@ -388,7 +396,7 @@ class BackupSettingsViewModel(
                 backupDestinationBreadcrumbs = trimmed
             )
             try {
-                val nodes = if (parent.id == DEFAULT_BACKUP_DEST_ID && parent.path == DEFAULT_BACKUP_DEST_PATH) {
+                val nodes = if (isRootDestination(parent.id, parent.path)) {
                     backupDestinationRepository.getRootDestinations()
                 } else {
                     backupDestinationRepository.getSubDestinations(parent.id, parent.path)
@@ -419,8 +427,8 @@ class BackupSettingsViewModel(
     fun selectRootBackupDestination() {
         saveBackupDestination(
             id = DEFAULT_BACKUP_DEST_ID,
-            label = DEFAULT_BACKUP_DEST_LABEL,
-            path = DEFAULT_BACKUP_DEST_PATH
+            label = ROOT_BACKUP_DEST_LABEL,
+            path = ROOT_BACKUP_DEST_PATH
         )
     }
 
@@ -430,7 +438,7 @@ class BackupSettingsViewModel(
             _uiState.value = _uiState.value.copy(isCreatingFolder = true, backupDestinationError = null)
             try {
                 backupDestinationRepository.createFolder(parent.id, name)
-                val nodes = if (parent.id == DEFAULT_BACKUP_DEST_ID && parent.path == DEFAULT_BACKUP_DEST_PATH) {
+                val nodes = if (isRootDestination(parent.id, parent.path)) {
                     backupDestinationRepository.getRootDestinations()
                 } else {
                     backupDestinationRepository.getSubDestinations(parent.id, parent.path)
@@ -475,39 +483,59 @@ class BackupSettingsViewModel(
     }
 
     private suspend fun ensureDeviceFolder(rootNodes: List<BackupDestinationNode>) {
-        val currentId = prefsManager.getBackupDestinationIdSync()
-        if (currentId != DEFAULT_BACKUP_DEST_ID) return
+        if (prefsManager.isBackupDestinationConfiguredSync()) return
 
         val modelName = Build.MODEL
-        val existing = rootNodes.find { it.name == modelName }
+        val userRoot = findUserRoot(rootNodes) ?: run {
+            Log.w(TAG, "No user root directory found for default backup destination")
+            return
+        }
+
+        val children = backupDestinationRepository.getSubDestinations(userRoot.id, userRoot.path)
+        val existing = children.find { it.name == modelName }
         if (existing != null) {
             saveBackupDestination(existing.id, existing.name, existing.path)
             return
         }
 
         try {
-            backupDestinationRepository.createFolder(DEFAULT_BACKUP_DEST_ID, modelName)
-            val refreshed = backupDestinationRepository.getRootDestinations()
+            backupDestinationRepository.createFolder(userRoot.id, modelName)
+            val refreshed = backupDestinationRepository.getSubDestinations(userRoot.id, userRoot.path)
             val created = refreshed.find { it.name == modelName }
             if (created != null) {
                 saveBackupDestination(created.id, created.name, created.path)
-                _uiState.value = _uiState.value.copy(backupDestinationNodes = refreshed)
             }
         } catch (e: Exception) {
             Log.e(TAG, "ensureDeviceFolder failed", e)
         }
     }
 
+    private fun findUserRoot(rootNodes: List<BackupDestinationNode>): BackupDestinationNode? {
+        val username = prefsManager.getUsernameSync().trim()
+        if (username.isNotEmpty()) {
+            rootNodes.firstOrNull { node ->
+                node.name.equals(username, ignoreCase = true) ||
+                    node.path.trim('/').equals(username, ignoreCase = true) ||
+                    node.path.trim('/').endsWith("/$username", ignoreCase = true)
+            }?.let { return it }
+        }
+        return rootNodes.singleOrNull()
+    }
+
     private fun rootBreadcrumb(): BackupDestinationBreadcrumb {
         return BackupDestinationBreadcrumb(
             id = DEFAULT_BACKUP_DEST_ID,
-            label = DEFAULT_BACKUP_DEST_LABEL,
-            path = DEFAULT_BACKUP_DEST_PATH
+            label = ROOT_BACKUP_DEST_LABEL,
+            path = ROOT_BACKUP_DEST_PATH
         )
     }
 
     private fun BackupDestinationNode.toBreadcrumb(): BackupDestinationBreadcrumb {
         return BackupDestinationBreadcrumb(id = id, label = name, path = path)
+    }
+
+    private fun isRootDestination(id: Long, path: String): Boolean {
+        return id == DEFAULT_BACKUP_DEST_ID && path == ROOT_BACKUP_DEST_PATH
     }
 
     class Factory(

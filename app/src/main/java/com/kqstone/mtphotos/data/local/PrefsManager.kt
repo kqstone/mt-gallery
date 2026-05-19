@@ -65,7 +65,12 @@ class PrefsManager(val context: Context) {
         it[KEY_BACKUP_DEST_LABEL] ?: android.os.Build.MODEL
     }
     val backupDestinationPath: Flow<String> = context.dataStore.data.map {
-        it[KEY_BACKUP_DEST_PATH] ?: "/${android.os.Build.MODEL}"
+        it[KEY_BACKUP_DEST_PATH] ?: defaultBackupDestinationPath(it[KEY_USERNAME])
+    }
+    val isBackupDestinationConfigured: Flow<Boolean> = context.dataStore.data.map {
+        it[KEY_BACKUP_DEST_ID] != null ||
+            it[KEY_BACKUP_DEST_LABEL] != null ||
+            it[KEY_BACKUP_DEST_PATH] != null
     }
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
@@ -101,6 +106,7 @@ class PrefsManager(val context: Context) {
     fun getBackupDestinationIdSync(): Long = runBlocking { backupDestinationId.first() }
     fun getBackupDestinationLabelSync(): String = runBlocking { backupDestinationLabel.first() }
     fun getBackupDestinationPathSync(): String = runBlocking { backupDestinationPath.first() }
+    fun isBackupDestinationConfiguredSync(): Boolean = runBlocking { isBackupDestinationConfigured.first() }
     fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
     fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
@@ -215,5 +221,14 @@ class PrefsManager(val context: Context) {
             }
         }
     }
-}
 
+    private fun defaultBackupDestinationPath(username: String?): String {
+        val cleanUser = username.orEmpty().trim().trim('/')
+        val cleanModel = android.os.Build.MODEL.trim().trim('/').ifEmpty { "Android" }
+        return if (cleanUser.isNotEmpty()) {
+            "/$cleanUser/$cleanModel"
+        } else {
+            "/$cleanModel"
+        }
+    }
+}
