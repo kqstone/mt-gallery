@@ -332,6 +332,23 @@ class SyncRepository(
         return entities.map { it.toUnifiedPhotoItem(localFolders) }
     }
 
+    suspend fun hydrateCloudPhotos(
+        photos: List<PhotoItem>,
+        localFolders: Set<String>? = null
+    ): List<UnifiedPhotoItem> = withContext(Dispatchers.IO) {
+        if (photos.isEmpty()) return@withContext emptyList()
+
+        val byCloudId = mediaDao.findByCloudIds(photos.map { it.id }.distinct())
+            .associateBy { it.cloudId }
+        val byMd5 = mediaDao.findByMd5List(photos.map { it.md5 }.filter { it.isNotEmpty() }.distinct())
+            .associateBy { it.md5.ifEmpty { it.cloudMd5 ?: "" } }
+
+        photos.map { photo ->
+            val localEntity = byCloudId[photo.id] ?: byMd5[photo.md5]
+            localEntity?.toUnifiedPhotoItem(localFolders) ?: photo.toCloudOnlyUnifiedPhotoItem()
+        }
+    }
+
     private fun normalizeCloudPhotos(cloudPhotos: List<MediaEntity>): List<MediaEntity> {
         return cloudPhotos
             .filter { it.md5.isNotEmpty() }
@@ -811,5 +828,19 @@ fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPh
         thumbCachePath = thumbCachePath,
         isStorageOptimized = if (localVisible) isStorageOptimized else true,
         fileSize = fileSize
+    )
+}
+
+fun PhotoItem.toCloudOnlyUnifiedPhotoItem(): UnifiedPhotoItem {
+    return UnifiedPhotoItem(
+        cloudId = id,
+        md5 = md5,
+        fileName = fileName,
+        fileType = fileType,
+        mtime = mtime,
+        width = width,
+        height = height,
+        syncStatus = SyncStatus.CLOUD_ONLY,
+        backupStatus = BackupStatus.NOT_STARTED
     )
 }

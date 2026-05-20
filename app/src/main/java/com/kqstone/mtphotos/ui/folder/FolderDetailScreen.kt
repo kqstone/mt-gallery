@@ -148,10 +148,9 @@ fun FolderDetailScreen(
                         items = uiState.photos,
                         key = { it.id }
                     ) { photo ->
-                        val thumbUrl = if (photo.isVideo()) viewModel.getVideoThumbUrl(photo.md5) else viewModel.getThumbUrl(photo.md5, photo.id)
                         PhotoThumbnail(
                             photo = photo,
-                            thumbUrl = thumbUrl,
+                            thumbUrl = viewModel.getThumbUrl(photo),
                             onClick = {
                                 if (isSelectionMode) {
                                     viewModel.selectionManager.toggleSelection(photo.id)

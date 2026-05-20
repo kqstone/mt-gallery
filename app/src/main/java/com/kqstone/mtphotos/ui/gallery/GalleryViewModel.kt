@@ -18,6 +18,7 @@ import com.kqstone.mtphotos.data.repository.SearchRequest
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.data.repository.SyncRepository
+import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -294,18 +295,20 @@ class GalleryViewModel(
             }
     }
 
-    private fun PhotoItem.toUnifiedPhotoItem(): UnifiedPhotoItem {
-        return UnifiedPhotoItem(
-            cloudId = id,
-            md5 = md5,
-            fileName = fileName,
-            fileType = fileType,
-            mtime = mtime,
-            width = width,
-            height = height,
-            syncStatus = SyncStatus.CLOUD_ONLY,
-            backupStatus = BackupStatus.NOT_STARTED
+    private fun buildOrderedSearchGroup(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
+        if (photos.isEmpty()) return emptyList()
+        return listOf(
+            MonthGroup(
+                yearMonth = "search",
+                displayTitle = "搜索结果",
+                totalCount = photos.size,
+                days = listOf(DayGroup("搜索结果", photos))
+            )
         )
+    }
+
+    private fun PhotoItem.toUnifiedPhotoItem(): UnifiedPhotoItem {
+        return toCloudOnlyUnifiedPhotoItem()
     }
 
     fun triggerFullSync(localFolders: Set<String>? = null) {
@@ -519,8 +522,15 @@ class GalleryViewModel(
             SearchRequest(query = query, type = state.searchType, filters = filters)
         ).fold(
             onSuccess = { photos ->
+                val unifiedPhotos = syncRepository?.hydrateCloudPhotos(photos)
+                    ?: photos.map { it.toUnifiedPhotoItem() }
+                val monthGroups = if (state.searchType == SearchType.VISUAL_TEXT) {
+                    buildOrderedSearchGroup(unifiedPhotos)
+                } else {
+                    buildMonthGroups(unifiedPhotos)
+                }
                 _uiState.value = _uiState.value.copy(
-                    months = buildMonthGroups(photos.map { it.toUnifiedPhotoItem() }),
+                    months = monthGroups,
                     isSearchMode = true,
                     isSearching = false,
                     isRefreshing = false,

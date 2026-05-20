@@ -3,11 +3,13 @@ package com.kqstone.mtphotos.ui.folder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.SyncRepository
+import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -21,7 +23,10 @@ data class FolderDetailUiState(
     val columnCount: Int = 4
 )
 
-class FolderDetailViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
+class FolderDetailViewModel(
+    private val galleryRepository: GalleryRepository,
+    private val syncRepository: SyncRepository? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FolderDetailUiState())
     val uiState: StateFlow<FolderDetailUiState> = _uiState
@@ -40,14 +45,9 @@ class FolderDetailViewModel(private val galleryRepository: GalleryRepository) : 
 
             detailResult.fold(
                 onSuccess = { detail ->
-                    val photos = (filesResult.getOrNull() ?: emptyList()).map { p ->
-                        UnifiedPhotoItem(
-                            cloudId = p.id, md5 = p.md5, fileName = p.fileName,
-                            fileType = p.fileType, mtime = p.mtime,
-                            width = p.width, height = p.height,
-                            syncStatus = SyncStatus.CLOUD_ONLY
-                        )
-                    }
+                    val cloudPhotos = filesResult.getOrNull() ?: emptyList()
+                    val photos = syncRepository?.hydrateCloudPhotos(cloudPhotos)
+                        ?: cloudPhotos.map { it.toCloudOnlyUnifiedPhotoItem() }
                     _uiState.value = FolderDetailUiState(
                         folderName = detail.name,
                         subfolders = detail.subfolders,
@@ -73,6 +73,29 @@ class FolderDetailViewModel(private val galleryRepository: GalleryRepository) : 
         return galleryRepository.getThumbUrlByMd5(md5)
     }
 
+    fun getThumbUrl(photo: UnifiedPhotoItem): String {
+        photo.thumbCachePath?.let {
+            if (it.isNotEmpty() && isLocalFileValid(it)) return "file://$it"
+        }
+        photo.localUri?.let {
+            if (it.isNotEmpty() && !photo.isStorageOptimized) return it
+        }
+        return if (photo.isVideo()) {
+            galleryRepository.getVideoThumbUrl(photo.md5)
+        } else {
+            galleryRepository.getThumbUrl(photo.md5, photo.id)
+        }
+    }
+
+    private fun isLocalFileValid(path: String): Boolean {
+        return try {
+            val file = File(path)
+            file.exists() && file.length() > 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> = _uiState.value.photos
 
     fun updateColumnCount(count: Int) {
@@ -91,10 +114,13 @@ class FolderDetailViewModel(private val galleryRepository: GalleryRepository) : 
         }
     }
 
-    class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val galleryRepository: GalleryRepository,
+        private val syncRepository: SyncRepository? = null
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return FolderDetailViewModel(galleryRepository) as T
+            return FolderDetailViewModel(galleryRepository, syncRepository) as T
         }
     }
 }

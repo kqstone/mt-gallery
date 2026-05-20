@@ -67,13 +67,13 @@ fun MainScreen(
         factory = FolderViewModel.Factory(container.galleryRepository)
     )
     val folderDetailViewModel: FolderDetailViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = FolderDetailViewModel.Factory(container.galleryRepository)
+        factory = FolderDetailViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
     val discoveryViewModel: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = DiscoveryViewModel.Factory(container.galleryRepository)
     )
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = CategoryFileListViewModel.Factory(container.galleryRepository)
+        factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
 
     Scaffold(
