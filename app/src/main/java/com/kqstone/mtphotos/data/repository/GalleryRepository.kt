@@ -397,6 +397,12 @@ class GalleryRepository(private val container: AppContainer) {
         return "${urlBase()}/gateway/h220/$md5${urlSuffix()}"
     }
 
+    fun getPortraitUrl(personId: String, cover: Double): String {
+        val version = cover.toInt()
+        val authQuery = urlSuffix().removePrefix("?")
+        return "${urlBase()}/gateway/portrait/$personId?v=$version&$authQuery"
+    }
+
     fun getFullImageUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}"
     }

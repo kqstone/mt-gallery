@@ -98,7 +98,13 @@ fun DiscoveryScreen(
                                 PeopleSection(
                                     people = uiState.people,
                                     onItemClick = { onPersonClick(it.id) },
-                                    thumbUrlProvider = { md5, fileId -> viewModel.getThumbUrl(md5, fileId) }
+                                    portraitUrlProvider = { person ->
+                                        if (person.coverFileId > 0) {
+                                            viewModel.getPortraitUrl(person.id, person.coverFileId)
+                                        } else {
+                                            null
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -148,7 +154,7 @@ fun DiscoveryScreen(
 private fun PeopleSection(
     people: List<PersonItem>,
     onItemClick: (PersonItem) -> Unit,
-    thumbUrlProvider: (String, Double) -> String
+    portraitUrlProvider: (PersonItem) -> String?
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
@@ -167,9 +173,7 @@ private fun PeopleSection(
                 DiscoveryCard(
                     name = person.name,
                     count = person.count,
-                    thumbUrl = if (person.coverMd5.isNotEmpty()) {
-                        thumbUrlProvider(person.coverMd5, person.coverFileId)
-                    } else null,
+                    thumbUrl = portraitUrlProvider(person),
                     onClick = { onItemClick(person) }
                 )
             }
