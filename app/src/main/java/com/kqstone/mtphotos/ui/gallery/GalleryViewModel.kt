@@ -10,12 +10,20 @@ import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.LocationItem
+import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.repository.SearchFilters
+import com.kqstone.mtphotos.data.repository.SearchRequest
+import com.kqstone.mtphotos.data.repository.SearchTipItem
+import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.data.repository.SyncRepository
+import java.io.File
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 
 private const val TAG = "GalleryVM"
 
@@ -37,12 +45,19 @@ data class GalleryUiState(
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val columnCount: Int = 4,
-    /** true 时使用本地+云端合并模式，false 时使用纯云端模式 */
     val isHybridMode: Boolean = false,
-    /** 是否正在执行首次同步 */
     val isSyncing: Boolean = false,
-    /** 扫描进度文字 */
-    val syncProgressText: String? = null
+    val syncProgressText: String? = null,
+    val searchQuery: String = "",
+    val searchType: SearchType = SearchType.AUTO,
+    val searchFilters: SearchFilters = SearchFilters(),
+    val searchSuggestions: List<SearchTipItem> = emptyList(),
+    val searchPeople: List<PersonItem> = emptyList(),
+    val searchLocations: List<LocationItem> = emptyList(),
+    val isLoadingSearchFilters: Boolean = false,
+    val isSearchMode: Boolean = false,
+    val isSearching: Boolean = false,
+    val isClipAvailable: Boolean = true
 )
 
 class GalleryViewModel(
@@ -54,6 +69,9 @@ class GalleryViewModel(
     private val _uiState = MutableStateFlow(GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState
 
+    private var searchTipsJob: Job? = null
+    private var filterCandidatesLoaded = false
+
     val selectionManager = SelectionManager(
         scope = viewModelScope,
         onDelete = { ids -> galleryRepository.deleteFiles(ids) },
@@ -61,23 +79,29 @@ class GalleryViewModel(
     )
 
     init {
+        refreshClipAvailability()
         loadTimeline()
     }
 
-    /**
-     * 获取用户选择的文件夹路径
-     */
+    private fun refreshClipAvailability() {
+        viewModelScope.launch {
+            galleryRepository.isClipSearchAvailable().onSuccess { enabled ->
+                _uiState.value = _uiState.value.copy(isClipAvailable = enabled)
+            }
+        }
+    }
+
     private fun getFolderSelectionState(): BackupFolderSelection {
         return prefsManager?.getBackupFolderSelectionSync() ?: BackupFolderSelection(null, false)
     }
 
-    /**
-     * 加载时间线数据。
-     * 如果 SyncRepository 可用且有本地数据，使用合并模式。
-     * 否则使用增量同步或纯云端模式。
-     */
     fun loadTimeline() {
-        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        _uiState.value = _uiState.value.copy(
+            isLoading = true,
+            error = null,
+            isSearchMode = false,
+            isSearching = false
+        )
         viewModelScope.launch {
             if (syncRepository != null) {
                 try {
@@ -87,23 +111,18 @@ class GalleryViewModel(
                     }
                     val folderSelection = getFolderSelectionState()
                     if (prefsManager != null && !folderSelection.isConfigured) {
-                        Log.w(
-                            TAG,
-                            "Folder setup is marked complete but backup folder selection is missing, fallback to cloud-only"
-                        )
+                        Log.w(TAG, "Folder setup complete but folder selection missing, fallback to cloud-only")
                         loadFromCloud()
                         return@launch
                     }
-                    val hasData = syncRepository.hasData()
-                    if (hasData) {
+                    if (syncRepository.hasData()) {
                         syncRepository.reconcileFolderSelection(folderSelection.folders)
                         loadFromRoom(folderSelection.folders)
                         return@launch
                     }
-                    // 首次加载：使用渐进式同步
                     triggerInitialSync(folderSelection.folders)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Hybrid load failed, falling back to cloud", e)
+                    Log.e(TAG, "Hybrid load failed, fallback to cloud", e)
                     loadFromCloud()
                 }
             } else {
@@ -112,12 +131,13 @@ class GalleryViewModel(
         }
     }
 
-    /**
-     * 触发渐进式同步 — 边扫描边显示
-     */
     private fun triggerInitialSync(folders: Set<String>?) {
         if (syncRepository == null) return
-        _uiState.value = _uiState.value.copy(isSyncing = true, isLoading = false, syncProgressText = "正在加载云端数据...")
+        _uiState.value = _uiState.value.copy(
+            isSyncing = true,
+            isLoading = false,
+            syncProgressText = "正在加载云端数据..."
+        )
 
         viewModelScope.launch {
             try {
@@ -127,30 +147,27 @@ class GalleryViewModel(
                             _uiState.value = _uiState.value.copy(syncProgressText = "正在加载云端数据...")
                         }
                         "cloud_indexed" -> {
-                            _uiState.value = _uiState.value.copy(syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地...")
-                            // 云端数据已写入 Room，先加载显示
+                            _uiState.value = _uiState.value.copy(
+                                syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地..."
+                            )
                         }
                         "scanning" -> {
-                            _uiState.value = _uiState.value.copy(syncProgressText = "已扫描 ${progress.scanned} 个本地文件...")
-                            // 每批次刷新 UI
+                            _uiState.value = _uiState.value.copy(
+                                syncProgressText = "已扫描 ${progress.scanned} 个本地文件..."
+                            )
                         }
                         "done" -> {
-                            _uiState.value = _uiState.value.copy(
-                                isSyncing = false,
-                                syncProgressText = null
-                            )
+                            _uiState.value = _uiState.value.copy(isSyncing = false, syncProgressText = null)
                             loadFromRoom(folders)
-                            // 后台补算 MD5
                             launch {
                                 syncRepository.computeMd5InBackground()
-                                // MD5 计算完后刷新一次
                                 loadFromRoom(folders)
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Incremental sync failed", e)
+                Log.e(TAG, "Initial sync failed", e)
                 _uiState.value = _uiState.value.copy(
                     isSyncing = false,
                     syncProgressText = null,
@@ -160,31 +177,21 @@ class GalleryViewModel(
         }
     }
 
-    /**
-     * 从 Room DB 加载时间线（混合模式）
-     */
     private suspend fun loadFromRoom(folders: Set<String>?) {
         try {
-            val photos = syncRepository!!.getAllPhotos(folders)
+            val photos = syncRepository?.getAllPhotos(folders).orEmpty()
             _uiState.value = _uiState.value.copy(
                 months = buildMonthGroups(photos),
                 isLoading = false,
                 isHybridMode = true
             )
         } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                error = e.message ?: "加载失败"
-            )
+            _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "加载失败")
         }
     }
 
-    /**
-     * 从云端 API 加载时间线（纯云端模式，兼容原始逻辑）
-     */
     private suspend fun loadFromCloud() {
-        val result = galleryRepository.getTimelineSnapshot()
-        result.fold(
+        galleryRepository.getTimelineSnapshot().fold(
             onSuccess = { snapshot ->
                 _uiState.value = _uiState.value.copy(
                     months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
@@ -193,10 +200,7 @@ class GalleryViewModel(
                 )
             },
             onFailure = { e ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "加载失败"
-                )
+                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "加载失败")
             }
         )
     }
@@ -204,12 +208,16 @@ class GalleryViewModel(
     fun refresh() {
         _uiState.value = _uiState.value.copy(isRefreshing = true)
         viewModelScope.launch {
+            if (_uiState.value.isSearchMode) {
+                performSearch(isRefresh = true)
+                return@launch
+            }
+
             if (_uiState.value.isHybridMode && syncRepository != null) {
-                // 混合模式：使用增量同步（不计算 MD5，速度快）
                 try {
                     val folderSelection = getFolderSelectionState()
                     if (!folderSelection.isConfigured) {
-                        Log.w(TAG, "Refresh skipped local scope because backup folder selection is missing")
+                        Log.w(TAG, "Refresh skipped local scope because folder selection is missing")
                         loadFromCloud()
                         _uiState.value = _uiState.value.copy(isRefreshing = false)
                         return@launch
@@ -226,9 +234,7 @@ class GalleryViewModel(
                     )
                 }
             } else {
-                // 纯云端模式
-                val result = galleryRepository.getTimelineSnapshot()
-                result.fold(
+                galleryRepository.getTimelineSnapshot().fold(
                     onSuccess = { snapshot ->
                         _uiState.value = _uiState.value.copy(
                             months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
@@ -246,12 +252,8 @@ class GalleryViewModel(
         }
     }
 
-    /**
-     * 轻量级刷新：App 回到前台时调用。
-     * 仅做一次快速本地扫描（不计算 MD5），检测新增的媒体文件。
-     * 比 refresh() 更快，不显示刷新动画。
-     */
     fun quickRefresh() {
+        if (_uiState.value.isSearchMode) return
         if (syncRepository == null || !_uiState.value.isHybridMode) return
         if (_uiState.value.isSyncing || _uiState.value.isRefreshing) return
 
@@ -259,12 +261,12 @@ class GalleryViewModel(
             try {
                 val folderSelection = getFolderSelectionState()
                 if (!folderSelection.isConfigured) {
-                    Log.w(TAG, "Quick refresh skipped local scope because backup folder selection is missing")
+                    Log.w(TAG, "Quick refresh skipped local scope because folder selection is missing")
                     loadFromCloud()
                     return@launch
                 }
-                syncRepository.reconcileFolderSelection(folderSelection.folders)
                 val folders = folderSelection.folders
+                syncRepository.reconcileFolderSelection(folders)
                 syncRepository.syncLocalMedia(folders)
                 loadFromRoom(folders)
             } catch (e: Exception) {
@@ -275,6 +277,7 @@ class GalleryViewModel(
 
     private fun buildMonthGroups(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
         return photos
+            .sortedByDescending { it.mtime }
             .groupBy { it.mtime.take(7) }
             .toSortedMap(compareByDescending { it })
             .map { (yearMonth, monthPhotos) ->
@@ -305,9 +308,6 @@ class GalleryViewModel(
         )
     }
 
-    /**
-     * 触发首次本地+云端全量同步
-     */
     fun triggerFullSync(localFolders: Set<String>? = null) {
         if (syncRepository == null) return
         _uiState.value = _uiState.value.copy(isSyncing = true)
@@ -316,7 +316,7 @@ class GalleryViewModel(
                 val folders = localFolders ?: run {
                     val folderSelection = getFolderSelectionState()
                     if (!folderSelection.isConfigured) {
-                        Log.w(TAG, "Full sync skipped local scope because backup folder selection is missing")
+                        Log.w(TAG, "Full sync skipped local scope because folder selection is missing")
                         loadFromCloud()
                         _uiState.value = _uiState.value.copy(isSyncing = false)
                         return@launch
@@ -328,17 +328,13 @@ class GalleryViewModel(
                 loadFromRoom(folders)
                 _uiState.value = _uiState.value.copy(isSyncing = false)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isSyncing = false,
-                    error = "同步失败: ${e.message}"
-                )
+                _uiState.value = _uiState.value.copy(isSyncing = false, error = "同步失败: ${e.message}")
             }
         }
     }
 
     fun selectAll() {
-        val allPhotos = _uiState.value.months
-            .flatMap { month -> month.days.flatMap { it.photos } }
+        val allPhotos = _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
         selectionManager.selectAll(allPhotos.map { it.id })
     }
 
@@ -349,17 +345,12 @@ class GalleryViewModel(
                 val updatedDays = month.days.map { day ->
                     day.copy(photos = day.photos.filter { it.id !in selectedIds })
                 }.filter { it.photos.isNotEmpty() }
-                val newTotal = updatedDays.sumOf { it.photos.size }
-                month.copy(
-                    days = updatedDays,
-                    totalCount = newTotal
-                )
+                month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
             }.filter { it.days.isNotEmpty() }
             _uiState.value = _uiState.value.copy(months = updatedMonths)
         }
     }
 
-    // Column count for pinch-to-zoom
     fun updateColumnCount(newCount: Int) {
         val clamped = newCount.coerceIn(2, 6)
         if (clamped != _uiState.value.columnCount) {
@@ -368,33 +359,27 @@ class GalleryViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        // 优先使用本地缩略图缓存（验证文件存在）
         photo.thumbCachePath?.let {
             if (it.isNotEmpty() && isLocalFileValid(it)) return "file://$it"
         }
-        // 有本地 URI 且未存储优化 → 使用本地 URI
-        photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
-        // 使用云端缩略图
-        val md5 = photo.md5
+        photo.localUri?.let {
+            if (it.isNotEmpty() && !photo.isStorageOptimized) return it
+        }
         return if (photo.isVideo()) {
-            galleryRepository.getVideoThumbUrl(md5)
+            galleryRepository.getVideoThumbUrl(photo.md5)
         } else {
-            galleryRepository.getThumbUrlByMd5(md5)
+            galleryRepository.getThumbUrlByMd5(photo.md5)
         }
     }
 
     fun getFullImageUrl(photo: UnifiedPhotoItem): String {
-        // 有本地 URI 且未存储优化 → 使用本地文件
-        photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
-        // 使用云端原图
+        photo.localUri?.let {
+            if (it.isNotEmpty() && !photo.isStorageOptimized) return it
+        }
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
     }
 
-    /**
-     * 检查本地文件路径是否有效（存在且可读）。
-     * 用于验证 thumbCachePath 等本地缓存文件。
-     */
     private fun isLocalFileValid(path: String): Boolean {
         return try {
             val file = File(path)
@@ -404,39 +389,167 @@ class GalleryViewModel(
         }
     }
 
-    // 兼容旧代码的方法
-    fun getThumbUrl(md5: String, fileId: Double): String {
-        return galleryRepository.getThumbUrl(md5, fileId)
-    }
+    fun getThumbUrl(md5: String, fileId: Double): String = galleryRepository.getThumbUrl(md5, fileId)
 
-    fun getVideoThumbUrl(md5: String): String {
-        return galleryRepository.getVideoThumbUrl(md5)
-    }
+    fun getVideoThumbUrl(md5: String): String = galleryRepository.getVideoThumbUrl(md5)
 
-    fun getFullImageUrl(id: Double, md5: String): String {
-        return galleryRepository.getFullImageUrl(id, md5)
-    }
+    fun getFullImageUrl(id: Double, md5: String): String = galleryRepository.getFullImageUrl(id, md5)
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> {
-        return _uiState.value.months
-            .flatMap { month ->
-                month.days.flatMap { it.photos }
+        return _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
+    }
+
+    fun loadSearchFilterCandidates() {
+        if (filterCandidatesLoaded || _uiState.value.isLoadingSearchFilters) return
+        _uiState.value = _uiState.value.copy(isLoadingSearchFilters = true)
+        viewModelScope.launch {
+            val peopleResult = galleryRepository.getPeopleList()
+            val locationsResult = galleryRepository.getAddressCountByCity()
+            filterCandidatesLoaded = peopleResult.isSuccess || locationsResult.isSuccess
+            _uiState.value = _uiState.value.copy(
+                searchPeople = peopleResult.getOrDefault(emptyList()).take(12),
+                searchLocations = locationsResult.getOrDefault(emptyList()).take(12),
+                isLoadingSearchFilters = false
+            )
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchTipsJob?.cancel()
+        searchTipsJob = viewModelScope.launch {
+            val trimmed = query.trim()
+            if (trimmed.isBlank()) {
+                _uiState.value = _uiState.value.copy(searchSuggestions = emptyList())
+                return@launch
             }
+            delay(300)
+            galleryRepository.getSearchTips(trimmed).onSuccess { tips ->
+                if (_uiState.value.searchQuery.trim() == trimmed) {
+                    _uiState.value = _uiState.value.copy(searchSuggestions = tips.take(6))
+                }
+            }
+        }
+    }
+
+    fun applySuggestion(suggestion: String) {
+        searchTipsJob?.cancel()
+        _uiState.value = _uiState.value.copy(searchQuery = suggestion, searchSuggestions = emptyList())
+        executeSearch()
+    }
+
+    fun updateSearchType(type: SearchType) {
+        _uiState.value = _uiState.value.copy(searchType = type)
+    }
+
+    fun updatePersonFilter(person: PersonItem?) {
+        _uiState.value = _uiState.value.copy(
+            searchFilters = _uiState.value.searchFilters.copy(
+                personId = person?.id,
+                personName = person?.name
+            )
+        )
+    }
+
+    fun updateLocationFilter(location: LocationItem?) {
+        _uiState.value = _uiState.value.copy(
+            searchFilters = _uiState.value.searchFilters.copy(location = location?.city)
+        )
+    }
+
+    fun clearSearch() {
+        searchTipsJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            searchQuery = "",
+            searchType = SearchType.AUTO,
+            searchFilters = SearchFilters(),
+            searchSuggestions = emptyList(),
+            isSearchMode = false,
+            isSearching = false,
+            error = null
+        )
+        loadTimeline()
+    }
+
+    fun executeSearch() {
+        searchTipsJob?.cancel()
+        viewModelScope.launch {
+            performSearch(isRefresh = false)
+        }
+    }
+
+    private suspend fun performSearch(isRefresh: Boolean) {
+        val state = _uiState.value
+        val query = state.searchQuery.trim()
+        val filters = state.searchFilters
+        val hasFilters = !filters.personId.isNullOrBlank() ||
+            !filters.personName.isNullOrBlank() ||
+            !filters.location.isNullOrBlank()
+
+        if (query.isBlank() && !hasFilters) {
+            _uiState.value = _uiState.value.copy(
+                isRefreshing = false,
+                isSearchMode = false,
+                isSearching = false,
+                searchSuggestions = emptyList()
+            )
+            loadTimeline()
+            return
+        }
+
+        if (state.searchType == SearchType.VISUAL_TEXT && !state.isClipAvailable) {
+            _uiState.value = _uiState.value.copy(
+                isRefreshing = false,
+                isSearching = false,
+                error = "当前服务端未启用文搜图"
+            )
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            isSearchMode = true,
+            isSearching = !isRefresh,
+            isRefreshing = isRefresh,
+            isLoading = false,
+            error = null,
+            searchSuggestions = emptyList()
+        )
+
+        galleryRepository.searchMedia(
+            SearchRequest(query = query, type = state.searchType, filters = filters)
+        ).fold(
+            onSuccess = { photos ->
+                _uiState.value = _uiState.value.copy(
+                    months = buildMonthGroups(photos.map { it.toUnifiedPhotoItem() }),
+                    isSearchMode = true,
+                    isSearching = false,
+                    isRefreshing = false,
+                    error = if (photos.isEmpty()) "未找到匹配的云端媒体" else null
+                )
+            },
+            onFailure = { e ->
+                _uiState.value = _uiState.value.copy(
+                    isSearching = false,
+                    isRefreshing = false,
+                    error = e.message ?: "搜索失败"
+                )
+            }
+        )
     }
 
     private fun formatYearMonth(ym: String): String {
         val parts = ym.split("-")
-        return if (parts.size >= 2) "${parts[0]}年${parts[1].toIntOrNull() ?: parts[1]}月" else ym
+        return if (parts.size >= 2) {
+            "${parts[0]}年${parts[1].toIntOrNull() ?: parts[1]}月"
+        } else {
+            ym
+        }
     }
 
-    private fun extractDate(mtime: String): String {
-        return mtime.take(10) // "2024-01-15" from "2024-01-15T12:30:00"
-    }
+    private fun extractDate(mtime: String): String = mtime.take(10)
 
-    /** 获取删除模式，空字符串表示用户尚未选择 */
     fun getDeleteMode(): String = prefsManager?.getDeleteModeSync() ?: ""
 
-    /** 保存删除模式 */
     fun saveDeleteMode(mode: String) {
         viewModelScope.launch {
             prefsManager?.saveDeleteMode(mode)

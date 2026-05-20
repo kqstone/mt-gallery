@@ -1,11 +1,14 @@
 package com.kqstone.mtphotos.ui.gallery
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,17 +22,26 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -40,11 +52,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.repository.LocationItem
+import com.kqstone.mtphotos.data.repository.PersonItem
+import com.kqstone.mtphotos.data.repository.SearchFilters
+import com.kqstone.mtphotos.data.repository.SearchTipItem
+import com.kqstone.mtphotos.data.repository.SearchType
+import com.kqstone.mtphotos.ui.util.PermissionHelper
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -58,15 +83,16 @@ fun GalleryScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var isSearchPanelActive by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showDeleteModeDialog by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
-    // App 回到前台时自动检测新增媒体（如相机拍的照片）
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.quickRefresh()
             }
         }
@@ -83,13 +109,39 @@ fun GalleryScreen(
                 onClearSelection = { viewModel.selectionManager.clearSelection() }
             )
         } else {
-            TopAppBar(
-                title = { Text("MT Gallery") },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
-                    }
-                }
+            SearchHeader(
+                query = uiState.searchQuery,
+                searchType = uiState.searchType,
+                searchFilters = uiState.searchFilters,
+                suggestions = uiState.searchSuggestions,
+                people = uiState.searchPeople,
+                locations = uiState.searchLocations,
+                isSearching = uiState.isSearching,
+                isClipAvailable = uiState.isClipAvailable,
+                isPanelActive = isSearchPanelActive,
+                onPanelActiveChange = { active ->
+                    isSearchPanelActive = active
+                    if (active) viewModel.loadSearchFilterCandidates()
+                },
+                onQueryChange = viewModel::updateSearchQuery,
+                onSearch = {
+                    keyboardController?.hide()
+                    isSearchPanelActive = false
+                    viewModel.executeSearch()
+                },
+                onClear = {
+                    isSearchPanelActive = false
+                    viewModel.clearSearch()
+                },
+                onSearchTypeChange = viewModel::updateSearchType,
+                onPersonFilterChange = viewModel::updatePersonFilter,
+                onLocationFilterChange = viewModel::updateLocationFilter,
+                onSuggestionClick = {
+                    keyboardController?.hide()
+                    isSearchPanelActive = false
+                    viewModel.applySuggestion(it)
+                },
+                onSettingsClick = onSettingsClick
             )
         }
 
@@ -102,21 +154,23 @@ fun GalleryScreen(
             uiState.error != null && uiState.months.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = uiState.error!!,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                        Text(text = uiState.error!!, color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "点击重试",
-                            modifier = Modifier.clickable { viewModel.loadTimeline() },
+                            modifier = Modifier.clickable {
+                                if (uiState.isSearchMode) {
+                                    viewModel.executeSearch()
+                                } else {
+                                    viewModel.loadTimeline()
+                                }
+                            },
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             }
             else -> {
-                // 同步进度提示条
                 val progressText = uiState.syncProgressText
                 if (uiState.isSyncing && progressText != null) {
                     Row(
@@ -150,6 +204,7 @@ fun GalleryScreen(
                         columnCount = uiState.columnCount,
                         selectedPhotoIds = selectedIds,
                         isSelectionMode = isSelectionMode,
+                        isSearchMode = uiState.isSearchMode,
                         onPhotoClick = onPhotoClick,
                         onColumnCountChange = { viewModel.updateColumnCount(it) }
                     )
@@ -178,9 +233,7 @@ fun GalleryScreen(
             onChooseDirect = {
                 showDeleteModeDialog = false
                 viewModel.saveDeleteMode("direct")
-                // 跳转到系统设置授权所有文件访问权限
-                val intent = com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(context)
-                context.startActivity(intent)
+                context.startActivity(PermissionHelper.getManageStorageIntent(context))
                 viewModel.deleteSelected()
             },
             onChooseConfirm = {
@@ -193,6 +246,185 @@ fun GalleryScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun SearchHeader(
+    query: String,
+    searchType: SearchType,
+    searchFilters: SearchFilters,
+    suggestions: List<SearchTipItem>,
+    people: List<PersonItem>,
+    locations: List<LocationItem>,
+    isSearching: Boolean,
+    isClipAvailable: Boolean,
+    isPanelActive: Boolean,
+    onPanelActiveChange: (Boolean) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onClear: () -> Unit,
+    onSearchTypeChange: (SearchType) -> Unit,
+    onPersonFilterChange: (PersonItem?) -> Unit,
+    onLocationFilterChange: (LocationItem?) -> Unit,
+    onSuggestionClick: (String) -> Unit,
+    onSettingsClick: () -> Unit
+) {
+    LaunchedEffect(isPanelActive) {
+        if (isPanelActive) onPanelActiveChange(true)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) onPanelActiveChange(true)
+                            },
+                        singleLine = true,
+                        placeholder = { Text("搜索云端媒体") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                        },
+                        trailingIcon = {
+                            when {
+                                isSearching -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier
+                                            .width(18.dp)
+                                            .height(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                                query.isNotEmpty() -> {
+                                    IconButton(onClick = onClear) {
+                                        Icon(Icons.Default.Close, contentDescription = "清空搜索")
+                                    }
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { onSearch() })
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Default.Settings, contentDescription = "设置")
+                    }
+                }
+            }
+        )
+
+        AnimatedVisibility(visible = isPanelActive) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SearchChip("综合", searchType == SearchType.AUTO) { onSearchTypeChange(SearchType.AUTO) }
+                    SearchChip("文件名", searchType == SearchType.FILE_NAME) { onSearchTypeChange(SearchType.FILE_NAME) }
+                    SearchChip("文本识别", searchType == SearchType.OCR_TEXT) { onSearchTypeChange(SearchType.OCR_TEXT) }
+                    SearchChip("文搜图", searchType == SearchType.VISUAL_TEXT) {
+                        onSearchTypeChange(SearchType.VISUAL_TEXT)
+                    }
+                }
+
+                if (suggestions.isNotEmpty()) {
+                    FilterSection(title = "建议")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        suggestions.forEach { tip ->
+                            SearchChip(tip.label, false) { onSuggestionClick(tip.value) }
+                        }
+                    }
+                }
+
+                if (people.isNotEmpty()) {
+                    FilterSection(title = "人物")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SearchChip("不限", searchFilters.personId.isNullOrBlank()) {
+                            onPersonFilterChange(null)
+                        }
+                        people.forEach { person ->
+                            SearchChip(person.name, searchFilters.personId == person.id) {
+                                onPersonFilterChange(person)
+                            }
+                        }
+                    }
+                }
+
+                if (locations.isNotEmpty()) {
+                    FilterSection(title = "地点")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SearchChip("不限", searchFilters.location.isNullOrBlank()) {
+                            onLocationFilterChange(null)
+                        }
+                        locations.forEach { location ->
+                            SearchChip(location.city, searchFilters.location == location.city) {
+                                onLocationFilterChange(location)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterSection(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+    )
+}
+
+@Composable
+private fun SearchChip(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    AssistChip(
+        onClick = onClick,
+        enabled = enabled,
+        label = { Text(text) },
+        colors = AssistChipDefaults.assistChipColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            labelColor = if (selected) {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    )
+}
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun PhotoGrid(
@@ -201,6 +433,7 @@ private fun PhotoGrid(
     columnCount: Int,
     selectedPhotoIds: Set<Double>,
     isSelectionMode: Boolean,
+    isSearchMode: Boolean,
     onPhotoClick: (UnifiedPhotoItem) -> Unit,
     onColumnCountChange: (Int) -> Unit
 ) {
@@ -213,11 +446,20 @@ private fun PhotoGrid(
         val photo: UnifiedPhotoItem? = null
     )
 
-    val gridItems by remember(months) {
+    val gridItems by remember(months, isSearchMode) {
         derivedStateOf {
             val items = mutableListOf<GridItem>()
             for (month in months) {
-                items.add(GridItem("month", "month_${month.yearMonth}", monthTitle = month.displayTitle, monthCount = month.totalCount))
+                if (!isSearchMode) {
+                    items.add(
+                        GridItem(
+                            "month",
+                            "month_${month.yearMonth}",
+                            monthTitle = month.displayTitle,
+                            monthCount = month.totalCount
+                        )
+                    )
+                }
                 for (day in month.days) {
                     items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
                     for (photo in day.photos) {
@@ -230,8 +472,6 @@ private fun PhotoGrid(
     }
 
     val gridState = rememberLazyGridState()
-
-    // Pinch-to-zoom state via Android MotionEvent
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var isPinching by remember { mutableStateOf(false) }
 
@@ -249,7 +489,7 @@ private fun PhotoGrid(
                         android.view.MotionEvent.ACTION_POINTER_DOWN -> {
                             initialPinchDistance = distance
                             isPinching = true
-                            true // consume to prevent grid scroll during pinch
+                            true
                         }
                         android.view.MotionEvent.ACTION_MOVE -> {
                             if (isPinching && initialPinchDistance > 50f) {
@@ -273,12 +513,11 @@ private fun PhotoGrid(
                         android.view.MotionEvent.ACTION_CANCEL -> {
                             isPinching = false
                             initialPinchDistance = 0f
-                            false // let Compose handle the up event
+                            false
                         }
                         else -> false
                     }
                 } else {
-                    // Single finger: pass through for scrolling and clicks
                     false
                 }
             }
@@ -304,18 +543,13 @@ private fun PhotoGrid(
                 }
             ) { item ->
                 when (item.type) {
-                    "month" -> {
-                        MonthHeader(title = item.monthTitle!!, count = item.monthCount)
-                    }
-                    "day" -> {
-                        DayHeader(dayGroup = item.dayGroup!!)
-                    }
+                    "month" -> MonthHeader(title = item.monthTitle.orEmpty(), count = item.monthCount)
+                    "day" -> DayHeader(dayGroup = item.dayGroup!!)
                     "photo" -> {
                         val photo = item.photo!!
-                        val thumbUrl = viewModel.getThumbUrl(photo)
                         PhotoThumbnail(
                             photo = photo,
-                            thumbUrl = thumbUrl,
+                            thumbUrl = viewModel.getThumbUrl(photo),
                             onClick = {
                                 if (isSelectionMode) {
                                     viewModel.selectionManager.toggleSelection(photo.id)
@@ -363,7 +597,7 @@ private fun MonthHeader(title: String, count: Int) {
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "${count}张",
+            text = "$count 张",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -58,6 +58,31 @@ data class LocationItem(
     val count: Int
 )
 
+enum class SearchType {
+    AUTO,
+    FILE_NAME,
+    OCR_TEXT,
+    VISUAL_TEXT
+}
+
+data class SearchFilters(
+    val personId: String? = null,
+    val personName: String? = null,
+    val location: String? = null
+)
+
+data class SearchRequest(
+    val query: String,
+    val type: SearchType = SearchType.AUTO,
+    val filters: SearchFilters = SearchFilters()
+)
+
+data class SearchTipItem(
+    val value: String,
+    val type: String,
+    val label: String = value
+)
+
 class GalleryRepository(private val container: AppContainer) {
 
     private val prefsManager get() = container.prefsManager
@@ -117,6 +142,51 @@ class GalleryRepository(private val container: AppContainer) {
         }
     }
 
+    suspend fun isClipSearchAvailable(): Result<Boolean> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart5SearchCLIPStatus()
+            val enabled = when (val value = response["enable"] ?: response["enabled"] ?: response["status"] ?: response["ok"]) {
+                is Boolean -> value
+                is Number -> value.toInt() != 0
+                is String -> value.equals("true", ignoreCase = true) ||
+                    value.equals("enabled", ignoreCase = true) ||
+                    value.equals("ok", ignoreCase = true) ||
+                    value.equals("ready", ignoreCase = true) ||
+                    value.equals("done", ignoreCase = true) ||
+                    value.equals("available", ignoreCase = true) ||
+                    value == "1"
+                // Do not block the UI when the status endpoint shape is unknown.
+                else -> true
+            }
+            Result.success(enabled)
+        } catch (e: Exception) {
+            Result.success(true)
+        }
+    }
+
+    suspend fun searchMedia(request: SearchRequest): Result<List<PhotoItem>> {
+        return try {
+            val photos = searchMediaInternal(request)
+            Result.success(applyCloudFilters(photos, request.filters))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSearchTips(query: String): Result<List<SearchTipItem>> {
+        return try {
+            val body = mapOf(
+                "search" to query,
+                "keyword" to query,
+                "key" to query
+            )
+            val response = container.gatewayApi.GatewayControllerPart5SearchTips(body)
+            Result.success(parseSearchTips(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseTimelineMonths(response: Map<String, Any>): List<TimelineMonth> {
         val list = response["list"] as? List<*> ?: emptyList<Any>()
         return list.mapNotNull { item ->
@@ -141,16 +211,147 @@ class GalleryRepository(private val container: AppContainer) {
                 val photoList = dayMap["list"] as? List<*> ?: continue
                 for (photo in photoList) {
                     val photoMap = photo as? Map<*, *> ?: continue
-                    val id = photoMap["id"] as? Double ?: continue
-                    val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                    val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                    val width = photoMap["width"] as? Double ?: 0.0
-                    val height = photoMap["height"] as? Double ?: 0.0
-                    photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
+                    parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
                 }
             }
         }
         return photos
+    }
+
+    private fun buildSearchBody(request: SearchRequest): Map<String, Any> {
+        val searchType = when (request.type) {
+            SearchType.FILE_NAME -> "fileName"
+            SearchType.OCR_TEXT -> "OCR"
+            SearchType.VISUAL_TEXT -> "CLIP"
+            SearchType.AUTO -> "v1"
+        }
+        return buildMap {
+            put("searchKey", request.query)
+            put("searchType", searchType)
+            if (request.type == SearchType.VISUAL_TEXT) {
+                put("count", 200)
+            }
+        }
+    }
+
+    private suspend fun searchMediaInternal(request: SearchRequest): List<PhotoItem> {
+        val query = request.query.trim()
+        if (query.isBlank()) return emptyList()
+
+        val photos = when (request.type) {
+            SearchType.VISUAL_TEXT -> {
+                val response = container.gatewayApi.GatewayControllerPart5SearchCLIPV2(buildSearchBody(request.copy(query = query)))
+                parseSearchPhotos(response)
+            }
+            else -> {
+                val response = container.gatewayApi.GatewayControllerPart5SearchFilesV2(buildSearchBody(request.copy(query = query)))
+                parseSearchPhotos(response)
+            }
+        }
+
+        return if (request.type == SearchType.FILE_NAME) {
+            photos.filter { it.fileName.contains(query, ignoreCase = true) }
+        } else {
+            photos
+        }
+    }
+
+    private suspend fun applyCloudFilters(photos: List<PhotoItem>, filters: SearchFilters): List<PhotoItem> {
+        val personId = filters.personId?.takeIf { it.isNotBlank() }
+        val location = filters.location?.takeIf { it.isNotBlank() }
+        if (personId == null && location == null) return photos
+
+        val filterSources = mutableListOf<List<PhotoItem>>()
+        if (personId != null) {
+            getPeopleFiles(personId).getOrNull()?.let(filterSources::add)
+        }
+        if (location != null) {
+            getFilesInCity(location).getOrNull()?.let(filterSources::add)
+        }
+
+        if (filterSources.isEmpty()) return photos
+
+        val allowedIds = filterSources
+            .map { source -> source.map { it.id }.toSet() }
+            .reduce { acc, ids -> acc intersect ids }
+
+        return if (photos.isEmpty()) {
+            filterSources
+                .flatten()
+                .distinctBy { it.id }
+                .filter { it.id in allowedIds }
+        } else {
+            photos.filter { it.id in allowedIds }
+        }
+    }
+
+    private fun parseSearchPhotos(response: Map<String, Any>): List<PhotoItem> {
+        val photos = mutableListOf<PhotoItem>()
+
+        val resultSections = listOf("result", "list", "fileList", "files", "rows")
+        for (sectionKey in resultSections) {
+            val section = response[sectionKey] as? List<*> ?: continue
+            appendPhotoItems(section, photos)
+            if (photos.isNotEmpty()) return photos.distinctBy { it.id }
+        }
+
+        val data = response["data"]
+        if (data is Map<*, *>) {
+            for (sectionKey in resultSections) {
+                val section = data[sectionKey] as? List<*> ?: continue
+                appendPhotoItems(section, photos)
+                if (photos.isNotEmpty()) return photos.distinctBy { it.id }
+            }
+        }
+
+        return photos.distinctBy { it.id }
+    }
+
+    private fun appendPhotoItems(items: List<*>, target: MutableList<PhotoItem>, fallbackMtime: String? = null) {
+        for (item in items) {
+            val map = item as? Map<*, *> ?: continue
+            val day = map["day"] as? String
+            val nestedList = map["list"] as? List<*>
+            if (nestedList != null) {
+                appendPhotoItems(nestedList, target, day ?: fallbackMtime)
+                continue
+            }
+            parsePhotoItem(map, fallbackMtime = day ?: fallbackMtime)?.let(target::add)
+        }
+    }
+
+    private fun parsePhotoItem(map: Map<*, *>, fallbackMtime: String? = null): PhotoItem? {
+        val id = (map["id"] as? Number)?.toDouble()
+            ?: (map["fileId"] as? Number)?.toDouble()
+            ?: return null
+        val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: return null
+        val fileName = map["name"] as? String
+            ?: map["fileName"] as? String
+            ?: map["filename"] as? String
+            ?: ""
+        val fileType = map["fileType"] as? String ?: map["file_type"] as? String ?: ""
+        val mtime = map["mtime"] as? String
+            ?: map["createTime"] as? String
+            ?: map["date"] as? String
+            ?: fallbackMtime
+            ?: ""
+        val width = (map["width"] as? Number)?.toDouble() ?: 0.0
+        val height = (map["height"] as? Number)?.toDouble() ?: 0.0
+        return PhotoItem(id, md5, fileName, fileType, mtime, width, height)
+    }
+
+    private fun parseSearchTips(items: List<Map<String, Any>>): List<SearchTipItem> {
+        return items.mapNotNull { item ->
+            val value = item["value"] as? String
+                ?: item["name"] as? String
+                ?: item["text"] as? String
+                ?: return@mapNotNull null
+            val type = item["type"] as? String
+                ?: item["category"] as? String
+                ?: "keyword"
+            val label = item["label"] as? String ?: value
+            SearchTipItem(value = value, type = type, label = label)
+        }
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
