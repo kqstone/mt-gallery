@@ -20,7 +20,10 @@ data class PhotoItem(
     val fileType: String,
     val mtime: String,
     val width: Double,
-    val height: Double
+    val height: Double,
+    val livePhotosVideoId: Double? = null,
+    val isLivePhotosVideo: Boolean = false,
+    val livePhotoUuid: String? = null
 )
 
 data class FolderItem(
@@ -337,7 +340,35 @@ class GalleryRepository(private val container: AppContainer) {
             ?: ""
         val width = (map["width"] as? Number)?.toDouble() ?: 0.0
         val height = (map["height"] as? Number)?.toDouble() ?: 0.0
-        return PhotoItem(id, md5, fileName, fileType, mtime, width, height)
+        val livePhotosVideoId = (map["livePhotosVideoId"] as? Number)?.toDouble()
+            ?: (map["live_photos_video_id"] as? Number)?.toDouble()
+        val isLivePhotosVideo = parseBoolean(map["isLivePhotosVideo"])
+            || parseBoolean(map["is_live_photos_video"])
+        val livePhotoUuid = map["live_photo_UUID"] as? String
+            ?: map["livePhotoUUID"] as? String
+            ?: map["livePhotoUuid"] as? String
+            ?: map["live_photo_uuid"] as? String
+        return PhotoItem(
+            id = id,
+            md5 = md5,
+            fileName = fileName,
+            fileType = fileType,
+            mtime = mtime,
+            width = width,
+            height = height,
+            livePhotosVideoId = livePhotosVideoId,
+            isLivePhotosVideo = isLivePhotosVideo,
+            livePhotoUuid = livePhotoUuid
+        )
+    }
+
+    private fun parseBoolean(value: Any?): Boolean {
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.equals("true", ignoreCase = true) || value == "1"
+            else -> false
+        }
     }
 
     private fun parseSearchTips(items: List<Map<String, Any>>): List<SearchTipItem> {
@@ -368,6 +399,10 @@ class GalleryRepository(private val container: AppContainer) {
 
     fun getFullImageUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}"
+    }
+
+    fun getMotionPhotoUrl(id: Double, md5: String): String {
+        return "${urlBase()}/gateway/fileMotion/$id/$md5${urlSuffix()}"
     }
 
     suspend fun deleteFiles(ids: List<Double>): Result<Unit> {
@@ -471,12 +506,7 @@ class GalleryRepository(private val container: AppContainer) {
                         val photoList = dayMap["list"] as? List<*> ?: continue
                         for (photo in photoList) {
                             val photoMap = photo as? Map<*, *> ?: continue
-                            val id = photoMap["id"] as? Double ?: continue
-                            val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                            val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                            val width = photoMap["width"] as? Double ?: 0.0
-                            val height = photoMap["height"] as? Double ?: 0.0
-                            photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
+                            parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
                         }
                     }
                 }
@@ -492,12 +522,7 @@ class GalleryRepository(private val container: AppContainer) {
                         val photoList = dayMap["list"] as? List<*> ?: continue
                         for (photo in photoList) {
                             val photoMap = photo as? Map<*, *> ?: continue
-                            val id = photoMap["id"] as? Double ?: continue
-                            val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                            val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                            val width = photoMap["width"] as? Double ?: 0.0
-                            val height = photoMap["height"] as? Double ?: 0.0
-                            photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
+                            parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
                         }
                     }
                 }
@@ -511,13 +536,7 @@ class GalleryRepository(private val container: AppContainer) {
                     ?: emptyList<Any>()
                 for (item in list) {
                     val map = item as? Map<*, *> ?: continue
-                    val id = map["id"] as? Double ?: continue
-                    val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
-                    val fileType = map["fileType"] as? String ?: map["file_type"] as? String ?: ""
-                    val mtime = map["mtime"] as? String ?: ""
-                    val width = map["width"] as? Double ?: 0.0
-                    val height = map["height"] as? Double ?: 0.0
-                    photos.add(PhotoItem(id, md5, "", fileType, mtime, width, height))
+                    parsePhotoItem(map)?.let(photos::add)
                 }
             }
 
@@ -571,12 +590,7 @@ class GalleryRepository(private val container: AppContainer) {
                     val photoList = dayMap["list"] as? List<*> ?: continue
                     for (photo in photoList) {
                         val photoMap = photo as? Map<*, *> ?: continue
-                        val id = photoMap["id"] as? Double ?: continue
-                        val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                        val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                        val width = photoMap["width"] as? Double ?: 0.0
-                        val height = photoMap["height"] as? Double ?: 0.0
-                        photos.add(PhotoItem(id, md5, "", fileType, day, width, height))
+                        parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
                     }
                 }
             }
@@ -589,13 +603,7 @@ class GalleryRepository(private val container: AppContainer) {
                     ?: emptyList<Any>()
                 for (item in list) {
                     val map = item as? Map<*, *> ?: continue
-                    val id = map["id"] as? Double ?: continue
-                    val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
-                    val fileType = map["fileType"] as? String ?: map["file_type"] as? String ?: ""
-                    val mtime = map["mtime"] as? String ?: ""
-                    val width = map["width"] as? Double ?: 0.0
-                    val height = map["height"] as? Double ?: 0.0
-                    photos.add(PhotoItem(id, md5, "", fileType, mtime, width, height))
+                    parsePhotoItem(map)?.let(photos::add)
                 }
             }
 
@@ -691,12 +699,7 @@ class GalleryRepository(private val container: AppContainer) {
                     val photoList = dayMap["list"] as? List<*> ?: continue
                     for (photo in photoList) {
                         val photoMap = photo as? Map<*, *> ?: continue
-                        val fileId = photoMap["id"] as? Double ?: continue
-                        val md5 = photoMap["MD5"] as? String ?: photoMap["md5"] as? String ?: continue
-                        val fileType = photoMap["fileType"] as? String ?: photoMap["file_type"] as? String ?: ""
-                        val width = photoMap["width"] as? Double ?: 0.0
-                        val height = photoMap["height"] as? Double ?: 0.0
-                        photos.add(PhotoItem(fileId, md5, "", fileType, day, width, height))
+                        parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
                     }
                 }
             }
@@ -709,13 +712,7 @@ class GalleryRepository(private val container: AppContainer) {
                     ?: emptyList<Any>()
                 for (item in list) {
                     val map = item as? Map<*, *> ?: continue
-                    val fileId = map["id"] as? Double ?: continue
-                    val md5 = map["MD5"] as? String ?: map["md5"] as? String ?: continue
-                    val fileType = map["fileType"] as? String ?: map["file_type"] as? String ?: ""
-                    val mtime = map["mtime"] as? String ?: ""
-                    val width = map["width"] as? Double ?: 0.0
-                    val height = map["height"] as? Double ?: 0.0
-                    photos.add(PhotoItem(fileId, md5, "", fileType, mtime, width, height))
+                    parsePhotoItem(map)?.let(photos::add)
                 }
             }
 
@@ -745,13 +742,7 @@ class GalleryRepository(private val container: AppContainer) {
         return try {
             val list = container.gatewayApi.GatewayControllerPart2FilesInAddressV2("all", "city", city)
             val photos = list.mapNotNull { item ->
-                val id = item["id"] as? Double ?: return@mapNotNull null
-                val md5 = item["MD5"] as? String ?: item["md5"] as? String ?: return@mapNotNull null
-                val fileType = item["fileType"] as? String ?: item["file_type"] as? String ?: ""
-                val mtime = item["mtime"] as? String ?: ""
-                val width = item["width"] as? Double ?: 0.0
-                val height = item["height"] as? Double ?: 0.0
-                PhotoItem(id, md5, "", fileType, mtime, width, height)
+                parsePhotoItem(item)
             }
             Result.success(photos)
         } catch (e: Exception) {

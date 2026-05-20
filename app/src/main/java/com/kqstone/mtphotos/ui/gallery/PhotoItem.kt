@@ -82,7 +82,7 @@ fun PhotoThumbnail(
             modifier = Modifier.fillMaxSize()
         )
 
-        val isVideo = photo.isVideo()
+        val isVideo = photo.isPlayableMedia()
 
         if (isVideo) {
             Icon(

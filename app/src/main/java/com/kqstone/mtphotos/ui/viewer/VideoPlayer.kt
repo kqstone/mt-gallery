@@ -16,6 +16,7 @@ import androidx.media3.ui.PlayerView
 fun VideoPlayer(
     videoUrl: String,
     isCurrentPage: Boolean,
+    onStopPlaybackReady: ((() -> Unit)?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -27,14 +28,33 @@ fun VideoPlayer(
         }
     }
 
-    LaunchedEffect(isCurrentPage) {
-        if (!isCurrentPage) {
+    val stopPlayback = remember(exoPlayer) {
+        {
+            exoPlayer.playWhenReady = false
             exoPlayer.pause()
+            exoPlayer.clearVideoSurface()
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { exoPlayer.release() }
+    LaunchedEffect(exoPlayer, isCurrentPage) {
+        if (isCurrentPage) {
+            exoPlayer.playWhenReady = true
+            exoPlayer.play()
+        } else {
+            stopPlayback()
+        }
+    }
+
+    DisposableEffect(stopPlayback) {
+        onStopPlaybackReady(stopPlayback)
+        onDispose { onStopPlaybackReady(null) }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            stopPlayback()
+            exoPlayer.release()
+        }
     }
 
     AndroidView(
@@ -44,6 +64,9 @@ fun VideoPlayer(
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             }
+        },
+        update = { view ->
+            if (view.player !== exoPlayer) view.player = exoPlayer
         },
         modifier = modifier.fillMaxSize()
     )

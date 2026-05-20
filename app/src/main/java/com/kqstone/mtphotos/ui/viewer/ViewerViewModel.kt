@@ -29,22 +29,23 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
     }
 
     fun getFullImageUrl(photo: UnifiedPhotoItem): String {
-        // 优先使用本地文件
         photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
-        // 使用云端原图
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
     }
 
     fun getVideoUrl(photo: UnifiedPhotoItem): String {
-        // 优先使用本地文件
-        photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
-        // 使用云端
+        if (!photo.isMotionPhoto()) {
+            photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
+        }
         val cloudId = photo.cloudId ?: return ""
-        return galleryRepository.getFullImageUrl(cloudId, photo.md5)
+        return if (photo.isMotionPhoto()) {
+            galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
+        } else {
+            galleryRepository.getFullImageUrl(cloudId, photo.md5)
+        }
     }
 
-    // 兼容旧代码
     fun getFullImageUrl(id: Double, md5: String): String {
         return galleryRepository.getFullImageUrl(id, md5)
     }

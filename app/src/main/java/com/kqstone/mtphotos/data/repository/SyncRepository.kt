@@ -317,6 +317,9 @@ class SyncRepository(
                 mtime = photo.mtime,
                 width = photo.width.toInt(),
                 height = photo.height.toInt(),
+                livePhotosVideoId = photo.livePhotosVideoId,
+                isLivePhotosVideo = photo.isLivePhotosVideo,
+                livePhotoUuid = photo.livePhotoUuid,
                 syncStatus = SyncStatus.CLOUD_ONLY,
                 backupStatus = BackupStatus.NOT_STARTED
             )
@@ -349,7 +352,11 @@ class SyncRepository(
 
         photos.map { photo ->
             val localEntity = byCloudId[photo.id] ?: byMd5[photo.md5]
-            localEntity?.toUnifiedPhotoItem(localFolders) ?: photo.toCloudOnlyUnifiedPhotoItem()
+            localEntity?.toUnifiedPhotoItem(localFolders)?.copy(
+                livePhotosVideoId = photo.livePhotosVideoId,
+                isLivePhotosVideo = photo.isLivePhotosVideo,
+                livePhotoUuid = photo.livePhotoUuid
+            ) ?: photo.toCloudOnlyUnifiedPhotoItem()
         }
     }
 
@@ -851,7 +858,10 @@ fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPh
         localUri = if (localVisible) localUri else null,
         thumbCachePath = thumbCachePath,
         isStorageOptimized = if (localVisible) isStorageOptimized else true,
-        fileSize = fileSize
+        fileSize = fileSize,
+        livePhotosVideoId = livePhotosVideoId,
+        isLivePhotosVideo = isLivePhotosVideo,
+        livePhotoUuid = livePhotoUuid
     )
 }
 
@@ -865,6 +875,9 @@ fun PhotoItem.toCloudOnlyUnifiedPhotoItem(): UnifiedPhotoItem {
         width = width,
         height = height,
         syncStatus = SyncStatus.CLOUD_ONLY,
-        backupStatus = BackupStatus.NOT_STARTED
+        backupStatus = BackupStatus.NOT_STARTED,
+        livePhotosVideoId = livePhotosVideoId,
+        isLivePhotosVideo = isLivePhotosVideo,
+        livePhotoUuid = livePhotoUuid
     )
 }

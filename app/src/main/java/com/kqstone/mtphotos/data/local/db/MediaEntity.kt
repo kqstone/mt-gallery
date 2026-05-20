@@ -100,6 +100,12 @@ data class MediaEntity(
     /** 视频时长（毫秒） */
     val duration: Long = 0,
 
+    val livePhotosVideoId: Double? = null,
+
+    val isLivePhotosVideo: Boolean = false,
+
+    val livePhotoUuid: String? = null,
+
     /** 所属本地文件夹路径 */
     val localFolderPath: String? = null,
 

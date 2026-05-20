@@ -48,7 +48,11 @@ data class UnifiedPhotoItem(
     val isStorageOptimized: Boolean = false,
 
     /** 文件大小（字节） */
-    val fileSize: Long = 0
+    val fileSize: Long = 0,
+
+    val livePhotosVideoId: Double? = null,
+    val isLivePhotosVideo: Boolean = false,
+    val livePhotoUuid: String? = null
 ) {
     /**
      * 用于唯一标识此项（兼容旧 PhotoItem 的 id 字段）
@@ -77,4 +81,11 @@ data class UnifiedPhotoItem(
                 fileName.endsWith(".mov", true) ||
                 fileName.endsWith(".avi", true)
     }
+
+    fun isMotionPhoto(): Boolean {
+        return !isLivePhotosVideo &&
+                ((livePhotosVideoId ?: 0.0) > 0.0 || !livePhotoUuid.isNullOrBlank())
+    }
+
+    fun isPlayableMedia(): Boolean = isVideo() || isMotionPhoto()
 }

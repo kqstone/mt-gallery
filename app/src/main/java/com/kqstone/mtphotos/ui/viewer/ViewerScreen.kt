@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.viewer
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -47,6 +48,13 @@ fun ViewerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val photos = uiState.photos
     val initialIndex = uiState.currentIndex
+    var stopActivePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val stopAndGoBack = {
+        stopActivePlayback?.invoke()
+        onBack()
+    }
+
+    BackHandler(onBack = stopAndGoBack)
 
     if (photos.isEmpty()) {
         Box(
@@ -81,22 +89,31 @@ fun ViewerScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1,
+            beyondViewportPageCount = 0,
             userScrollEnabled = true
         ) { page ->
             val photo = photos[page]
             val isCurrentPage = pagerState.settledPage == page
-            val isVid = photo.isVideo()
+            val isPlayableMedia = photo.isPlayableMedia()
 
-            android.util.Log.d("ViewerScreen", "page=$page isVideo=$isVid fileType=${photo.fileType} fileName=${photo.fileName} id=${photo.id} md5=${photo.md5}")
-
-            if (isVid) {
+            if (isPlayableMedia && isCurrentPage) {
                 val url = viewModel.getVideoUrl(photo)
-                android.util.Log.d("ViewerScreen", "Playing video url=$url")
-                VideoPlayer(
-                    videoUrl = url,
-                    isCurrentPage = isCurrentPage
-                )
+                if (url.isNotEmpty()) {
+                    VideoPlayer(
+                        videoUrl = url,
+                        isCurrentPage = true,
+                        onStopPlaybackReady = { stopActivePlayback = it }
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Cannot play video", color = Color.White)
+                    }
+                }
+            } else if (isPlayableMedia) {
+                Box(modifier = Modifier.fillMaxSize())
             } else {
                 ZoomableImage(
                     imageUrl = viewModel.getFullImageUrl(photo),
@@ -113,7 +130,7 @@ fun ViewerScreen(
                 )
             },
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = stopAndGoBack) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
