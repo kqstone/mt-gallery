@@ -4,6 +4,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -514,8 +520,75 @@ private fun PhotoGrid(
     }
 
     val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var isPinching by remember { mutableStateOf(false) }
+
+    val allPhotos = remember(gridItems) {
+        gridItems.filter { it.type == "photo" }.map { it.photo!! }
+    }
+
+    var dragStartPhoto by remember { mutableStateOf<UnifiedPhotoItem?>(null) }
+    var initialSelection by remember { mutableStateOf<Set<Double>>(emptySet()) }
+    var currentDragPosition by remember { mutableStateOf<Offset?>(null) }
+
+    fun updateDragSelection(pointerOffset: Offset) {
+        val currentItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+            val x = pointerOffset.x.toInt()
+            val y = pointerOffset.y.toInt()
+            x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
+            y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
+        }
+        if (currentItem != null) {
+            val gridItem = gridItems.getOrNull(currentItem.index)
+            if (gridItem?.type == "photo") {
+                val currentPhoto = gridItem.photo!!
+                val startPhoto = dragStartPhoto
+                if (startPhoto != null) {
+                    val startIndex = allPhotos.indexOf(startPhoto)
+                    val currentIndex = allPhotos.indexOf(currentPhoto)
+                    if (startIndex != -1 && currentIndex != -1) {
+                        val min = minOf(startIndex, currentIndex)
+                        val max = maxOf(startIndex, currentIndex)
+                        val dragRangeIds = allPhotos.subList(min, max + 1).map { it.id }.toSet()
+                        viewModel.selectionManager.setSelectedIds(initialSelection + dragRangeIds)
+                    }
+                }
+            }
+        }
+    }
+
+    val density = LocalDensity.current
+    LaunchedEffect(currentDragPosition) {
+        val pos = currentDragPosition
+        if (pos != null) {
+            val gridHeight = gridState.layoutInfo.viewportSize.height
+            if (gridHeight > 0) {
+                val threshold = with(density) { 80.dp.toPx() }
+                val maxScrollSpeed = 25f
+
+                if (pos.y < threshold) {
+                    while (currentDragPosition != null && currentDragPosition!!.y < threshold) {
+                        val activePos = currentDragPosition ?: break
+                        val ratio = ((threshold - activePos.y) / threshold).coerceIn(0f, 1f)
+                        val scrollAmount = -(maxScrollSpeed * ratio)
+                        gridState.scrollBy(scrollAmount)
+                        updateDragSelection(activePos)
+                        delay(16)
+                    }
+                } else if (pos.y > gridHeight - threshold) {
+                    while (currentDragPosition != null && currentDragPosition!!.y > gridHeight - threshold) {
+                        val activePos = currentDragPosition ?: break
+                        val ratio = ((activePos.y - (gridHeight - threshold)) / threshold).coerceIn(0f, 1f)
+                        val scrollAmount = maxScrollSpeed * ratio
+                        gridState.scrollBy(scrollAmount)
+                        updateDragSelection(activePos)
+                        delay(16)
+                    }
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -570,7 +643,52 @@ private fun PhotoGrid(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             state = gridState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(columnCount) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+                                val x = offset.x.toInt()
+                                val y = offset.y.toInt()
+                                x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
+                                y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
+                            }
+                            if (startItem != null) {
+                                val gridItem = gridItems.getOrNull(startItem.index)
+                                if (gridItem?.type == "photo") {
+                                    val photo = gridItem.photo!!
+                                    dragStartPhoto = photo
+                                    
+                                    val currentSelected = viewModel.selectionManager.selectedPhotoIds.value
+                                    if (photo.id !in currentSelected) {
+                                        viewModel.selectionManager.toggleSelection(photo.id)
+                                    }
+                                    initialSelection = viewModel.selectionManager.selectedPhotoIds.value
+                                }
+                            }
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            currentDragPosition = change.position
+                            updateDragSelection(change.position)
+                        },
+                        onDragEnd = {
+                            currentDragPosition = null
+                            coroutineScope.launch {
+                                delay(150)
+                                dragStartPhoto = null
+                            }
+                        },
+                        onDragCancel = {
+                            currentDragPosition = null
+                            coroutineScope.launch {
+                                delay(150)
+                                dragStartPhoto = null
+                            }
+                        }
+                    )
+                }
         ) {
             items(
                 items = gridItems,
@@ -593,28 +711,17 @@ private fun PhotoGrid(
                             photo = photo,
                             thumbUrl = viewModel.getThumbUrl(photo),
                             onClick = {
-                                if (isSelectionMode) {
-                                    viewModel.selectionManager.toggleSelection(photo.id)
-                                } else {
-                                    onPhotoClick(photo)
+                                if (dragStartPhoto?.id != photo.id) {
+                                    if (isSelectionMode) {
+                                        viewModel.selectionManager.toggleSelection(photo.id)
+                                    } else {
+                                        onPhotoClick(photo)
+                                    }
                                 }
                             },
-                            onLongClick = {
-                                viewModel.selectionManager.toggleSelection(photo.id)
-                            },
+                            onLongClick = null,
                             isSelected = photo.id in selectedPhotoIds,
-                            isSelectionMode = isSelectionMode,
-                            modifier = Modifier.pointerInput(photo.id) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { viewModel.selectionManager.startDragSelection(photo.id) },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        viewModel.selectionManager.dragSelect(photo.id)
-                                    },
-                                    onDragEnd = {},
-                                    onDragCancel = {}
-                                )
-                            }
+                            isSelectionMode = isSelectionMode
                         )
                     }
                 }

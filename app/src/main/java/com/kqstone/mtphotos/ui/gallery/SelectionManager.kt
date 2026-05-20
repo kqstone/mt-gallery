@@ -20,6 +20,10 @@ class SelectionManager(
         _selectedPhotoIds.value = if (photoId in current) current - photoId else current + photoId
     }
 
+    fun setSelectedIds(photoIds: Set<Double>) {
+        _selectedPhotoIds.value = photoIds
+    }
+
     fun startDragSelection(photoId: Double) {
         if (!isSelectionMode) {
             _selectedPhotoIds.value = setOf(photoId)
