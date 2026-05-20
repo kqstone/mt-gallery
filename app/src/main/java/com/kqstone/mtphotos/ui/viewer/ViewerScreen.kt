@@ -49,9 +49,13 @@ fun ViewerScreen(
     val photos = uiState.photos
     val initialIndex = uiState.currentIndex
     var stopActivePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var isExiting by remember { mutableStateOf(false) }
     val stopAndGoBack = {
-        stopActivePlayback?.invoke()
-        onBack()
+        if (!isExiting) {
+            isExiting = true
+            stopActivePlayback?.invoke()
+            onBack()
+        }
     }
 
     BackHandler(onBack = stopAndGoBack)

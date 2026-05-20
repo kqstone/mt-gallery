@@ -1,5 +1,8 @@
 package com.kqstone.mtphotos.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -113,7 +116,13 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             )
         }
 
-        composable("viewer") {
+        composable(
+            route = "viewer",
+            enterTransition = { fadeIn(animationSpec = tween(120)) },
+            exitTransition = { fadeOut(animationSpec = tween(90)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(90)) },
+            popExitTransition = { fadeOut(animationSpec = tween(120)) }
+        ) {
             ViewerScreen(
                 viewModel = viewerViewModel,
                 onBack = { navController.popBackStack() }

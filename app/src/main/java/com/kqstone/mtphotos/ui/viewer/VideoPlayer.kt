@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.viewer
 
+import android.view.LayoutInflater
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -11,6 +12,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.kqstone.mtphotos.R
 
 @Composable
 fun VideoPlayer(
@@ -28,11 +30,10 @@ fun VideoPlayer(
         }
     }
 
-    val stopPlayback = remember(exoPlayer) {
+    val pausePlayback = remember(exoPlayer) {
         {
             exoPlayer.playWhenReady = false
             exoPlayer.pause()
-            exoPlayer.clearVideoSurface()
         }
     }
 
@@ -41,25 +42,26 @@ fun VideoPlayer(
             exoPlayer.playWhenReady = true
             exoPlayer.play()
         } else {
-            stopPlayback()
+            pausePlayback()
         }
     }
 
-    DisposableEffect(stopPlayback) {
-        onStopPlaybackReady(stopPlayback)
+    DisposableEffect(pausePlayback) {
+        onStopPlaybackReady(pausePlayback)
         onDispose { onStopPlaybackReady(null) }
     }
 
     DisposableEffect(exoPlayer) {
         onDispose {
-            stopPlayback()
+            pausePlayback()
+            exoPlayer.clearVideoSurface()
             exoPlayer.release()
         }
     }
 
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            (LayoutInflater.from(ctx).inflate(R.layout.viewer_player_view, null) as PlayerView).apply {
                 player = exoPlayer
                 useController = true
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
