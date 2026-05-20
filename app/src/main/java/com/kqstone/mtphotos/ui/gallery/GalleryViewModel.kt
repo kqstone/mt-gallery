@@ -410,11 +410,22 @@ class GalleryViewModel(
             val locationsResult = galleryRepository.getAddressCountByCity()
             filterCandidatesLoaded = peopleResult.isSuccess || locationsResult.isSuccess
             _uiState.value = _uiState.value.copy(
-                searchPeople = peopleResult.getOrDefault(emptyList()).take(12),
+                searchPeople = peopleResult.getOrDefault(emptyList())
+                    .filter { it.hasSearchDisplayName() }
+                    .take(12),
                 searchLocations = locationsResult.getOrDefault(emptyList()).take(12),
                 isLoadingSearchFilters = false
             )
         }
+    }
+
+    private fun PersonItem.hasSearchDisplayName(): Boolean {
+        val normalized = name.trim()
+        return normalized.isNotEmpty() &&
+            normalized != "未知" &&
+            normalized != "未命名" &&
+            !normalized.equals("unknown", ignoreCase = true) &&
+            !normalized.equals("unnamed", ignoreCase = true)
     }
 
     fun updateSearchQuery(query: String) {
