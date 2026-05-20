@@ -5,6 +5,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import com.kqstone.mtphotos.AppContainer
+import com.kqstone.mtphotos.data.local.LocalVideoThumbnailGenerator
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.db.AppDatabase
@@ -31,6 +32,9 @@ class SyncRepository(
     private val mediaDao: MediaDao get() = database.mediaDao()
     private val galleryRepository: GalleryRepository get() = container.galleryRepository
     private val localScanner: LocalMediaScanner by lazy { LocalMediaScanner(container.prefsManager.context) }
+    private val localVideoThumbnailGenerator: LocalVideoThumbnailGenerator by lazy {
+        LocalVideoThumbnailGenerator(container.prefsManager.context, container.thumbnailCacheManager)
+    }
 
     suspend fun performFullSync(localFolders: Set<String>? = null) = withContext(Dispatchers.IO) {
         try {
@@ -684,6 +688,26 @@ class SyncRepository(
 
     suspend fun updateThumbCachePath(dbId: Long, path: String) {
         mediaDao.updateThumbCachePath(dbId, path)
+    }
+
+    suspend fun ensureLocalVideoThumbnail(photo: UnifiedPhotoItem): String? {
+        if (!photo.isVideo() || photo.localUri.isNullOrEmpty() || photo.isStorageOptimized) return null
+        if (!photo.thumbCachePath.isNullOrEmpty() && File(photo.thumbCachePath).let { it.exists() && it.length() > 0 }) {
+            return photo.thumbCachePath
+        }
+
+        val cacheKey = if (photo.md5.isNotEmpty()) {
+            photo.md5
+        } else if (photo.dbId > 0) {
+            "local_${photo.dbId}"
+        } else {
+            return null
+        }
+        val path = localVideoThumbnailGenerator.generate(photo.localUri, cacheKey) ?: return null
+        if (photo.dbId > 0) {
+            updateThumbCachePath(photo.dbId, path)
+        }
+        return path
     }
 
     suspend fun hasData(): Boolean {

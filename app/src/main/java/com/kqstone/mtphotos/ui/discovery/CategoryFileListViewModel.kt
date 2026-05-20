@@ -9,7 +9,9 @@ import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
-import java.io.File
+import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
+import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,6 +30,7 @@ class CategoryFileListViewModel(
 
     private val _uiState = MutableStateFlow(CategoryFileListUiState())
     val uiState: StateFlow<CategoryFileListUiState> = _uiState
+    private var localVideoThumbJob: Job? = null
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -48,6 +51,7 @@ class CategoryFileListViewModel(
     }
 
     private fun loadFiles(loader: suspend () -> Result<List<PhotoItem>>) {
+        localVideoThumbJob?.cancel()
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
             loader().fold(
@@ -55,6 +59,7 @@ class CategoryFileListViewModel(
                     val unified = syncRepository?.hydrateCloudPhotos(photos)
                         ?: photos.map { it.toCloudOnlyUnifiedPhotoItem() }
                     _uiState.value = CategoryFileListUiState(photos = unified)
+                    warmLocalVideoThumbnails(unified)
                 },
                 onFailure = { e ->
                     _uiState.value = CategoryFileListUiState(error = e.message ?: "加载失败")
@@ -72,29 +77,32 @@ class CategoryFileListViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        photo.thumbCachePath?.let {
-            if (it.isNotEmpty() && isLocalFileValid(it)) return "file://$it"
-        }
-        photo.localUri?.let {
-            if (it.isNotEmpty() && !photo.isStorageOptimized) return it
-        }
-        return if (photo.isVideo()) {
-            galleryRepository.getVideoThumbUrl(photo.md5)
-        } else {
-            galleryRepository.getThumbUrl(photo.md5, photo.id)
-        }
-    }
-
-    private fun isLocalFileValid(path: String): Boolean {
-        return try {
-            val file = File(path)
-            file.exists() && file.length() > 0
-        } catch (_: Exception) {
-            false
-        }
+        return ThumbnailUrlResolver.resolve(
+            photo = photo,
+            galleryRepository = galleryRepository,
+            imageCloudUrl = { galleryRepository.getThumbUrl(it.md5, it.id) }
+        )
     }
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> = _uiState.value.photos
+
+    private fun warmLocalVideoThumbnails(photos: List<UnifiedPhotoItem>) {
+        localVideoThumbJob?.cancel()
+        localVideoThumbJob = viewModelScope.launch {
+            LocalVideoThumbnailWarmup.warm(photos, syncRepository) { photo, path ->
+                updatePhotoThumbCachePath(photo.dbId, path)
+            }
+        }
+    }
+
+    private fun updatePhotoThumbCachePath(dbId: Long, path: String) {
+        if (dbId <= 0) return
+        _uiState.value = _uiState.value.copy(
+            photos = _uiState.value.photos.map { photo ->
+                if (photo.dbId == dbId) photo.copy(thumbCachePath = path) else photo
+            }
+        )
+    }
 
     fun updateColumnCount(count: Int) {
         _uiState.value = _uiState.value.copy(columnCount = count.coerceIn(2, 6))
