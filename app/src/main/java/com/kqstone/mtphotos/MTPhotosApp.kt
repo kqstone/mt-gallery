@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
+import okhttp3.OkHttpClient
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
@@ -24,12 +25,30 @@ import com.kqstone.mtphotos.worker.BackupScheduler
 
 class MTPhotosApp : Application(), ImageLoaderFactory {
 
+    companion object {
+        fun updateImageLoader(context: android.content.Context) {
+            val app = context.applicationContext as MTPhotosApp
+            coil.Coil.setImageLoader(app.newImageLoader())
+        }
+    }
+
     lateinit var container: AppContainer
         private set
     private var mediaChangeObserver: MediaChangeObserver? = null
 
     override fun newImageLoader(): ImageLoader {
+        val maxCacheMb = PrefsManager(this).getCoilDiskCacheMbSync()
         return ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addNetworkInterceptor { chain ->
+                        val response = chain.proceed(chain.request())
+                        response.newBuilder()
+                            .header("Cache-Control", "public, max-age=31536000")
+                            .build()
+                    }
+                    .build()
+            }
             .memoryCachePolicy(CachePolicy.ENABLED)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -40,7 +59,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_image_cache"))
-                    .maxSizePercent(0.03)
+                    .maxSizeBytes(maxCacheMb * 1024L * 1024L)
                     .build()
             }
             .allowRgb565(true)

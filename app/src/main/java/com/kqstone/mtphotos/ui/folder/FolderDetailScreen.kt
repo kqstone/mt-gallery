@@ -356,7 +356,8 @@ private fun SubfolderCard(
                     ThumbnailImage(
                         url = thumbUrl,
                         contentDescription = folder.name,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        key = folder.coverMd5
                     )
                 } else {
                     Box(

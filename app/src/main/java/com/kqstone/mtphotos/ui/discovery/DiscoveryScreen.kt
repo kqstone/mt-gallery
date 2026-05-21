@@ -190,7 +190,8 @@ private fun PeopleSection(
                     name = person.name,
                     count = person.count,
                     thumbUrl = portraitUrlProvider(person),
-                    onClick = { onItemClick(person) }
+                    onClick = { onItemClick(person) },
+                    key = person.coverMd5
                 )
             }
         }
@@ -223,7 +224,8 @@ private fun SceneSection(
                     thumbUrl = if (scene.coverMd5.isNotEmpty()) {
                         thumbUrlProvider(scene.coverMd5, scene.coverFileId)
                     } else null,
-                    onClick = { onItemClick(scene) }
+                    onClick = { onItemClick(scene) },
+                    key = scene.coverMd5
                 )
             }
         }
@@ -263,7 +265,8 @@ private fun DiscoveryCard(
     name: String,
     count: Int,
     thumbUrl: String?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    key: String? = null
 ) {
     Card(
         modifier = Modifier
@@ -287,7 +290,8 @@ private fun DiscoveryCard(
                     ThumbnailImage(
                         url = thumbUrl,
                         contentDescription = name,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        key = key
                     )
                 } else {
                     Box(

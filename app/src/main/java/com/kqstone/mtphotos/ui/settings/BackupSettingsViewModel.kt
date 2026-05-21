@@ -3,6 +3,7 @@ package com.kqstone.mtphotos.ui.settings
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import com.kqstone.mtphotos.MTPhotosApp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -62,6 +63,8 @@ data class BackupSettingsUiState(
     val backupDestinationError: String? = null,
     val deleteMode: String = "",
     val syncInterval: Int = 60,
+    val coilDiskCacheMb: Int = 512,
+    val cacheSizeFormatted: String = "0 MB",
     val error: String? = null
 )
 
@@ -97,6 +100,11 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.syncInterval.collect { interval ->
                 _uiState.value = _uiState.value.copy(syncInterval = interval)
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.coilDiskCacheMb.collect { mb ->
+                _uiState.value = _uiState.value.copy(coilDiskCacheMb = mb)
             }
         }
         viewModelScope.launch {
@@ -144,13 +152,17 @@ class BackupSettingsViewModel(
                     .size
                 val stats = storageOptimizer.getOptimizationStats()
 
+                val cacheDir = prefsManager.context.cacheDir.resolve("coil_image_cache")
+                val cacheSize = getDirectorySize(cacheDir)
+
                 _uiState.value = _uiState.value.copy(
                     syncedCount = synced,
                     backedUpCount = backedUp,
                     backedUpSizeFormatted = formatSize(backedUpSize),
                     pendingCount = pending,
                     optimizableCount = stats.totalFiles,
-                    optimizableSizeFormatted = stats.formattedSize()
+                    optimizableSizeFormatted = stats.formattedSize(),
+                    cacheSizeFormatted = formatSize(cacheSize)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadStats failed", e)
@@ -319,6 +331,44 @@ class BackupSettingsViewModel(
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
             _uiState.value = _uiState.value.copy(isOptimizing = false)
+        }
+    }
+
+    private fun getDirectorySize(directory: File): Long {
+        var size: Long = 0
+        val files = directory.listFiles()
+        if (files != null) {
+            for (file in files) {
+                size += if (file.isDirectory) {
+                    getDirectorySize(file)
+                } else {
+                    file.length()
+                }
+            }
+        }
+        return size
+    }
+
+    fun setCoilDiskCacheMb(mb: Int) {
+        viewModelScope.launch {
+            prefsManager.saveCoilDiskCacheMb(mb)
+            MTPhotosApp.updateImageLoader(prefsManager.context)
+            loadStats()
+        }
+    }
+
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    fun clearImageCache() {
+        viewModelScope.launch {
+            try {
+                val context = prefsManager.context
+                val imageLoader = coil.Coil.imageLoader(context)
+                imageLoader.diskCache?.clear()
+                imageLoader.memoryCache?.clear()
+                loadStats()
+            } catch (e: Exception) {
+                Log.e(TAG, "clearImageCache failed", e)
+            }
         }
     }
 
