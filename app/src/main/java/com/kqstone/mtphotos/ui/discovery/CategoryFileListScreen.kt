@@ -43,6 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
+import com.kqstone.mtphotos.ui.gallery.LazyGridVerticalFastScroller
 import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 
@@ -191,81 +192,88 @@ fun CategoryFileListScreen(
                 }
             }
             else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(uiState.columnCount),
-                    contentPadding = PaddingValues(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    state = gridState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(uiState.columnCount) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { offset ->
-                                    val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-                                        val x = offset.x.toInt()
-                                        val y = offset.y.toInt()
-                                        x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
-                                        y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
-                                    }
-                                    if (startItem != null) {
-                                        val photoId = startItem.key as? Double
-                                        if (photoId != null) {
-                                            val photo = uiState.photos.find { it.id == photoId }
-                                            if (photo != null) {
-                                                dragStartPhoto = photo
-                                                val currentSelected = viewModel.selectionManager.selectedPhotoIds.value
-                                                if (photo.id !in currentSelected) {
-                                                    viewModel.selectionManager.toggleSelection(photo.id)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(uiState.columnCount),
+                        contentPadding = PaddingValues(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        state = gridState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(uiState.columnCount) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { offset ->
+                                        val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+                                            val x = offset.x.toInt()
+                                            val y = offset.y.toInt()
+                                            x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
+                                            y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
+                                        }
+                                        if (startItem != null) {
+                                            val photoId = startItem.key as? Double
+                                            if (photoId != null) {
+                                                val photo = uiState.photos.find { it.id == photoId }
+                                                if (photo != null) {
+                                                    dragStartPhoto = photo
+                                                    val currentSelected = viewModel.selectionManager.selectedPhotoIds.value
+                                                    if (photo.id !in currentSelected) {
+                                                        viewModel.selectionManager.toggleSelection(photo.id)
+                                                    }
+                                                    initialSelection = viewModel.selectionManager.selectedPhotoIds.value
                                                 }
-                                                initialSelection = viewModel.selectionManager.selectedPhotoIds.value
                                             }
+                                        }
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        currentDragPosition = change.position
+                                        updateDragSelection(change.position)
+                                    },
+                                    onDragEnd = {
+                                        currentDragPosition = null
+                                        coroutineScope.launch {
+                                            delay(150)
+                                            dragStartPhoto = null
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        currentDragPosition = null
+                                        coroutineScope.launch {
+                                            delay(150)
+                                            dragStartPhoto = null
+                                        }
+                                    }
+                                )
+                            }
+                    ) {
+                        items(
+                            items = uiState.photos,
+                            key = { it.id }
+                        ) { photo ->
+                            PhotoThumbnail(
+                                photo = photo,
+                                thumbUrl = viewModel.getThumbUrl(photo),
+                                onClick = {
+                                    if (dragStartPhoto?.id != photo.id) {
+                                        if (isSelectionMode) {
+                                            viewModel.selectionManager.toggleSelection(photo.id)
+                                        } else {
+                                            onPhotoClick(photo)
                                         }
                                     }
                                 },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    currentDragPosition = change.position
-                                    updateDragSelection(change.position)
-                                },
-                                onDragEnd = {
-                                    currentDragPosition = null
-                                    coroutineScope.launch {
-                                        delay(150)
-                                        dragStartPhoto = null
-                                    }
-                                },
-                                onDragCancel = {
-                                    currentDragPosition = null
-                                    coroutineScope.launch {
-                                        delay(150)
-                                        dragStartPhoto = null
-                                    }
-                                }
+                                onLongClick = null,
+                                isSelected = photo.id in selectedIds,
+                                isSelectionMode = isSelectionMode
                             )
                         }
-                ) {
-                    items(
-                        items = uiState.photos,
-                        key = { it.id }
-                    ) { photo ->
-                        PhotoThumbnail(
-                            photo = photo,
-                            thumbUrl = viewModel.getThumbUrl(photo),
-                            onClick = {
-                                if (dragStartPhoto?.id != photo.id) {
-                                    if (isSelectionMode) {
-                                        viewModel.selectionManager.toggleSelection(photo.id)
-                                    } else {
-                                        onPhotoClick(photo)
-                                    }
-                                }
-                            },
-                            onLongClick = null,
-                            isSelected = photo.id in selectedIds,
-                            isSelectionMode = isSelectionMode
-                        )
                     }
+
+                    LazyGridVerticalFastScroller(
+                        gridState = gridState,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
                 }
             }
         }

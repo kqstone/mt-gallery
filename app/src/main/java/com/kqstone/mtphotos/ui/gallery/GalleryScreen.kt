@@ -491,7 +491,8 @@ private fun PhotoGrid(
         val monthTitle: String? = null,
         val monthCount: Int = 0,
         val dayGroup: DayGroup? = null,
-        val photo: UnifiedPhotoItem? = null
+        val photo: UnifiedPhotoItem? = null,
+        val parentMonthTitle: String? = null
     )
 
     val gridItems by remember(months, isSearchMode) {
@@ -504,14 +505,29 @@ private fun PhotoGrid(
                             "month",
                             "month_${month.yearMonth}",
                             monthTitle = month.displayTitle,
-                            monthCount = month.totalCount
+                            monthCount = month.totalCount,
+                            parentMonthTitle = month.displayTitle
                         )
                     )
                 }
                 for (day in month.days) {
-                    items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
+                    items.add(
+                        GridItem(
+                            "day",
+                            "day_${month.yearMonth}_${day.date}",
+                            dayGroup = day,
+                            parentMonthTitle = month.displayTitle
+                        )
+                    )
                     for (photo in day.photos) {
-                        items.add(GridItem("photo", "photo_${photo.uniqueKey}", photo = photo))
+                        items.add(
+                            GridItem(
+                                "photo",
+                                "photo_${photo.uniqueKey}",
+                                photo = photo,
+                                parentMonthTitle = month.displayTitle
+                            )
+                        )
                     }
                 }
             }
@@ -727,6 +743,17 @@ private fun PhotoGrid(
                 }
             }
         }
+
+        LazyGridVerticalFastScroller(
+            gridState = gridState,
+            labelProvider = { fraction ->
+                if (isSearchMode) null else {
+                    val targetIndex = (fraction * (gridItems.size - 1)).toInt().coerceIn(0, gridItems.size - 1)
+                    gridItems.getOrNull(targetIndex)?.parentMonthTitle
+                }
+            },
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 
