@@ -671,7 +671,9 @@ interface GatewayApi {
 
     /** 更新刚上传的文件的状态 */
     @POST("/gateway/scanAfterUpload")
-    suspend fun GatewayControllerPart5ScanAfterUpload(): Map<String, Any>
+    suspend fun GatewayControllerPart5ScanAfterUpload(
+        @Body body: Map<String, @JvmSuppressWildcards Any> = emptyMap()
+    ): Map<String, Any>
 
     /** 更新刚上传的文件的状态 - 分享的链接中 */
     @POST("/gateway/scanAfterUploadInShare")

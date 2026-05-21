@@ -10,6 +10,21 @@ data class BackupDestinationNode(
 
 class BackupDestinationRepository(private val container: AppContainer) {
 
+    suspend fun enableFileBackup(): BackupDestinationNode? {
+        val response = container.gatewayApi.GatewayControllerPart4EnableFileBackup()
+        return parseNode(response, "/")
+    }
+
+    suspend fun ensureDefaultDeviceDestination(deviceName: String): BackupDestinationNode? {
+        val userRoot = enableFileBackup() ?: return null
+        val cleanDeviceName = deviceName.trim().trim('/').ifEmpty { "Android" }
+        return BackupDestinationNode(
+            id = userRoot.id,
+            name = cleanDeviceName,
+            path = joinPath(userRoot.path, cleanDeviceName)
+        )
+    }
+
     suspend fun getRootDestinations(): List<BackupDestinationNode> {
         val response = container.gatewayApi.GatewayControllerPart4BackupDistRoot()
         return parseNodes(response, "/")
@@ -31,20 +46,31 @@ class BackupDestinationRepository(private val container: AppContainer) {
         parentPath: String
     ): List<BackupDestinationNode> {
         return rawNodes.mapNotNull { raw ->
-            val id = raw.firstLong("id", "dist_id", "distId", "value") ?: return@mapNotNull null
-            val name = raw.firstString("name", "dist_name", "distName", "label", "title")
-                ?.takeIf { it.isNotBlank() }
-                ?: "目录$id"
-            val path = raw.firstString("path", "full_path", "fullPath", "absPath", "location")
-                ?.takeIf { it.isNotBlank() }
-                ?: joinPath(parentPath, name)
-
-            BackupDestinationNode(
-                id = id,
-                name = name,
-                path = normalizePath(path)
-            )
+            parseNode(raw, parentPath)
         }.distinctBy { it.id }
+    }
+
+    private fun parseNode(
+        raw: Map<String, Any>,
+        parentPath: String,
+        fallbackName: String? = null
+    ): BackupDestinationNode? {
+        val id = raw.firstLong("id", "dist_id", "distId", "value") ?: return null
+        if (id <= 0L) return null
+        val rawPath = raw.firstString("path", "full_path", "fullPath", "absPath", "location")
+            ?.takeIf { it.isNotBlank() }
+        val name = raw.firstString("name", "dist_name", "distName", "label", "title")
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackName
+            ?: rawPath?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "Directory $id"
+        val path = rawPath ?: joinPath(parentPath, name)
+
+        return BackupDestinationNode(
+            id = id,
+            name = name,
+            path = normalizePath(path)
+        )
     }
 
     private fun Map<String, Any>.firstLong(vararg keys: String): Long? {

@@ -7,6 +7,7 @@ import com.kqstone.mtphotos.MTPhotosApp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.kqstone.mtphotos.data.local.BackupDestinationDefaults
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
@@ -24,13 +25,7 @@ private const val DEFAULT_BACKUP_DEST_ID = 1L
 private const val ROOT_BACKUP_DEST_PATH = "/"
 private const val ROOT_BACKUP_DEST_LABEL = "/"
 private val DEFAULT_BACKUP_DEST_LABEL = Build.MODEL
-private val DEFAULT_BACKUP_DEST_PATH = defaultBackupDestPath()
-
-private fun defaultBackupDestPath(username: String = ""): String {
-    val cleanUser = username.trim().trim('/')
-    val cleanModel = Build.MODEL.trim().trim('/').ifEmpty { "Android" }
-    return if (cleanUser.isNotEmpty()) "/$cleanUser/$cleanModel" else "/$cleanModel"
-}
+private val DEFAULT_BACKUP_DEST_PATH = BackupDestinationDefaults.path("")
 
 data class BackupDestinationBreadcrumb(
     val id: Long,
@@ -225,6 +220,7 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.saveBackupEnabled(enabled)
             if (enabled) {
+                ensureDeviceFolder()
                 val wifiOnly = prefsManager.getBackupWifiOnlySync()
                 val syncInterval = prefsManager.getSyncIntervalSync().toLong()
                 BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
@@ -436,7 +432,7 @@ class BackupSettingsViewModel(
                     backupDestinationNodes = nodes,
                     isLoadingBackupDestinations = false
                 )
-                ensureDeviceFolder(nodes)
+                ensureDeviceFolder()
             } catch (e: Exception) {
                 Log.e(TAG, "loadBackupDestinationRoot failed", e)
                 _uiState.value = _uiState.value.copy(
@@ -567,13 +563,7 @@ class BackupSettingsViewModel(
     private fun saveBackupDestination(id: Long, label: String, path: String) {
         viewModelScope.launch {
             try {
-                prefsManager.saveBackupDestination(id, label, path)
-                _uiState.value = _uiState.value.copy(
-                    backupDestinationId = id,
-                    backupDestinationLabel = label.ifBlank { DEFAULT_BACKUP_DEST_LABEL },
-                    backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH },
-                    backupDestinationError = null
-                )
+                saveBackupDestinationNow(id, label, path)
             } catch (e: Exception) {
                 Log.e(TAG, "saveBackupDestination failed", e)
                 _uiState.value = _uiState.value.copy(
@@ -583,44 +573,33 @@ class BackupSettingsViewModel(
         }
     }
 
-    private suspend fun ensureDeviceFolder(rootNodes: List<BackupDestinationNode>) {
+    private suspend fun saveBackupDestinationNow(id: Long, label: String, path: String) {
+        prefsManager.saveBackupDestination(id, label, path)
+        _uiState.value = _uiState.value.copy(
+            backupDestinationId = id,
+            backupDestinationLabel = label.ifBlank { DEFAULT_BACKUP_DEST_LABEL },
+            backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH },
+            backupDestinationError = null
+        )
+    }
+
+    private suspend fun ensureDeviceFolder() {
         if (prefsManager.isBackupDestinationConfiguredSync()) return
 
-        val modelName = Build.MODEL
-        val userRoot = findUserRoot(rootNodes) ?: run {
-            Log.w(TAG, "No user root directory found for default backup destination")
-            return
-        }
-
-        val children = backupDestinationRepository.getSubDestinations(userRoot.id, userRoot.path)
-        val existing = children.find { it.name == modelName }
-        if (existing != null) {
-            saveBackupDestination(existing.id, existing.name, existing.path)
-            return
-        }
-
         try {
-            backupDestinationRepository.createFolder(userRoot.id, modelName)
-            val refreshed = backupDestinationRepository.getSubDestinations(userRoot.id, userRoot.path)
-            val created = refreshed.find { it.name == modelName }
-            if (created != null) {
-                saveBackupDestination(created.id, created.name, created.path)
+            val deviceDestination = backupDestinationRepository.ensureDefaultDeviceDestination(Build.MODEL)
+            if (deviceDestination != null) {
+                saveBackupDestinationNow(
+                    deviceDestination.id,
+                    deviceDestination.name,
+                    deviceDestination.path
+                )
+            } else {
+                Log.w(TAG, "No default backup destination returned by enableFileBackup")
             }
         } catch (e: Exception) {
             Log.e(TAG, "ensureDeviceFolder failed", e)
         }
-    }
-
-    private fun findUserRoot(rootNodes: List<BackupDestinationNode>): BackupDestinationNode? {
-        val username = prefsManager.getUsernameSync().trim()
-        if (username.isNotEmpty()) {
-            rootNodes.firstOrNull { node ->
-                node.name.equals(username, ignoreCase = true) ||
-                    node.path.trim('/').equals(username, ignoreCase = true) ||
-                    node.path.trim('/').endsWith("/$username", ignoreCase = true)
-            }?.let { return it }
-        }
-        return rootNodes.singleOrNull()
     }
 
     private fun rootBreadcrumb(): BackupDestinationBreadcrumb {

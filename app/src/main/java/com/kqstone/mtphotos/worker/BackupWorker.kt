@@ -12,6 +12,7 @@ import androidx.work.WorkerParameters
 import com.google.gson.Gson
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.data.local.BackupDestinationDefaults
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.MediaEntity
 import kotlinx.coroutines.Dispatchers
@@ -42,11 +43,47 @@ class BackupWorker(
             val syncRepo = container.syncRepository
             val prefsManager = container.prefsManager
             val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
-            val backupDestinationId = prefsManager.getBackupDestinationIdSync()
 
             if (!prefsManager.getBackupEnabledSync()) {
                 Log.d(TAG, "Backup not enabled, skipping")
                 return@withContext Result.success()
+            }
+
+            val configuredDestination = prefsManager.isBackupDestinationConfiguredSync()
+            val deviceName = prefsManager.getDeviceNameSync().trim().trim('/').ifEmpty { "Android" }
+            var sourceFolderDevicePrefix: String? = null
+            val backupDestinationId = if (configuredDestination) {
+                val savedDestinationId = prefsManager.getBackupDestinationIdSync()
+                val expectedDefaultPath = BackupDestinationDefaults.path(
+                    prefsManager.getUsernameSync(),
+                    deviceName
+                )
+
+                if (prefsManager.getBackupDestinationPathSync() == expectedDefaultPath) {
+                    val userRoot = container.backupDestinationRepository.enableFileBackup()
+                    if (userRoot == null) {
+                        Log.w(TAG, "Default backup user root is unavailable, skipping upload")
+                        return@withContext Result.retry()
+                    }
+                    sourceFolderDevicePrefix = deviceName
+                    if (userRoot.id != savedDestinationId) {
+                        prefsManager.saveBackupDestination(userRoot.id, deviceName, expectedDefaultPath)
+                    }
+                    userRoot.id
+                } else {
+                    savedDestinationId
+                }
+            } else {
+                val destination = container.backupDestinationRepository.ensureDefaultDeviceDestination(
+                    deviceName
+                )
+                if (destination == null) {
+                    Log.w(TAG, "Default backup destination is unavailable, skipping upload")
+                    return@withContext Result.retry()
+                }
+                prefsManager.saveBackupDestination(destination.id, destination.name, destination.path)
+                sourceFolderDevicePrefix = deviceName
+                destination.id
             }
 
             val resetCount = syncRepo.resetStaleUploading(
@@ -109,7 +146,8 @@ class BackupWorker(
                         serverUrl = serverUrl,
                         token = token,
                         client = uploadClient,
-                        backupDestinationId = backupDestinationId
+                        backupDestinationId = backupDestinationId,
+                        sourceFolderDevicePrefix = sourceFolderDevicePrefix
                     )
                     if (uploadResult != null) {
                         syncRepo.markAsBackedUp(
@@ -135,7 +173,9 @@ class BackupWorker(
 
             if (successCount > 0) {
                 try {
-                    container.gatewayApi.GatewayControllerPart5ScanAfterUpload()
+                    container.gatewayApi.GatewayControllerPart5ScanAfterUpload(
+                        mapOf("folderId" to backupDestinationId.toInt())
+                    )
                     Log.d(TAG, "Triggered server scan after upload")
                 } catch (e: Exception) {
                     Log.w(TAG, "scanAfterUpload failed", e)
@@ -154,7 +194,8 @@ class BackupWorker(
         serverUrl: String,
         token: String,
         client: okhttp3.OkHttpClient,
-        backupDestinationId: Long
+        backupDestinationId: Long,
+        sourceFolderDevicePrefix: String?
     ): Pair<Double, String>? {
         val app = applicationContext as MTPhotosApp
         val container = app.container
@@ -168,20 +209,21 @@ class BackupWorker(
 
         val deviceName = container.prefsManager.getDeviceNameSync()
         val ctimeMs = resolveUploadCtime(media.mtime)
-        val folderName = media.localFolderPath?.let { File(it).name } ?: "__NO_SUB_FOLDER__"
+        val sourceFolderPath = resolveSourceFolderPath(
+            localFolderName = media.localFolderPath?.let { File(it).name },
+            devicePrefix = sourceFolderDevicePrefix
+        )
 
         try {
             val checkBody: Map<String, Any> = buildMap {
                 put("fileName", media.fileName)
                 put("size", media.fileSize)
                 put("deviceName", deviceName)
-                put("name_type", "")
-                put("duplicate", 0)
+                put("trigger_thumb_task", "on")
                 put("dist_id", backupDestinationId)
-                put("source_folder_path", folderName)
+                put("source_folder_path", sourceFolderPath)
                 if (media.md5.isNotEmpty()) put("md5", media.md5)
                 put("ctime", ctimeMs)
-                put("v", "1.0")
             }
 
             val checkResult = container.gatewayApi.GatewayControllerPart4CheckPathForUpload(checkBody)
@@ -208,8 +250,14 @@ class BackupWorker(
                 .build()
 
             val encodedFileName = URLEncoder.encode(media.fileName, "UTF-8").replace("+", "%20")
-            val mtextra =
-                """{"dist_id":$backupDestinationId,"source_folder_path":"$folderName","trigger_thumb_task":"on","duplicate":0}"""
+            val mtextra = Gson().toJson(
+                mapOf(
+                    "dist_id" to backupDestinationId,
+                    "source_folder_path" to sourceFolderPath,
+                    "trigger_thumb_task" to "on",
+                    "duplicate" to 1
+                )
+            )
             val encodedMtextra = URLEncoder.encode(mtextra, "UTF-8")
 
             val request = okhttp3.Request.Builder()
@@ -264,6 +312,21 @@ class BackupWorker(
             (sdf.parse(mtime)?.time ?: System.currentTimeMillis()).toString()
         } catch (_: Exception) {
             System.currentTimeMillis().toString()
+        }
+    }
+
+    private fun resolveSourceFolderPath(
+        localFolderName: String?,
+        devicePrefix: String?
+    ): String {
+        val cleanLocalFolder = localFolderName?.trim()?.trim('/').orEmpty()
+        val cleanDevicePrefix = devicePrefix?.trim()?.trim('/').orEmpty()
+        return when {
+            cleanDevicePrefix.isNotEmpty() && cleanLocalFolder.isNotEmpty() ->
+                "$cleanDevicePrefix/$cleanLocalFolder"
+            cleanDevicePrefix.isNotEmpty() -> cleanDevicePrefix
+            cleanLocalFolder.isNotEmpty() -> cleanLocalFolder
+            else -> "__NO_SUB_FOLDER__"
         }
     }
 

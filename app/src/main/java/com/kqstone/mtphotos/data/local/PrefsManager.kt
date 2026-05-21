@@ -232,12 +232,6 @@ class PrefsManager(val context: Context) {
     }
 
     private fun defaultBackupDestinationPath(username: String?): String {
-        val cleanUser = username.orEmpty().trim().trim('/')
-        val cleanModel = android.os.Build.MODEL.trim().trim('/').ifEmpty { "Android" }
-        return if (cleanUser.isNotEmpty()) {
-            "/$cleanUser/$cleanModel"
-        } else {
-            "/$cleanModel"
-        }
+        return BackupDestinationDefaults.path(username)
     }
 }
