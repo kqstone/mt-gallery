@@ -187,6 +187,45 @@ interface MediaDao {
 
     @Query("""
         UPDATE media
+        SET syncStatus = 'LOCAL_ONLY',
+            backupStatus = 'FAILED',
+            cloudId = NULL,
+            cloudMd5 = NULL,
+            updatedAt = :now
+        WHERE id IN (:ids)
+    """)
+    suspend fun markBackupsForRetry(ids: List<Long>, now: Long = System.currentTimeMillis()): Int
+
+    @Query("""
+        UPDATE media
+        SET syncStatus = 'LOCAL_ONLY',
+            backupStatus = 'FAILED',
+            cloudId = NULL,
+            cloudMd5 = NULL,
+            updatedAt = :now
+        WHERE md5 IN (:md5s)
+        AND localMediaStoreId IS NOT NULL
+        AND backupStatus != 'REMOTE_DELETED'
+    """)
+    suspend fun markMissingBackupsForRetry(md5s: List<String>, now: Long = System.currentTimeMillis()): Int
+
+    @Query("""
+        UPDATE media
+        SET syncStatus = 'LOCAL_ONLY',
+            backupStatus = 'FAILED',
+            cloudId = NULL,
+            cloudMd5 = NULL,
+            updatedAt = :now
+        WHERE md5 IN (:md5s)
+        AND localMediaStoreId IS NOT NULL
+    """)
+    suspend fun markMissingBackupsForRetryIncludingRemoteDeleted(
+        md5s: List<String>,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("""
+        UPDATE media
         SET backupStatus = :status, updatedAt = :now
         WHERE id = :id
         AND syncStatus = 'LOCAL_ONLY'

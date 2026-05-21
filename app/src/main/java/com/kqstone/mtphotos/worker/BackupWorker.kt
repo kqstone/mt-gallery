@@ -30,6 +30,13 @@ private const val TAG = "BackupWorker"
 private const val NOTIFICATION_CHANNEL_ID = "backup_channel"
 private const val NOTIFICATION_ID = 1001
 private const val STALE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000L
+private const val MAX_RETRY_ATTEMPTS = 5
+
+private data class UploadResult(
+    val cloudId: Double,
+    val cloudMd5: String,
+    val fromExistingServerRecord: Boolean
+)
 
 class BackupWorker(
     context: Context,
@@ -111,6 +118,7 @@ class BackupWorker(
             val token = prefsManager.getTokenSync()
             var successCount = 0
             var failCount = 0
+            val existingServerRecordSuccessIds = mutableListOf<Long>()
 
             val uploadClient = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -152,11 +160,14 @@ class BackupWorker(
                     if (uploadResult != null) {
                         syncRepo.markAsBackedUp(
                             media.id,
-                            cloudId = uploadResult.first,
-                            cloudMd5 = uploadResult.second
+                            cloudId = uploadResult.cloudId,
+                            cloudMd5 = uploadResult.cloudMd5
                         )
+                        if (uploadResult.fromExistingServerRecord) {
+                            existingServerRecordSuccessIds += media.id
+                        }
                         successCount++
-                        Log.d(TAG, "Uploaded: ${media.fileName} -> cloudId=${uploadResult.first}")
+                        Log.d(TAG, "Uploaded: ${media.fileName} -> cloudId=${uploadResult.cloudId}")
                     } else {
                         container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.FAILED)
                         failCount++
@@ -182,10 +193,33 @@ class BackupWorker(
                 }
             }
 
-            if (failCount > 0) Result.retry() else Result.success()
+            if (existingServerRecordSuccessIds.isNotEmpty()) {
+                try {
+                    val reverted = syncRepo.retryBackupsMissingFromCloud(existingServerRecordSuccessIds)
+                    if (reverted > 0) {
+                        successCount = (successCount - reverted).coerceAtLeast(0)
+                        failCount += reverted
+                        Log.w(TAG, "Reverted $reverted existing-record uploads after cloud verification")
+                    }
+                } catch (e: Exception) {
+                    val reverted = syncRepo.markBackupsForRetry(existingServerRecordSuccessIds)
+                    successCount = (successCount - reverted).coerceAtLeast(0)
+                    failCount += reverted
+                    Log.w(TAG, "Cloud verification failed; reverted $reverted existing-record uploads", e)
+                }
+            }
+
+            if (failCount > 0 && runAttemptCount + 1 < MAX_RETRY_ATTEMPTS) {
+                Result.retry()
+            } else {
+                if (failCount > 0) {
+                    Log.w(TAG, "Backup retry limit reached; failed files remain pending for later runs")
+                }
+                Result.success()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "BackupWorker failed", e)
-            Result.retry()
+            if (runAttemptCount + 1 < MAX_RETRY_ATTEMPTS) Result.retry() else Result.success()
         }
     }
 
@@ -196,7 +230,7 @@ class BackupWorker(
         client: okhttp3.OkHttpClient,
         backupDestinationId: Long,
         sourceFolderDevicePrefix: String?
-    ): Pair<Double, String>? {
+    ): UploadResult? {
         val app = applicationContext as MTPhotosApp
         val container = app.container
 
@@ -229,12 +263,21 @@ class BackupWorker(
             val checkResult = container.gatewayApi.GatewayControllerPart4CheckPathForUpload(checkBody)
             Log.d(TAG, "checkPathForUpload result: $checkResult")
 
-            val existingId = (checkResult["id"] as? Double) ?: 0.0
+            val existingId = (checkResult["id"] as? Number)?.toDouble() ?: 0.0
             val abort = checkResult["abort"] as? Boolean ?: false
 
-            if (existingId > 0 || abort) {
+            if (existingId > 0) {
                 Log.d(TAG, "File already exists on server: ${media.fileName}, id=$existingId")
-                return Pair(existingId, media.md5)
+                return UploadResult(
+                    cloudId = existingId,
+                    cloudMd5 = media.md5,
+                    fromExistingServerRecord = true
+                )
+            }
+
+            if (abort) {
+                Log.w(TAG, "checkPathForUpload aborted without file id for ${media.fileName}")
+                return null
             }
         } catch (e: Exception) {
             Log.w(TAG, "checkPathForUpload failed for ${media.fileName}, proceeding with upload", e)
@@ -292,14 +335,20 @@ class BackupWorker(
                 return null
             }
 
-            val fileId = (map?.get("id") as? Double) ?: (map?.get("fileId") as? Double) ?: 0.0
+            val fileId = (map?.get("id") as? Number)?.toDouble()
+                ?: (map?.get("fileId") as? Number)?.toDouble()
+                ?: 0.0
             if (fileId <= 0) {
                 Log.w(TAG, "Upload returned invalid fileId=$fileId for ${media.fileName}, response: $respBody")
                 return null
             }
 
             Log.d(TAG, "Upload success: ${media.fileName}, cloudId=$fileId")
-            return Pair(fileId, media.md5)
+            return UploadResult(
+                cloudId = fileId,
+                cloudMd5 = media.md5,
+                fromExistingServerRecord = false
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Upload exception for ${media.fileName}", e)
             return null

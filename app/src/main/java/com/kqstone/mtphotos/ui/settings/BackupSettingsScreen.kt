@@ -202,6 +202,20 @@ fun BackupSettingsScreen(
                 )
             }
 
+            item {
+                SettingActionRow(
+                    title = "扫描并补传未备份文件",
+                    subtitle = uiState.backupRepairMessage
+                        ?: "全量比对本地与云端，重新备份缺失文件",
+                    icon = Icons.Default.Cloud,
+                    onClick = { viewModel.repairMissingBackups() },
+                    enabled = uiState.backupEnabled && !uiState.isRepairingBackups
+                )
+                if (uiState.isRepairingBackups) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+
             item { SectionTitle("备份目标") }
 
             item {

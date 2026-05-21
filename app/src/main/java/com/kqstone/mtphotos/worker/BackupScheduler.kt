@@ -103,7 +103,11 @@ object BackupScheduler {
     /**
      * 手动触发一次备份
      */
-    fun triggerImmediateBackup(context: Context, wifiOnly: Boolean = true) {
+    fun triggerImmediateBackup(
+        context: Context,
+        wifiOnly: Boolean = true,
+        replaceExisting: Boolean = false
+    ) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(
                 if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
@@ -117,7 +121,7 @@ object BackupScheduler {
 
         WorkManager.getInstance(context).enqueueUniqueWork(
             ONE_TIME_BACKUP_WORK,
-            ExistingWorkPolicy.KEEP,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             workRequest
         )
         Log.d(TAG, "Triggered immediate backup")

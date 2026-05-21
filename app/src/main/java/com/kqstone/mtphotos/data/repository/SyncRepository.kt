@@ -192,6 +192,11 @@ class SyncRepository(
 
     data class SyncResult(val newCount: Int, val removedCount: Int)
 
+    data class BackupRepairResult(
+        val scannedCount: Int,
+        val resetCount: Int
+    )
+
     private data class CloudDeleteChanges(
         val deletedCloudOnly: Int = 0,
         val localRetained: Int = 0
@@ -639,6 +644,68 @@ class SyncRepository(
             localFolders.isEmpty() -> emptyList()
             else -> mediaDao.getPendingBackupMediaByFolders(localFolders.toList())
         }
+    }
+
+    suspend fun retryBackupsMissingFromCloud(dbIds: List<Long>): Int = withContext(Dispatchers.IO) {
+        if (dbIds.isEmpty()) return@withContext 0
+
+        val entities = mediaDao.findByIds(dbIds.distinct())
+        if (entities.isEmpty()) return@withContext 0
+
+        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+        val cloudIds = cloudPhotos.mapNotNull { it.cloudId }.toSet()
+        val cloudMd5s = cloudPhotos.map { it.md5 }.filter { it.isNotEmpty() }.toSet()
+
+        val missingIds = entities.filter { entity ->
+            val cloudIdMissing = entity.cloudId?.let { it !in cloudIds } ?: true
+            val md5 = entity.md5.ifEmpty { entity.cloudMd5 ?: "" }
+            val md5Missing = md5.isEmpty() || md5 !in cloudMd5s
+            cloudIdMissing && md5Missing
+        }.map { it.id }
+
+        if (missingIds.isEmpty()) {
+            0
+        } else {
+            mediaDao.markBackupsForRetry(missingIds)
+        }
+    }
+
+    suspend fun markBackupsForRetry(dbIds: List<Long>): Int = withContext(Dispatchers.IO) {
+        if (dbIds.isEmpty()) 0 else mediaDao.markBackupsForRetry(dbIds.distinct())
+    }
+
+    suspend fun repairMissingBackups(
+        localFolders: Set<String>? = null,
+        includeRemoteDeleted: Boolean = false
+    ): BackupRepairResult = withContext(Dispatchers.IO) {
+        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+        val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
+        val cloudMd5s = cloudMd5Map.keys
+
+        val localMedia = localScanner.scanMedia(localFolders, computeMd5 = true)
+        val merged = prepareLocalEntities(localMedia, cloudMd5Map = cloudMd5Map)
+        if (merged.isNotEmpty()) {
+            mediaDao.insertAll(merged)
+        }
+
+        val missingMd5s = localMedia
+            .map { it.md5 }
+            .filter { it.isNotEmpty() && it !in cloudMd5s }
+            .distinct()
+
+        var resetCount = 0
+        for (chunk in missingMd5s.chunked(400)) {
+            resetCount += if (includeRemoteDeleted) {
+                mediaDao.markMissingBackupsForRetryIncludingRemoteDeleted(chunk)
+            } else {
+                mediaDao.markMissingBackupsForRetry(chunk)
+            }
+        }
+
+        BackupRepairResult(
+            scannedCount = localMedia.size,
+            resetCount = resetCount
+        )
     }
 
     suspend fun getOptimizableMedia(): List<MediaEntity> {

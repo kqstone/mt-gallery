@@ -45,6 +45,8 @@ data class BackupSettingsUiState(
     val isBackingUp: Boolean = false,
     val isOptimizing: Boolean = false,
     val isSyncing: Boolean = false,
+    val isRepairingBackups: Boolean = false,
+    val backupRepairMessage: String? = null,
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
     val historicalSelectedFolderCount: Int = 0,
@@ -262,11 +264,54 @@ class BackupSettingsViewModel(
     fun triggerBackupNow() {
         val wifiOnly = _uiState.value.wifiOnly
         _uiState.value = _uiState.value.copy(isBackingUp = true)
-        BackupScheduler.triggerImmediateBackup(prefsManager.context, wifiOnly)
+        BackupScheduler.triggerImmediateBackup(
+            prefsManager.context,
+            wifiOnly,
+            replaceExisting = true
+        )
         viewModelScope.launch {
             kotlinx.coroutines.delay(2000)
             _uiState.value = _uiState.value.copy(isBackingUp = false)
             loadStats()
+        }
+    }
+
+    fun repairMissingBackups() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isRepairingBackups = true,
+                backupRepairMessage = null,
+                error = null
+            )
+            try {
+                val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
+                val result = syncRepository.repairMissingBackups(selectedFolders)
+                val pending = syncRepository.getPendingBackupMedia(selectedFolders).size
+                _uiState.value = _uiState.value.copy(
+                    pendingCount = pending,
+                    isRepairingBackups = false,
+                    backupRepairMessage = if (result.resetCount > 0) {
+                        "已扫描 ${result.scannedCount} 个文件，发现 ${result.resetCount} 个需要补传"
+                    } else {
+                        "已扫描 ${result.scannedCount} 个文件，未发现缺失备份"
+                    }
+                )
+                if (result.resetCount > 0) {
+                    BackupScheduler.triggerImmediateBackup(
+                        prefsManager.context,
+                        prefsManager.getBackupWifiOnlySync(),
+                        replaceExisting = true
+                    )
+                }
+                loadStats()
+            } catch (e: Exception) {
+                Log.e(TAG, "repairMissingBackups failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isRepairingBackups = false,
+                    error = e.message,
+                    backupRepairMessage = "扫描未备份文件失败"
+                )
+            }
         }
     }
 
