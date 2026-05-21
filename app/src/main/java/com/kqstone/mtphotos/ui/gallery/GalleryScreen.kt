@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -82,6 +81,7 @@ import com.kqstone.mtphotos.data.repository.SearchFilters
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.formatDayHeaderDate
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -499,17 +499,6 @@ private fun PhotoGrid(
         derivedStateOf {
             val items = mutableListOf<GridItem>()
             for (month in months) {
-                if (!isSearchMode) {
-                    items.add(
-                        GridItem(
-                            "month",
-                            "month_${month.yearMonth}",
-                            monthTitle = month.displayTitle,
-                            monthCount = month.totalCount,
-                            parentMonthTitle = month.displayTitle
-                        )
-                    )
-                }
                 for (day in month.days) {
                     items.add(
                         GridItem(
@@ -711,7 +700,7 @@ private fun PhotoGrid(
                 key = { it.key },
                 contentType = { it.type },
                 span = { item ->
-                    if (item.type == "month" || item.type == "day") {
+                    if (item.type == "day") {
                         GridItemSpan(maxLineSpan)
                     } else {
                         GridItemSpan(1)
@@ -719,7 +708,6 @@ private fun PhotoGrid(
                 }
             ) { item ->
                 when (item.type) {
-                    "month" -> MonthHeader(title = item.monthTitle.orEmpty(), count = item.monthCount)
                     "day" -> DayHeader(dayGroup = item.dayGroup!!)
                     "photo" -> {
                         val photo = item.photo!!
@@ -758,50 +746,16 @@ private fun PhotoGrid(
 }
 
 @Composable
-private fun MonthHeader(title: String, count: Int) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = "$count 张照片",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-        )
-    }
-}
-
-@Composable
 private fun DayHeader(dayGroup: DayGroup) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f))
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(16.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.secondary,
-                    shape = RoundedCornerShape(2.dp)
-                )
-        )
-        Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = dayGroup.date,
+            text = formatDayHeaderDate(dayGroup.date),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
