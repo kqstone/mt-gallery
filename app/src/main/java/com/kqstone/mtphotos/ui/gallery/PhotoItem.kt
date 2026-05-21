@@ -15,25 +15,27 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -152,10 +154,11 @@ fun PhotoThumbnail(
 
 /**
  * 同步状态图标组件
- * - ☁️ CLOUD_ONLY → 云图标（蓝色）
- * - 📱 LOCAL_ONLY → 手机图标（橙色）
- * - ✅ SYNCED → 云端已同步图标（绿色）
- * - ⏫ UPLOADING → 上传中（旋转动画）
+ * - ☁️ CLOUD_ONLY → 白色云轮廓图标（内部半透明黑底）
+ * - ✅ SYNCED → 白色 CloudDone 图标（内部半透明黑底）
+ * - ⬆️ LOCAL_ONLY + 待备份 → 白色云 + 虚线向上箭头
+ * - ⏫ UPLOADING → 白色云 + 动态向上箭头
+ * - 其他 LOCAL_ONLY → 不显示
  */
 @Composable
 private fun SyncStatusIcon(
@@ -163,66 +166,187 @@ private fun SyncStatusIcon(
     backupStatus: BackupStatus,
     modifier: Modifier = Modifier
 ) {
-    // 上传中有旋转动画
     val isUploading = backupStatus == BackupStatus.UPLOADING
+    val isPendingBackup = syncStatus == SyncStatus.LOCAL_ONLY &&
+            backupStatus in listOf(BackupStatus.NOT_STARTED, BackupStatus.FAILED)
 
-    val (icon, tint, description) = when {
-        isUploading -> Triple(
-            Icons.Outlined.CloudUpload,
-            Color(0xFF2196F3),  // 蓝色
-            "上传中"
+    when {
+        isUploading -> {
+            CloudWithArrowIcon(
+                dashed = false,
+                animated = true,
+                contentDescription = "备份中",
+                modifier = modifier
+            )
+        }
+        syncStatus == SyncStatus.SYNCED -> {
+            CloudIconWithBackground(
+                icon = Icons.Outlined.CloudDone,
+                contentDescription = "已同步",
+                modifier = modifier
+            )
+        }
+        syncStatus == SyncStatus.CLOUD_ONLY -> {
+            CloudIconWithBackground(
+                icon = Icons.Outlined.Cloud,
+                contentDescription = "仅云端",
+                modifier = modifier
+            )
+        }
+        isPendingBackup -> {
+            CloudWithArrowIcon(
+                dashed = true,
+                animated = false,
+                contentDescription = "待备份",
+                modifier = modifier
+            )
+        }
+        // LOCAL_ONLY with other backupStatus → no icon
+    }
+}
+
+/**
+ * Material 云图标 + 半透明黑色内部填充
+ */
+@Composable
+private fun CloudIconWithBackground(
+    icon: ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val iconSize = 15.dp
+    Box(
+        modifier = modifier.size(iconSize),
+        contentAlignment = Alignment.Center
+    ) {
+        // 底层：填充云内部为半透明黑色
+        Icon(
+            imageVector = Icons.Filled.Cloud,
+            contentDescription = null,
+            tint = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier.size(iconSize)
         )
-        syncStatus == SyncStatus.SYNCED -> Triple(
-            Icons.Outlined.CloudDone,
-            Color(0xFF4CAF50),  // 绿色
-            "已同步"
+        // 上层：白色图标
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.size(iconSize)
         )
-        syncStatus == SyncStatus.CLOUD_ONLY -> Triple(
-            Icons.Outlined.Cloud,
-            Color(0xFF2196F3),  // 蓝色
-            "仅云端"
+    }
+}
+
+/**
+ * 自定义云 + 箭头图标
+ * @param dashed 箭头是否为虚线（待备份状态）
+ * @param animated 箭头是否有向上平移动画（备份中状态）
+ */
+@Composable
+private fun CloudWithArrowIcon(
+    dashed: Boolean,
+    animated: Boolean,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val iconSize = 14.dp
+
+    // 动画：箭头向上平移
+    val offsetFraction = if (animated) {
+        val transition = rememberInfiniteTransition(label = "upload_arrow")
+        val fraction by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "arrow_offset"
         )
-        syncStatus == SyncStatus.LOCAL_ONLY -> Triple(
-            Icons.Outlined.PhoneAndroid,
-            Color(0xFFFF9800),  // 橙色
-            "仅本地"
-        )
-        else -> return // 不显示图标
+        fraction
+    } else {
+        0f
     }
 
     Box(
-        modifier = modifier
-            .size(20.dp)
-            .shadow(2.dp, CircleShape)
-            .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+        modifier = modifier.size(iconSize),
         contentAlignment = Alignment.Center
     ) {
-        if (isUploading) {
-            val infiniteTransition = rememberInfiniteTransition(label = "upload_rotate")
-            val rotationAngle by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1500, easing = LinearEasing),
-                    repeatMode = RepeatMode.Restart
-                ),
-                label = "rotation"
-            )
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                tint = tint,
-                modifier = Modifier
-                    .size(14.dp)
-                    .graphicsLayer { rotationZ = rotationAngle }
-            )
-        } else {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                tint = tint,
-                modifier = Modifier.size(14.dp)
-            )
+        // 底层：填充云内部为半透明黑色
+        Icon(
+            imageVector = Icons.Filled.Cloud,
+            contentDescription = null,
+            tint = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier.size(iconSize)
+        )
+        // 中层：白色云轮廓
+        Icon(
+            imageVector = Icons.Outlined.Cloud,
+            contentDescription = contentDescription,
+            tint = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.size(iconSize)
+        )
+        // 顶层：Canvas 绘制箭头
+        Canvas(modifier = Modifier.size(iconSize)) {
+            val w = size.width
+            val h = size.height
+
+            val centerX = w * 0.5f
+            val arrowTipY = h * 0.35f
+            val arrowBottomY = h * 0.65f
+            val arrowLength = arrowBottomY - arrowTipY
+            val arrowHeadLen = w * 0.10f
+            val strokeW = w * 0.07f
+
+            // 动画偏移
+            val maxShift = arrowLength * 0.3f
+            val offsetY = -offsetFraction * maxShift
+
+            // 动画透明度（淡入淡出，避免跳变）
+            val alpha = if (animated) {
+                when {
+                    offsetFraction < 0.15f -> offsetFraction / 0.15f
+                    offsetFraction > 0.75f -> (1f - offsetFraction) / 0.25f
+                    else -> 1f
+                }
+            } else 1f
+
+            // 裁剪到云内部区域，防止箭头溢出
+            clipRect(
+                left = w * 0.12f,
+                top = h * 0.22f,
+                right = w * 0.88f,
+                bottom = h * 0.78f
+            ) {
+                val tipY = arrowTipY + offsetY
+                val bottomY = arrowBottomY + offsetY
+
+                val arrowPath = Path().apply {
+                    // 竖线
+                    moveTo(centerX, bottomY)
+                    lineTo(centerX, tipY)
+                    // 箭头头部（V 形）
+                    moveTo(centerX - arrowHeadLen, tipY + arrowHeadLen)
+                    lineTo(centerX, tipY)
+                    lineTo(centerX + arrowHeadLen, tipY + arrowHeadLen)
+                }
+
+                val pathEffect = if (dashed) {
+                    PathEffect.dashPathEffect(
+                        floatArrayOf(strokeW * 2.5f, strokeW * 2f)
+                    )
+                } else null
+
+                drawPath(
+                    path = arrowPath,
+                    color = Color.White.copy(alpha = 0.75f * alpha),
+                    style = Stroke(
+                        width = strokeW,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                        pathEffect = pathEffect
+                    )
+                )
+            }
         }
     }
 }
