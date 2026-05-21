@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,10 +12,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.kqstone.mtphotos.ui.navigation.AppNavigation
 import com.kqstone.mtphotos.ui.theme.MTGalleryTheme
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 class MainActivity : ComponentActivity() {
+    private val _intentFlow = MutableSharedFlow<Intent>(extraBufferCapacity = 64)
+    val intentFlow = _intentFlow.asSharedFlow()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent?.let { _intentFlow.tryEmit(it) }
         enableEdgeToEdge()
         enableHighRefreshRate()
         setContent {
@@ -27,6 +34,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        _intentFlow.tryEmit(intent)
     }
 
     private fun enableHighRefreshRate() {

@@ -60,6 +60,31 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
 
     if (startDestination == null) return
 
+    val context = LocalContext.current
+    val mainActivity = context as? com.kqstone.mtphotos.MainActivity
+
+    LaunchedEffect(navController, mainActivity) {
+        mainActivity?.let { activity ->
+            activity.intent?.let { intent ->
+                if (intent.getBooleanExtra("open_backup_settings", false)) {
+                    navController.navigate("backup_settings") {
+                        launchSingleTop = true
+                    }
+                    intent.removeExtra("open_backup_settings")
+                }
+            }
+
+            activity.intentFlow.collect { intent ->
+                if (intent.getBooleanExtra("open_backup_settings", false)) {
+                    navController.navigate("backup_settings") {
+                        launchSingleTop = true
+                    }
+                    intent.removeExtra("open_backup_settings")
+                }
+            }
+        }
+    }
+
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(container.authRepository)
     )

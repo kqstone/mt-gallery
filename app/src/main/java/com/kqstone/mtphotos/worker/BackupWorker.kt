@@ -2,7 +2,9 @@ package com.kqstone.mtphotos.worker
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -386,11 +388,23 @@ class BackupWorker(
     ): ForegroundInfo {
         createNotificationChannel()
 
+        val intent = Intent(applicationContext, com.kqstone.mtphotos.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("open_backup_settings", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("MT Gallery Backup")
             .setContentText(message)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .setProgress(total, progress, total == 0)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
