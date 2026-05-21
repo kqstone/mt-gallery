@@ -64,7 +64,8 @@ data class BackupSettingsUiState(
     val deleteMode: String = "",
     val syncInterval: Int = 60,
     val coilDiskCacheMb: Int = 512,
-    val cacheSizeFormatted: String = "0 MB",
+    val thumbnailCacheSizeFormatted: String = "0 MB",
+    val mediaCacheSizeFormatted: String = "0 MB",
     val error: String? = null
 )
 
@@ -152,8 +153,12 @@ class BackupSettingsViewModel(
                     .size
                 val stats = storageOptimizer.getOptimizationStats()
 
-                val cacheDir = prefsManager.context.cacheDir.resolve("coil_image_cache")
-                val cacheSize = getDirectorySize(cacheDir)
+                val context = prefsManager.context
+                val coilCacheDir = context.cacheDir.resolve("coil_image_cache")
+                val fullCacheDir = context.cacheDir.resolve("full_image_cache")
+                val videoCacheDir = context.cacheDir.resolve("video_cache")
+                val thumbnailCacheSize = getDirectorySize(coilCacheDir)
+                val mediaCacheSize = getDirectorySize(fullCacheDir) + getDirectorySize(videoCacheDir)
 
                 _uiState.value = _uiState.value.copy(
                     syncedCount = synced,
@@ -162,7 +167,8 @@ class BackupSettingsViewModel(
                     pendingCount = pending,
                     optimizableCount = stats.totalFiles,
                     optimizableSizeFormatted = stats.formattedSize(),
-                    cacheSizeFormatted = formatSize(cacheSize)
+                    thumbnailCacheSizeFormatted = formatSize(thumbnailCacheSize),
+                    mediaCacheSizeFormatted = formatSize(mediaCacheSize)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadStats failed", e)
@@ -358,7 +364,7 @@ class BackupSettingsViewModel(
     }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
-    fun clearImageCache() {
+    fun clearThumbnailCache() {
         viewModelScope.launch {
             try {
                 val context = prefsManager.context
@@ -367,7 +373,52 @@ class BackupSettingsViewModel(
                 imageLoader.memoryCache?.clear()
                 loadStats()
             } catch (e: Exception) {
-                Log.e(TAG, "clearImageCache failed", e)
+                Log.e(TAG, "clearThumbnailCache failed", e)
+            }
+        }
+    }
+
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    fun clearMediaCache() {
+        viewModelScope.launch {
+            try {
+                val context = prefsManager.context
+
+                // 1. 清理全尺寸大图 Coil 缓存
+                val app = context.applicationContext as? MTPhotosApp
+                app?.fullImageLoader?.diskCache?.clear()
+                app?.fullImageLoader?.memoryCache?.clear()
+
+                // 2. 清理 ExoPlayer 视频缓存
+                app?.videoCache?.let { cache ->
+                    try {
+                        cache.keys.forEach { key ->
+                            cache.removeResource(key)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to remove videoCache resources", e)
+                    }
+                }
+
+                // 3. 清理大图与视频的物理缓存文件兜底
+                deleteDirectoryContents(context.cacheDir.resolve("full_image_cache"))
+                deleteDirectoryContents(context.cacheDir.resolve("video_cache"))
+
+                loadStats()
+            } catch (e: Exception) {
+                Log.e(TAG, "clearMediaCache failed", e)
+            }
+        }
+    }
+
+    private fun deleteDirectoryContents(directory: File) {
+        val files = directory.listFiles()
+        if (files != null) {
+            for (file in files) {
+                if (file.isDirectory) {
+                    deleteDirectoryContents(file)
+                }
+                file.delete()
             }
         }
     }

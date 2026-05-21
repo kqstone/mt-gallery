@@ -122,6 +122,7 @@ fun ViewerScreen(
                 Box(modifier = Modifier.fillMaxSize())
             } else {
                 ZoomableImage(
+                    photo = photo,
                     imageUrl = viewModel.getFullImageUrl(photo),
                     contentDescription = photo.fileName
                 )
@@ -165,14 +166,29 @@ fun ViewerScreen(
 
 @Composable
 private fun ZoomableImage(
+    photo: UnifiedPhotoItem,
     imageUrl: String,
     contentDescription: String
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
+
+    val imageRequest = remember(imageUrl, photo.md5) {
+        coil.request.ImageRequest.Builder(context)
+            .data(imageUrl)
+            .diskCacheKey("${photo.md5}_full")
+            .memoryCacheKey("${photo.md5}_full")
+            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+            .build()
+    }
+
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
     AsyncImage(
-        model = imageUrl,
+        model = imageRequest,
+        imageLoader = app.fullImageLoader,
         contentDescription = contentDescription,
         contentScale = ContentScale.Fit,
         modifier = Modifier
