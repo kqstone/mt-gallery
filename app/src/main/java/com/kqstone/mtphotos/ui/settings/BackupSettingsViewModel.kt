@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.kqstone.mtphotos.data.local.BackupDestinationDefaults
+import com.kqstone.mtphotos.data.local.FolderPathMatcher
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
@@ -186,6 +187,12 @@ class BackupSettingsViewModel(
                 } else {
                     emptyList()
                 }
+                val defaultSelection = scannedFolders
+                    .filter { it.depth == 0 }
+                    .map { it.path }
+                    .toSet()
+                    .ifEmpty { scannedFolders.map { it.path }.toSet() }
+                val selectedPaths = canonicalFolderSelection(savedFolders ?: defaultSelection)
 
                 val mergedPaths = linkedSetOf<String>()
                 scannedFolders.mapTo(mergedPaths) { it.path }
@@ -198,7 +205,11 @@ class BackupSettingsViewModel(
                         path = path,
                         displayName = scanned?.displayName ?: File(path).name.ifBlank { path },
                         fileCount = scanned?.fileCount ?: 0,
-                        isSelected = savedFolders?.let { path in it } ?: true,
+                        directFileCount = scanned?.directFileCount ?: 0,
+                        depth = scanned?.depth ?: 0,
+                        isSelected = path in selectedPaths,
+                        isCoveredBySelectedAncestor = path !in selectedPaths &&
+                            FolderPathMatcher.hasAncestorSelected(path, selectedPaths),
                         hasLocalMedia = scanned != null,
                         isHistoricalOnly = scanned == null
                     )
@@ -276,6 +287,16 @@ class BackupSettingsViewModel(
         }
     }
 
+    fun ensureInitialBackupDefaults() {
+        viewModelScope.launch {
+            prefsManager.saveBackupEnabled(true)
+            ensureDeviceFolder()
+            val wifiOnly = prefsManager.getBackupWifiOnlySync()
+            val syncInterval = prefsManager.getSyncIntervalSync().toLong()
+            BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
+        }
+    }
+
     fun repairMissingBackups() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -316,26 +337,40 @@ class BackupSettingsViewModel(
     }
 
     fun toggleFolderSelection(path: String) {
-        val current = _uiState.value.folders.toMutableList()
-        val index = current.indexOfFirst { it.path == path }
-        if (index >= 0) {
-            current[index] = current[index].copy(isSelected = !current[index].isSelected)
-            _uiState.value = _uiState.value.copy(
-                folders = current,
-                selectedFolderCount = current.count { it.isSelected },
-                historicalSelectedFolderCount = current.count {
-                    it.isSelected && it.isHistoricalOnly
-                }
+        val current = _uiState.value.folders
+        val target = current.firstOrNull { it.path == path } ?: return
+        if (target.isCoveredBySelectedAncestor) return
+
+        val selected = current.filter { it.isSelected }.map { it.path }.toMutableSet()
+        if (target.isSelected) {
+            selected.remove(path)
+            selected.removeAll { FolderPathMatcher.isDescendantOf(it, path) }
+        } else {
+            selected.add(path)
+            selected.removeAll { it != path && FolderPathMatcher.isDescendantOf(it, path) }
+        }
+        updateFolderSelection(selected)
+    }
+
+    private fun updateFolderSelection(selectedPaths: Set<String>) {
+        val updated = _uiState.value.folders.map { folder ->
+            val selected = folder.path in selectedPaths
+            folder.copy(
+                isSelected = selected,
+                isCoveredBySelectedAncestor = !selected &&
+                    FolderPathMatcher.hasAncestorSelected(folder.path, selectedPaths)
             )
         }
+        _uiState.value = _uiState.value.copy(
+            folders = updated,
+            selectedFolderCount = updated.count { it.isSelected },
+            historicalSelectedFolderCount = updated.count { it.isSelected && it.isHistoricalOnly }
+        )
     }
 
     fun saveFolderSelection() {
         viewModelScope.launch {
-            val selected = _uiState.value.folders
-                .filter { it.isSelected }
-                .map { it.path }
-                .toSet()
+            val selected = selectedFolderPaths()
             prefsManager.saveBackupFolders(gson.toJson(selected))
 
             _uiState.value = _uiState.value.copy(isSyncing = true)
@@ -364,6 +399,44 @@ class BackupSettingsViewModel(
                 _uiState.value = _uiState.value.copy(isSyncing = false, error = e.message)
             }
         }
+    }
+
+    fun completeInitialSetup(onComplete: () -> Unit) {
+        viewModelScope.launch {
+            val selected = selectedFolderPaths()
+            prefsManager.saveBackupEnabled(true)
+            prefsManager.saveBackupFolders(gson.toJson(selected))
+            ensureDeviceFolder()
+            prefsManager.saveFolderSetupComplete(true)
+
+            val wifiOnly = prefsManager.getBackupWifiOnlySync()
+            val syncInterval = prefsManager.getSyncIntervalSync().toLong()
+            BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
+            BackupScheduler.triggerSyncWork(prefsManager.context)
+
+            onComplete()
+        }
+    }
+
+    private fun selectedFolderPaths(): Set<String> {
+        val selected = _uiState.value.folders
+            .filter { it.isSelected }
+            .map { it.path }
+            .toSet()
+        val fallback = _uiState.value.folders
+            .filter { it.depth == 0 }
+            .map { it.path }
+            .toSet()
+            .ifEmpty { _uiState.value.folders.map { it.path }.toSet() }
+        return canonicalFolderSelection(selected.ifEmpty { fallback })
+    }
+
+    private fun canonicalFolderSelection(paths: Set<String>): Set<String> {
+        return paths.filterNot { path ->
+            paths.any { candidate ->
+                candidate != path && FolderPathMatcher.isDescendantOf(path, candidate)
+            }
+        }.toSet()
     }
 
     fun optimizeStorage() {

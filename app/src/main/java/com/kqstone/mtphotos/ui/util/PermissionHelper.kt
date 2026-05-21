@@ -37,6 +37,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
+enum class MediaPermissionStatus {
+    FULL,
+    PARTIAL,
+    DENIED
+}
+
 /**
  * 统一权限请求工具类
  */
@@ -46,7 +52,13 @@ object PermissionHelper {
      * 获取读取媒体文件所需的权限列表
      */
     fun getMediaPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+
             arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
@@ -73,8 +85,40 @@ object PermissionHelper {
      * 检查是否已有媒体读取权限
      */
     fun hasMediaPermissions(context: android.content.Context): Boolean {
-        return getMediaPermissions().all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        return getMediaPermissionStatus(context) != MediaPermissionStatus.DENIED
+    }
+
+    fun getMediaPermissionStatus(context: android.content.Context): MediaPermissionStatus {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasImages = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasVideo = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_VIDEO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasImages && hasVideo) return MediaPermissionStatus.FULL
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val hasPartial = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPartial) return MediaPermissionStatus.PARTIAL
+            }
+            return MediaPermissionStatus.DENIED
+        }
+
+        return if (
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            MediaPermissionStatus.FULL
+        } else {
+            MediaPermissionStatus.DENIED
         }
     }
 
@@ -129,10 +173,10 @@ fun RequestMediaPermissions(
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.values.all { it }
-        hasPermission = allGranted
-        onResult(allGranted)
+    ) {
+        val granted = PermissionHelper.hasMediaPermissions(context)
+        hasPermission = granted
+        onResult(granted)
     }
 
     LaunchedEffect(Unit) {
@@ -206,8 +250,8 @@ fun MediaPermissionRequester(
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        hasPermission = permissions.values.all { it }
+    ) {
+        hasPermission = PermissionHelper.hasMediaPermissions(context)
     }
 
     content(hasPermission) {
@@ -246,7 +290,7 @@ fun AppPermissionGate(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         permissionRequested = true
-        mediaGranted = PermissionHelper.getMediaPermissions().all { results[it] == true }
+        mediaGranted = PermissionHelper.hasMediaPermissions(context)
         notificationGranted = PermissionHelper.getNotificationPermission().let { perms ->
             perms.isEmpty() || perms.all { results[it] == true }
         }
@@ -331,4 +375,3 @@ private fun PermissionDeniedScreen(
         }
     }
 }
-

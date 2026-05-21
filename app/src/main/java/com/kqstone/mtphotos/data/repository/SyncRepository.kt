@@ -8,6 +8,7 @@ import com.kqstone.mtphotos.AppContainer
 import com.kqstone.mtphotos.data.local.LocalVideoThumbnailGenerator
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.MediaChangeObserver
+import com.kqstone.mtphotos.data.local.FolderPathMatcher
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.LocalFileRef
@@ -339,7 +340,10 @@ class SyncRepository(
         val entities = when {
             localFolders == null -> mediaDao.getAllMedia()
             localFolders.isEmpty() -> mediaDao.getAllCloudMedia()
-            else -> mediaDao.getAllVisibleMediaByFolders(localFolders.toList())
+            else -> mediaDao.getAllMedia().filter { entity ->
+                entity.cloudId != null ||
+                    FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
+            }
         }
         return entities.map { it.toUnifiedPhotoItem(localFolders) }
     }
@@ -582,7 +586,9 @@ class SyncRepository(
         if (localFolders == null) return@withContext
 
         val localRecords = mediaDao.getAllMedia().filter { it.localMediaStoreId != null }
-        val outOfScope = localRecords.filter { it.localFolderPath !in localFolders }
+        val outOfScope = localRecords.filter {
+            !FolderPathMatcher.isInAnyScope(it.localFolderPath, localFolders)
+        }
         if (outOfScope.isEmpty()) return@withContext
 
         val toDelete = outOfScope
@@ -610,7 +616,10 @@ class SyncRepository(
         return when {
             localFolders == null -> mediaDao.getTimelineMonths()
             localFolders.isEmpty() -> mediaDao.getCloudTimelineMonths()
-            else -> mediaDao.getTimelineMonthsByVisibleFolders(localFolders.toList())
+            else -> getAllPhotos(localFolders)
+                .groupBy { it.mtime.take(7) }
+                .map { (yearMonth, photos) -> TimelineMonthCount(yearMonth, photos.size) }
+                .sortedByDescending { it.yearMonth }
         }
     }
 
@@ -621,7 +630,11 @@ class SyncRepository(
         val entities = when {
             localFolders == null -> mediaDao.getMediaByMonth(yearMonth)
             localFolders.isEmpty() -> mediaDao.getCloudMediaByMonth(yearMonth)
-            else -> mediaDao.getMediaByMonthVisibleFolders(yearMonth, localFolders.toList())
+            else -> mediaDao.getAllMedia().filter { entity ->
+                entity.mtime.startsWith(yearMonth) &&
+                    (entity.cloudId != null ||
+                        FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders))
+            }
         }
         return entities.map { it.toUnifiedPhotoItem(localFolders) }
     }
@@ -642,7 +655,9 @@ class SyncRepository(
         return when {
             localFolders == null -> mediaDao.getPendingBackupMedia()
             localFolders.isEmpty() -> emptyList()
-            else -> mediaDao.getPendingBackupMediaByFolders(localFolders.toList())
+            else -> mediaDao.getPendingBackupMedia().filter {
+                FolderPathMatcher.isInAnyScope(it.localFolderPath, localFolders)
+            }
         }
     }
 
@@ -908,7 +923,8 @@ class SyncRepository(
 }
 
 fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPhotoItem {
-    val localVisible = localFolders == null || localFolderPath in localFolders
+    val localVisible = localFolders == null ||
+        FolderPathMatcher.isInAnyScope(localFolderPath, localFolders)
     val hideOutOfScopeLocal = !localVisible && cloudId != null
 
     return UnifiedPhotoItem(

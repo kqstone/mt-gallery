@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -58,9 +60,158 @@ import com.kqstone.mtphotos.data.repository.BackupDestinationNode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun BackupSetupScreen(
+    viewModel: BackupSettingsViewModel,
+    onSetupComplete: () -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var step by remember { mutableStateOf(0) }
+    var showDestinationDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.ensureInitialBackupDefaults()
+        viewModel.loadStats()
+        viewModel.loadFolders()
+    }
+
+    BackHandler {
+        if (step > 0) {
+            step--
+        } else {
+            viewModel.completeInitialSetup(onSetupComplete)
+        }
+    }
+
+    val backupDestinationSubtitle = backupDestinationSummary(uiState)
+    val folderSubtitle = folderSelectionSummary(uiState)
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(if (step == 0) "选择备份目标" else "选择备份文件夹") },
+                navigationIcon = {
+                    if (step > 0) {
+                        IconButton(onClick = { step-- }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (step == 0) {
+                item {
+                    SettingActionRow(
+                        title = "备份到",
+                        subtitle = backupDestinationSubtitle,
+                        icon = Icons.Default.Cloud,
+                        onClick = {
+                            showDestinationDialog = true
+                            viewModel.loadBackupDestinationRoot()
+                        }
+                    )
+                }
+                item {
+                    Button(
+                        onClick = { step = 1 },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("下一步")
+                    }
+                }
+            } else {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("备份文件夹", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = folderSubtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                item {
+                    if (uiState.folders.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        FolderSelectionList(
+                            folders = uiState.folders,
+                            onToggle = { viewModel.toggleFolderSelection(it) },
+                            modifier = Modifier.height(420.dp)
+                        )
+                    }
+                }
+                item {
+                    Button(
+                        onClick = { viewModel.completeInitialSetup(onSetupComplete) },
+                        enabled = uiState.selectedFolderCount > 0,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("完成")
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDestinationDialog) {
+        BackupDestinationDialog(
+            selectedDestinationId = uiState.backupDestinationId,
+            selectedDestinationSummary = backupDestinationSubtitle,
+            nodes = uiState.backupDestinationNodes,
+            breadcrumbs = uiState.backupDestinationBreadcrumbs,
+            isLoading = uiState.isLoadingBackupDestinations,
+            isCreatingFolder = uiState.isCreatingFolder,
+            error = uiState.backupDestinationError,
+            onDismiss = { showDestinationDialog = false },
+            onReload = { viewModel.loadBackupDestinationRoot() },
+            onNavigateUp = { viewModel.navigateUpBackupDestination() },
+            onOpen = { node -> viewModel.openBackupDestination(node) },
+            onCreateFolder = { name -> viewModel.createFolder(name) },
+            onSelectCurrent = {
+                viewModel.selectCurrentBackupDestination()
+                showDestinationDialog = false
+            },
+            onSelect = { node ->
+                viewModel.selectBackupDestination(node)
+                showDestinationDialog = false
+            },
+            onSelectRoot = {
+                viewModel.selectRootBackupDestination()
+                showDestinationDialog = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun BackupSettingsScreen(
     viewModel: BackupSettingsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    setupMode: Boolean = false,
+    onSetupComplete: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -73,6 +224,9 @@ fun BackupSettingsScreen(
     var showClearMediaCacheConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        if (setupMode) {
+            viewModel.ensureInitialBackupDefaults()
+        }
         viewModel.loadStats()
         viewModel.loadFolders()
     }
@@ -96,10 +250,22 @@ fun BackupSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("备份与存储") },
+                title = { Text(if (setupMode) "设置备份" else "备份与存储") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    if (!setupMode) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        }
+                    }
+                },
+                actions = {
+                    if (setupMode) {
+                        TextButton(
+                            onClick = { viewModel.completeInitialSetup(onSetupComplete) },
+                            enabled = uiState.selectedFolderCount > 0 && !uiState.isSyncing
+                        ) {
+                            Text("完成")
+                        }
                     }
                 }
             )
@@ -564,6 +730,27 @@ private fun StatItem(label: String, value: String) {
     }
 }
 
+private fun folderSelectionSummary(uiState: BackupSettingsUiState): String {
+    return when {
+        uiState.selectedFolderCount <= 0 -> "未选择任何文件夹"
+        uiState.historicalSelectedFolderCount > 0 ->
+            "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
+        else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
+    }
+}
+
+private fun backupDestinationSummary(uiState: BackupSettingsUiState): String {
+    return when {
+        uiState.backupDestinationPath == "/" -> uiState.backupDestinationLabel
+        uiState.backupDestinationPath.isNotBlank() &&
+            uiState.backupDestinationPath != "/" &&
+            uiState.backupDestinationPath != uiState.backupDestinationLabel ->
+            "${uiState.backupDestinationLabel} 路 ${uiState.backupDestinationPath}"
+        uiState.backupDestinationPath.isNotBlank() -> uiState.backupDestinationPath
+        else -> uiState.backupDestinationLabel
+    }
+}
+
 @Composable
 private fun StorageOptimizationCard(
     optimizableCount: Int,
@@ -730,6 +917,53 @@ private fun SettingActionRow(
 }
 
 @Composable
+private fun FolderSelectionList(
+    folders: List<FolderUiItem>,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(modifier = modifier) {
+        items(folders) { folder ->
+            val checked = folder.isSelected || folder.isCoveredBySelectedAncestor
+            val enabled = !folder.isCoveredBySelectedAncestor
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = enabled) { onToggle(folder.path) }
+                    .padding(
+                        start = (folder.depth * 16).dp,
+                        top = 4.dp,
+                        bottom = 4.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = checked,
+                    enabled = enabled,
+                    onCheckedChange = { onToggle(folder.path) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        folder.displayName,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = folderStatusText(folder),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (folder.isHistoricalOnly) {
+                            MaterialTheme.colorScheme.secondary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun FolderSelectionDialog(
     folders: List<FolderUiItem>,
     onToggle: (String) -> Unit,
@@ -749,38 +983,11 @@ private fun FolderSelectionDialog(
                     CircularProgressIndicator()
                 }
             } else {
-                LazyColumn(modifier = Modifier.height(400.dp)) {
-                    items(folders) { folder ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggle(folder.path) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = folder.isSelected,
-                                onCheckedChange = { onToggle(folder.path) }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    folder.displayName,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    text = folderStatusText(folder),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (folder.isHistoricalOnly) {
-                                        MaterialTheme.colorScheme.secondary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
+                FolderSelectionList(
+                    folders = folders,
+                    onToggle = onToggle,
+                    modifier = Modifier.height(400.dp)
+                )
             }
         },
         confirmButton = {
@@ -971,6 +1178,9 @@ private fun BackupDestinationRow(
 
 private fun folderStatusText(folder: FolderUiItem): String {
     return when {
+        folder.isCoveredBySelectedAncestor -> "已由上级文件夹覆盖"
+        folder.hasLocalMedia && folder.directFileCount > 0 && folder.directFileCount != folder.fileCount ->
+            "${folder.fileCount} 个文件，含子文件夹"
         folder.hasLocalMedia -> "${folder.fileCount} 个文件"
         folder.isSelected -> "本地文件已清理，仍保留为已选备份文件夹"
         else -> "历史文件夹，当前未发现本地文件"
@@ -981,7 +1191,10 @@ data class FolderUiItem(
     val path: String,
     val displayName: String,
     val fileCount: Int,
+    val directFileCount: Int,
+    val depth: Int,
     val isSelected: Boolean,
+    val isCoveredBySelectedAncestor: Boolean,
     val hasLocalMedia: Boolean,
     val isHistoricalOnly: Boolean
 )

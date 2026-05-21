@@ -732,16 +732,19 @@ private fun PhotoGrid(
             }
         }
 
-        LazyGridVerticalFastScroller(
-            gridState = gridState,
-            labelProvider = { fraction ->
-                if (isSearchMode) null else {
-                    val targetIndex = (fraction * (gridItems.size - 1)).toInt().coerceIn(0, gridItems.size - 1)
-                    gridItems.getOrNull(targetIndex)?.parentMonthTitle
-                }
-            },
-            modifier = Modifier.align(Alignment.CenterEnd)
-        )
+        if (gridItems.isNotEmpty()) {
+            LazyGridVerticalFastScroller(
+                gridState = gridState,
+                labelProvider = { fraction ->
+                    if (isSearchMode || gridItems.isEmpty()) null else {
+                        val lastIndex = gridItems.lastIndex
+                        val targetIndex = (fraction * lastIndex).toInt().coerceIn(0, lastIndex)
+                        gridItems.getOrNull(targetIndex)?.parentMonthTitle
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
+        }
     }
 }
 

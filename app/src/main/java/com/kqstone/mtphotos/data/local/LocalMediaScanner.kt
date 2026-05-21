@@ -67,9 +67,7 @@ class LocalMediaScanner(private val context: Context) {
         // 先扫描图片
         val imageBatch = mutableListOf<MediaEntity>()
         queryMediaFlow(
-            collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-            else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            collection = imageCollectionUri(),
             projection = arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DISPLAY_NAME,
@@ -99,9 +97,7 @@ class LocalMediaScanner(private val context: Context) {
         // 再扫描视频
         val videoBatch = mutableListOf<MediaEntity>()
         queryMediaFlow(
-            collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-            else MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            collection = videoCollectionUri(),
             projection = arrayOf(
                 MediaStore.Video.Media._ID,
                 MediaStore.Video.Media.DISPLAY_NAME,
@@ -150,9 +146,7 @@ class LocalMediaScanner(private val context: Context) {
             selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
         }
         // 过滤正在写入和已标记删除的文件
-        val pendingFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
-        } else null
+        val pendingFilter = visibleMediaSelection()
         if (pendingFilter != null) {
             selection = if (selection != null) "($selection) AND $pendingFilter" else pendingFilter
         }
@@ -195,14 +189,11 @@ class LocalMediaScanner(private val context: Context) {
         val folderMap = mutableMapOf<String, Int>()
 
         // 扫描图片文件夹
-        scanFolderPaths(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, folderMap)
+        scanFolderPaths(imageCollectionUri(), folderMap)
         // 扫描视频文件夹
-        scanFolderPaths(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folderMap)
+        scanFolderPaths(videoCollectionUri(), folderMap)
 
-        folderMap.map { (path, count) ->
-            val name = File(path).name
-            MediaFolder(path = path, displayName = name, fileCount = count)
-        }.sortedByDescending { it.fileCount }
+        buildFolderTree(folderMap)
     }
 
     private fun scanFolderPaths(
@@ -210,8 +201,9 @@ class LocalMediaScanner(private val context: Context) {
         folderMap: MutableMap<String, Int>
     ) {
         val projection = arrayOf(MediaStore.MediaColumns.DATA)
+        val selection = visibleMediaSelection()
         context.contentResolver.query(
-            contentUri, projection, null, null, null
+            contentUri, projection, selection, null, null
         )?.use { cursor ->
             val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
             while (cursor.moveToNext()) {
@@ -222,15 +214,93 @@ class LocalMediaScanner(private val context: Context) {
         }
     }
 
+    private fun buildFolderTree(directFolderCounts: Map<String, Int>): List<MediaFolder> {
+        if (directFolderCounts.isEmpty()) return emptyList()
+
+        val externalRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+        val storageRoots = mutableSetOf(FolderPathMatcher.normalize(externalRoot))
+        directFolderCounts.keys.forEach { path ->
+            inferStorageRoot(path)?.let { storageRoots.add(it) }
+        }
+
+        val childrenByParent = mutableMapOf<String, MutableSet<String>>()
+        val directCounts = directFolderCounts.mapKeys { FolderPathMatcher.normalize(it.key) }
+        val allPaths = linkedSetOf<String>()
+
+        directCounts.keys.forEach { folder ->
+            val root = storageRoots
+                .filter { FolderPathMatcher.contains(it, folder) }
+                .maxByOrNull { it.length }
+            var current = folder
+            while (current.isNotEmpty() && current !in storageRoots) {
+                allPaths.add(current)
+                val parent = File(current).parent?.let(FolderPathMatcher::normalize).orEmpty()
+                if (parent.isEmpty() || parent == current) break
+                childrenByParent.getOrPut(parent) { linkedSetOf() }.add(current)
+                if (root != null && parent == root) break
+                current = parent
+            }
+        }
+
+        fun totalCount(path: String): Int {
+            val own = directCounts[path] ?: 0
+            val children = childrenByParent[path].orEmpty().sumOf { totalCount(it) }
+            return own + children
+        }
+
+        fun depth(path: String): Int {
+            val root = storageRoots
+                .filter { FolderPathMatcher.contains(it, path) }
+                .maxByOrNull { it.length }
+            val relative = root?.let {
+                FolderPathMatcher.normalize(path).removePrefix(it).trim('/')
+            } ?: FolderPathMatcher.normalize(path)
+            return relative.split('/').count { it.isNotEmpty() } - 1
+        }
+
+        val orderedPaths = mutableListOf<String>()
+        fun appendTree(path: String) {
+            orderedPaths.add(path)
+            childrenByParent[path]
+                .orEmpty()
+                .filter { it in allPaths }
+                .sortedWith(compareByDescending<String> { totalCount(it) }.thenBy { it.lowercase(Locale.getDefault()) })
+                .forEach { appendTree(it) }
+        }
+        allPaths
+            .filter { path ->
+                val parent = File(path).parent?.let(FolderPathMatcher::normalize)
+                parent == null || parent !in allPaths
+            }
+            .sortedWith(compareByDescending<String> { totalCount(it) }.thenBy { it.lowercase(Locale.getDefault()) })
+            .forEach { appendTree(it) }
+
+        return orderedPaths
+            .map { path ->
+                MediaFolder(
+                    path = path,
+                    displayName = File(path).name.ifBlank { path },
+                    fileCount = totalCount(path),
+                    directFileCount = directCounts[path] ?: 0,
+                    depth = depth(path).coerceAtLeast(0),
+                    hasDirectMedia = directCounts.containsKey(path)
+                )
+            }
+    }
+
+    private fun inferStorageRoot(path: String): String? {
+        val parts = FolderPathMatcher.normalize(path)
+            .split('/')
+            .filter { it.isNotEmpty() }
+        if (parts.size < 3 || parts.first() != "storage") return null
+        return "/" + parts.take(3).joinToString("/")
+    }
+
     private suspend fun scanImages(
         folderPaths: Set<String>?,
         computeMd5: Boolean
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        }
+        val collection = imageCollectionUri()
 
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
@@ -251,11 +321,7 @@ class LocalMediaScanner(private val context: Context) {
         folderPaths: Set<String>?,
         computeMd5: Boolean
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
+        val collection = videoCollectionUri()
 
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
@@ -293,9 +359,7 @@ class LocalMediaScanner(private val context: Context) {
             selectionArgs = folderPaths.map { "$it/%" }.toTypedArray()
         }
         // 过滤正在写入和已标记删除的文件
-        val pendingFilter = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
-        } else null
+        val pendingFilter = visibleMediaSelection()
         if (pendingFilter != null) {
             selection = if (selection != null) "($selection) AND $pendingFilter" else pendingFilter
         }
@@ -385,6 +449,32 @@ class LocalMediaScanner(private val context: Context) {
         )
     }
 
+    private fun imageCollectionUri(): android.net.Uri {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+    }
+
+    private fun videoCollectionUri(): android.net.Uri {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        }
+    }
+
+    private fun visibleMediaSelection(): String? {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                "${MediaStore.MediaColumns.IS_PENDING} = 0"
+            else -> null
+        }
+    }
+
     companion object {
         /**
          * 计算文件的 MD5 哈希值
@@ -448,5 +538,8 @@ data class MediaFolder(
     val path: String,
     val displayName: String,
     val fileCount: Int,
-    val isSelected: Boolean = true // 默认选中
+    val directFileCount: Int = fileCount,
+    val depth: Int = 0,
+    val hasDirectMedia: Boolean = true,
+    val isSelected: Boolean = true
 )

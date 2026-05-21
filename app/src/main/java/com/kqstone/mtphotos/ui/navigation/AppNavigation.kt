@@ -16,9 +16,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.settings.BackupSetupScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsViewModel
-import com.kqstone.mtphotos.ui.settings.FolderSetupScreen
 import com.kqstone.mtphotos.ui.settings.SettingsScreen
 import com.kqstone.mtphotos.ui.settings.SettingsViewModel
 import com.kqstone.mtphotos.ui.util.AppPermissionGate
@@ -54,7 +54,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         } else {
             // 已登录：检查是否完成了文件夹选择
             val folderSetupDone = container.prefsManager.isFolderSetupComplete()
-            startDestination = if (folderSetupDone) "main" else "folder_setup"
+            startDestination = if (folderSetupDone) "main" else "backup_setup"
         }
     }
 
@@ -74,7 +74,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 onConnected = {
                     // 登录成功：检查是否需要文件夹选择
                     val folderSetupDone = container.prefsManager.isFolderSetupComplete()
-                    val target = if (folderSetupDone) "main" else "folder_setup"
+                    val target = if (folderSetupDone) "main" else "backup_setup"
                     navController.navigate(target) {
                         popUpTo("settings") { inclusive = true }
                     }
@@ -82,13 +82,21 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             )
         }
 
-        composable("folder_setup") {
-            FolderSetupScreen(
-                prefsManager = container.prefsManager,
-                localMediaScanner = container.localMediaScanner,
+        composable("backup_setup") {
+            val backupSettingsViewModel: BackupSettingsViewModel = viewModel(
+                factory = BackupSettingsViewModel.Factory(
+                    container.prefsManager,
+                    container.syncRepository,
+                    container.storageOptimizer,
+                    container.localMediaScanner,
+                    container.backupDestinationRepository
+                )
+            )
+            BackupSetupScreen(
+                viewModel = backupSettingsViewModel,
                 onSetupComplete = {
                     navController.navigate("main") {
-                        popUpTo("folder_setup") { inclusive = true }
+                        popUpTo("backup_setup") { inclusive = true }
                     }
                 }
             )

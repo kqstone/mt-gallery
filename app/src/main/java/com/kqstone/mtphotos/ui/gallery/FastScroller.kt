@@ -217,9 +217,13 @@ fun LazyGridVerticalFastScroller(
 ) {
     val coroutineScope = rememberCoroutineScope()
 
+    val totalItems by remember(gridState) {
+        derivedStateOf { gridState.layoutInfo.totalItemsCount }
+    }
+    if (totalItems <= 0) return
+
     val scrollFraction by remember(gridState) {
         derivedStateOf {
-            val totalItems = gridState.layoutInfo.totalItemsCount
             if (totalItems <= 1) return@derivedStateOf 0f
             val visibleItems = gridState.layoutInfo.visibleItemsInfo
             if (visibleItems.isEmpty()) return@derivedStateOf 0f
@@ -236,8 +240,10 @@ fun LazyGridVerticalFastScroller(
         scrollFraction = scrollFraction,
         isScrollInProgress = gridState.isScrollInProgress,
         onScrollToFraction = { fraction ->
-            val totalItems = gridState.layoutInfo.totalItemsCount
-            val targetIndex = (fraction * (totalItems - 1)).toInt().coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+            val currentTotalItems = gridState.layoutInfo.totalItemsCount
+            if (currentTotalItems <= 0) return@VerticalFastScroller
+            val targetIndex = (fraction * (currentTotalItems - 1)).toInt()
+                .coerceIn(0, currentTotalItems - 1)
             coroutineScope.launch {
                 gridState.scrollToItem(targetIndex)
             }

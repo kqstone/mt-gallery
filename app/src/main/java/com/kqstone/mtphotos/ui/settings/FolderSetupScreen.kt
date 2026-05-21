@@ -63,6 +63,13 @@ fun FolderSetupScreen(
         val mediaFolders = localMediaScanner.getMediaFolders()
         folders.clear()
         folders.addAll(mediaFolders)
+        selectedPaths.clear()
+        selectedPaths.addAll(
+            mediaFolders
+                .filter { it.depth == 0 }
+                .map { it.path }
+                .ifEmpty { mediaFolders.map { it.path } }
+        )
         isLoading = false
     }
 
