@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
+import okhttp3.OkHttpClient
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
@@ -21,15 +22,42 @@ import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
 import com.kqstone.mtphotos.network.RetrofitClient
 import com.kqstone.mtphotos.worker.BackupScheduler
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import java.io.File
 
 class MTPhotosApp : Application(), ImageLoaderFactory {
+
+    companion object {
+        fun updateImageLoader(context: android.content.Context) {
+            val app = context.applicationContext as MTPhotosApp
+            coil.Coil.setImageLoader(app.newImageLoader())
+        }
+    }
 
     lateinit var container: AppContainer
         private set
     private var mediaChangeObserver: MediaChangeObserver? = null
 
+    lateinit var fullImageLoader: ImageLoader
+        private set
+    lateinit var videoCache: SimpleCache
+        private set
+
     override fun newImageLoader(): ImageLoader {
+        val maxCacheMb = PrefsManager(this).getCoilDiskCacheMbSync()
         return ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addNetworkInterceptor { chain ->
+                        val response = chain.proceed(chain.request())
+                        response.newBuilder()
+                            .header("Cache-Control", "public, max-age=31536000")
+                            .build()
+                    }
+                    .build()
+            }
             .memoryCachePolicy(CachePolicy.ENABLED)
             .memoryCache {
                 MemoryCache.Builder(this)
@@ -40,7 +68,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_image_cache"))
-                    .maxSizePercent(0.03)
+                    .maxSizeBytes(maxCacheMb * 1024L * 1024L)
                     .build()
             }
             .allowRgb565(true)
@@ -51,6 +79,41 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+
+        // 初始化全尺寸大图 ImageLoader 实例，使用独立的磁盘缓存，防止挤压缩略图缓存
+        fullImageLoader = ImageLoader.Builder(this)
+            .okHttpClient {
+                OkHttpClient.Builder()
+                    .addNetworkInterceptor { chain ->
+                        val response = chain.proceed(chain.request())
+                        response.newBuilder()
+                            .header("Cache-Control", "public, max-age=31536000")
+                            .build()
+                    }
+                    .build()
+            }
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.15)
+                    .build()
+            }
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("full_image_cache"))
+                    .maxSizeBytes(1024L * 1024L * 1024L) // 1 GB LRU 限额
+                    .build()
+            }
+            .allowRgb565(true)
+            .crossfade(true)
+            .build()
+
+        // 初始化视频缓存器，使用 3 GB 物理限额与 LRU 机制
+        val databaseProvider = StandaloneDatabaseProvider(this)
+        val videoCacheDir = File(cacheDir, "video_cache")
+        val evictor = LeastRecentlyUsedCacheEvictor(3L * 1024L * 1024L * 1024L) // 3 GB LRU 限额
+        videoCache = SimpleCache(videoCacheDir, evictor, databaseProvider)
 
         // 注册 MediaStore 变化监听（备份启用时自动触发同步）
         mediaChangeObserver = MediaChangeObserver(this) {

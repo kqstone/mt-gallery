@@ -49,6 +49,7 @@ class PrefsManager(val context: Context) {
         private val KEY_DEVICE_NAME = stringPreferencesKey("device_name")
         private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
         private val KEY_SYNC_INTERVAL = intPreferencesKey("sync_interval_minutes") // 默认 60
+        private val KEY_COIL_DISK_CACHE_MB = intPreferencesKey("coil_disk_cache_mb") // 默认 512MB
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
@@ -75,6 +76,7 @@ class PrefsManager(val context: Context) {
     val deviceName: Flow<String> = context.dataStore.data.map { it[KEY_DEVICE_NAME] ?: android.os.Build.MODEL }
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
     val syncInterval: Flow<Int> = context.dataStore.data.map { it[KEY_SYNC_INTERVAL] ?: 60 }
+    val coilDiskCacheMb: Flow<Int> = context.dataStore.data.map { it[KEY_COIL_DISK_CACHE_MB] ?: 512 }
 
     fun getServerUrlSync(): String = runBlocking {
         serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
@@ -110,6 +112,7 @@ class PrefsManager(val context: Context) {
     fun getDeviceNameSync(): String = runBlocking { deviceName.first() }
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
     fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
+    fun getCoilDiskCacheMbSync(): Int = runBlocking { coilDiskCacheMb.first() }
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
@@ -190,6 +193,12 @@ class PrefsManager(val context: Context) {
     suspend fun saveSyncInterval(minutes: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SYNC_INTERVAL] = minutes
+        }
+    }
+
+    suspend fun saveCoilDiskCacheMb(mb: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_COIL_DISK_CACHE_MB] = mb
         }
     }
 

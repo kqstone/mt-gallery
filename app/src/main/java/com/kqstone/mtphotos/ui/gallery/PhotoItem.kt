@@ -31,6 +31,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -58,6 +60,7 @@ fun PhotoThumbnail(
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
@@ -75,7 +78,13 @@ fun PhotoThumbnail(
                 .data(thumbUrl)
                 .size(256)
                 .scale(Scale.FILL)
-                .crossfade(true)
+                .apply {
+                    if (!photo.md5.isNullOrEmpty()) {
+                        diskCacheKey("${photo.md5}_256")
+                        memoryCacheKey("${photo.md5}_256")
+                    }
+                }
+                .crossfade(false)
                 .build(),
             contentDescription = photo.fileName,
             contentScale = ContentScale.Crop,

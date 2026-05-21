@@ -4,6 +4,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +22,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -48,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -273,52 +285,88 @@ private fun SearchHeader(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        TopAppBar(
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = onQueryChange,
-                        modifier = Modifier
-                            .weight(1f)
-                            .onFocusChanged { focusState ->
-                                if (focusState.isFocused) onPanelActiveChange(true)
-                            },
-                        singleLine = true,
-                        placeholder = { Text("搜索云端媒体") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "搜索")
-                        },
-                        trailingIcon = {
-                            when {
-                                isSearching -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier
-                                            .width(18.dp)
-                                            .height(18.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                }
-                                query.isNotEmpty() -> {
-                                    IconButton(onClick = onClear) {
-                                        Icon(Icons.Default.Close, contentDescription = "清空搜索")
-                                    }
-                                }
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { onSearch() })
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "设置")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    shape = CircleShape
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    shape = CircleShape
+                )
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "搜索",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) onPanelActiveChange(true)
+                    },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "搜索云端媒体",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                        innerTextField()
                     }
                 }
+            )
+            if (isSearching) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(18.dp),
+                    strokeWidth = 2.dp
+                )
+            } else if (query.isNotEmpty()) {
+                IconButton(
+                    onClick = onClear,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "清空搜索",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
-        )
+            Spacer(modifier = Modifier.width(4.dp))
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "设置",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
 
         AnimatedVisibility(visible = isPanelActive) {
             Column(
@@ -443,7 +491,8 @@ private fun PhotoGrid(
         val monthTitle: String? = null,
         val monthCount: Int = 0,
         val dayGroup: DayGroup? = null,
-        val photo: UnifiedPhotoItem? = null
+        val photo: UnifiedPhotoItem? = null,
+        val parentMonthTitle: String? = null
     )
 
     val gridItems by remember(months, isSearchMode) {
@@ -456,14 +505,29 @@ private fun PhotoGrid(
                             "month",
                             "month_${month.yearMonth}",
                             monthTitle = month.displayTitle,
-                            monthCount = month.totalCount
+                            monthCount = month.totalCount,
+                            parentMonthTitle = month.displayTitle
                         )
                     )
                 }
                 for (day in month.days) {
-                    items.add(GridItem("day", "day_${month.yearMonth}_${day.date}", dayGroup = day))
+                    items.add(
+                        GridItem(
+                            "day",
+                            "day_${month.yearMonth}_${day.date}",
+                            dayGroup = day,
+                            parentMonthTitle = month.displayTitle
+                        )
+                    )
                     for (photo in day.photos) {
-                        items.add(GridItem("photo", "photo_${photo.uniqueKey}", photo = photo))
+                        items.add(
+                            GridItem(
+                                "photo",
+                                "photo_${photo.uniqueKey}",
+                                photo = photo,
+                                parentMonthTitle = month.displayTitle
+                            )
+                        )
                     }
                 }
             }
@@ -472,8 +536,75 @@ private fun PhotoGrid(
     }
 
     val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var isPinching by remember { mutableStateOf(false) }
+
+    val allPhotos = remember(gridItems) {
+        gridItems.filter { it.type == "photo" }.map { it.photo!! }
+    }
+
+    var dragStartPhoto by remember { mutableStateOf<UnifiedPhotoItem?>(null) }
+    var initialSelection by remember { mutableStateOf<Set<Double>>(emptySet()) }
+    var currentDragPosition by remember { mutableStateOf<Offset?>(null) }
+
+    fun updateDragSelection(pointerOffset: Offset) {
+        val currentItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+            val x = pointerOffset.x.toInt()
+            val y = pointerOffset.y.toInt()
+            x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
+            y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
+        }
+        if (currentItem != null) {
+            val gridItem = gridItems.getOrNull(currentItem.index)
+            if (gridItem?.type == "photo") {
+                val currentPhoto = gridItem.photo!!
+                val startPhoto = dragStartPhoto
+                if (startPhoto != null) {
+                    val startIndex = allPhotos.indexOf(startPhoto)
+                    val currentIndex = allPhotos.indexOf(currentPhoto)
+                    if (startIndex != -1 && currentIndex != -1) {
+                        val min = minOf(startIndex, currentIndex)
+                        val max = maxOf(startIndex, currentIndex)
+                        val dragRangeIds = allPhotos.subList(min, max + 1).map { it.id }.toSet()
+                        viewModel.selectionManager.setSelectedIds(initialSelection + dragRangeIds)
+                    }
+                }
+            }
+        }
+    }
+
+    val density = LocalDensity.current
+    LaunchedEffect(currentDragPosition) {
+        val pos = currentDragPosition
+        if (pos != null) {
+            val gridHeight = gridState.layoutInfo.viewportSize.height
+            if (gridHeight > 0) {
+                val threshold = with(density) { 80.dp.toPx() }
+                val maxScrollSpeed = 25f
+
+                if (pos.y < threshold) {
+                    while (currentDragPosition != null && currentDragPosition!!.y < threshold) {
+                        val activePos = currentDragPosition ?: break
+                        val ratio = ((threshold - activePos.y) / threshold).coerceIn(0f, 1f)
+                        val scrollAmount = -(maxScrollSpeed * ratio)
+                        gridState.scrollBy(scrollAmount)
+                        updateDragSelection(activePos)
+                        delay(16)
+                    }
+                } else if (pos.y > gridHeight - threshold) {
+                    while (currentDragPosition != null && currentDragPosition!!.y > gridHeight - threshold) {
+                        val activePos = currentDragPosition ?: break
+                        val ratio = ((activePos.y - (gridHeight - threshold)) / threshold).coerceIn(0f, 1f)
+                        val scrollAmount = maxScrollSpeed * ratio
+                        gridState.scrollBy(scrollAmount)
+                        updateDragSelection(activePos)
+                        delay(16)
+                    }
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -528,7 +659,52 @@ private fun PhotoGrid(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
             state = gridState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(columnCount) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { offset ->
+                            val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
+                                val x = offset.x.toInt()
+                                val y = offset.y.toInt()
+                                x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
+                                y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
+                            }
+                            if (startItem != null) {
+                                val gridItem = gridItems.getOrNull(startItem.index)
+                                if (gridItem?.type == "photo") {
+                                    val photo = gridItem.photo!!
+                                    dragStartPhoto = photo
+                                    
+                                    val currentSelected = viewModel.selectionManager.selectedPhotoIds.value
+                                    if (photo.id !in currentSelected) {
+                                        viewModel.selectionManager.toggleSelection(photo.id)
+                                    }
+                                    initialSelection = viewModel.selectionManager.selectedPhotoIds.value
+                                }
+                            }
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            currentDragPosition = change.position
+                            updateDragSelection(change.position)
+                        },
+                        onDragEnd = {
+                            currentDragPosition = null
+                            coroutineScope.launch {
+                                delay(150)
+                                dragStartPhoto = null
+                            }
+                        },
+                        onDragCancel = {
+                            currentDragPosition = null
+                            coroutineScope.launch {
+                                delay(150)
+                                dragStartPhoto = null
+                            }
+                        }
+                    )
+                }
         ) {
             items(
                 items = gridItems,
@@ -551,33 +727,33 @@ private fun PhotoGrid(
                             photo = photo,
                             thumbUrl = viewModel.getThumbUrl(photo),
                             onClick = {
-                                if (isSelectionMode) {
-                                    viewModel.selectionManager.toggleSelection(photo.id)
-                                } else {
-                                    onPhotoClick(photo)
+                                if (dragStartPhoto?.id != photo.id) {
+                                    if (isSelectionMode) {
+                                        viewModel.selectionManager.toggleSelection(photo.id)
+                                    } else {
+                                        onPhotoClick(photo)
+                                    }
                                 }
                             },
-                            onLongClick = {
-                                viewModel.selectionManager.toggleSelection(photo.id)
-                            },
+                            onLongClick = null,
                             isSelected = photo.id in selectedPhotoIds,
-                            isSelectionMode = isSelectionMode,
-                            modifier = Modifier.pointerInput(photo.id) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { viewModel.selectionManager.startDragSelection(photo.id) },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        viewModel.selectionManager.dragSelect(photo.id)
-                                    },
-                                    onDragEnd = {},
-                                    onDragCancel = {}
-                                )
-                            }
+                            isSelectionMode = isSelectionMode
                         )
                     }
                 }
             }
         }
+
+        LazyGridVerticalFastScroller(
+            gridState = gridState,
+            labelProvider = { fraction ->
+                if (isSearchMode) null else {
+                    val targetIndex = (fraction * (gridItems.size - 1)).toInt().coerceIn(0, gridItems.size - 1)
+                    gridItems.getOrNull(targetIndex)?.parentMonthTitle
+                }
+            },
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 
@@ -586,32 +762,49 @@ private fun MonthHeader(title: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "$count 张",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = "$count 张照片",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
         )
     }
 }
 
 @Composable
 private fun DayHeader(dayGroup: DayGroup) {
-    Text(
-        text = dayGroup.date,
-        style = MaterialTheme.typography.titleSmall,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    )
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f))
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(16.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.secondary,
+                    shape = RoundedCornerShape(2.dp)
+                )
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = dayGroup.date,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }

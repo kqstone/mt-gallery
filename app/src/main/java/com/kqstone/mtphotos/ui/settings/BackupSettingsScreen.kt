@@ -68,6 +68,9 @@ fun BackupSettingsScreen(
     var showCleanupConfirm by remember { mutableStateOf(false) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showDestinationDialog by remember { mutableStateOf(false) }
+    var showCacheLimitDialog by remember { mutableStateOf(false) }
+    var showClearThumbnailCacheConfirm by remember { mutableStateOf(false) }
+    var showClearMediaCacheConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.loadStats()
@@ -236,6 +239,35 @@ fun BackupSettingsScreen(
                 )
             }
 
+            item { SectionTitle("缓存管理") }
+
+            item {
+                SettingActionRow(
+                    title = "最大缩略图缓存容量",
+                    subtitle = formatCacheLimitLabel(uiState.coilDiskCacheMb),
+                    icon = Icons.Default.Folder,
+                    onClick = { showCacheLimitDialog = true }
+                )
+            }
+
+            item {
+                SettingActionRow(
+                    title = "清理缩略图缓存",
+                    subtitle = "当前已用: ${uiState.thumbnailCacheSizeFormatted}",
+                    icon = Icons.Default.CleaningServices,
+                    onClick = { showClearThumbnailCacheConfirm = true }
+                )
+            }
+
+            item {
+                SettingActionRow(
+                    title = "清理照片与视频缓存",
+                    subtitle = "当前已用: ${uiState.mediaCacheSizeFormatted}",
+                    icon = Icons.Default.CleaningServices,
+                    onClick = { showClearMediaCacheConfirm = true }
+                )
+            }
+
             item { SectionTitle("删除方式") }
 
             item {
@@ -343,6 +375,113 @@ fun BackupSettingsScreen(
                 showDestinationDialog = false
             }
         )
+    }
+
+    if (showCacheLimitDialog) {
+        val options = listOf(256, 512, 1024, 2048, 5120)
+        AlertDialog(
+            onDismissRequest = { showCacheLimitDialog = false },
+            title = { Text("最大缓存容量限制") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    options.forEach { limitMb ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setCoilDiskCacheMb(limitMb)
+                                    showCacheLimitDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = uiState.coilDiskCacheMb == limitMb,
+                                onClick = {
+                                    viewModel.setCoilDiskCacheMb(limitMb)
+                                    showCacheLimitDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = formatCacheLimitLabel(limitMb) + if (limitMb == 512) " (默认)" else "",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCacheLimitDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showClearThumbnailCacheConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearThumbnailCacheConfirm = false },
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            },
+            title = { Text("清除缩略图缓存") },
+            text = {
+                Text("即将清理所有已加载的相册缩略图缓存 (当前占用约 ${uiState.thumbnailCacheSizeFormatted})。清理后，在没有网络连接时将无法加载已离线缓存的缩略图，直到再次联网加载。确定要清除吗？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearThumbnailCache()
+                        showClearThumbnailCacheConfirm = false
+                    }
+                ) {
+                    Text("确认清理", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearThumbnailCacheConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showClearMediaCacheConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearMediaCacheConfirm = false },
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            },
+            title = { Text("清除照片与视频缓存") },
+            text = {
+                Text("即将清理本地查看时缓存的全部高清照片和大图、视频文件 (当前占用约 ${uiState.mediaCacheSizeFormatted})。清理后，在没有网络连接时将需要重新从云端加载原图或视频。确定要清除吗？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearMediaCache()
+                        showClearMediaCacheConfirm = false
+                    }
+                ) {
+                    Text("确认清理", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearMediaCacheConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+private fun formatCacheLimitLabel(mb: Int): String {
+    return if (mb >= 1024) {
+        val gb = mb / 1024.0
+        "%.1f GB".format(gb).replace(".0", "")
+    } else {
+        "$mb MB"
     }
 }
 

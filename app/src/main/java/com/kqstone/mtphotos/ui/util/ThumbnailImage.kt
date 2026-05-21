@@ -1,5 +1,7 @@
 package com.kqstone.mtphotos.ui.util
 
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -15,7 +17,8 @@ fun ThumbnailImage(
     url: String,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    key: String? = null
 ) {
     val context = LocalContext.current
     AsyncImage(
@@ -23,10 +26,16 @@ fun ThumbnailImage(
             .data(url)
             .size(THUMB_SIZE_PX)
             .scale(Scale.FILL)
-            .crossfade(true)
+            .apply {
+                if (!key.isNullOrEmpty()) {
+                    diskCacheKey("${key}_256")
+                    memoryCacheKey("${key}_256")
+                }
+            }
+            .crossfade(false)
             .build(),
         contentDescription = contentDescription,
         contentScale = contentScale,
-        modifier = modifier
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant)
     )
 }

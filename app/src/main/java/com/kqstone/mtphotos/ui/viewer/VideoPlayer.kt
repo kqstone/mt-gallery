@@ -12,6 +12,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
 
 @Composable
@@ -25,7 +29,20 @@ fun VideoPlayer(
 
     val exoPlayer = remember(videoUrl) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(videoUrl))
+            if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+                val app = context.applicationContext as MTPhotosApp
+                val simpleCache = app.videoCache
+                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                val cacheDataSourceFactory = CacheDataSource.Factory()
+                    .setCache(simpleCache)
+                    .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(videoUrl))
+                setMediaSource(mediaSource)
+            } else {
+                setMediaItem(MediaItem.fromUri(videoUrl))
+            }
             prepare()
         }
     }

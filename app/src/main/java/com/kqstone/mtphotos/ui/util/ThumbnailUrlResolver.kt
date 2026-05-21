@@ -11,7 +11,7 @@ object ThumbnailUrlResolver {
         imageCloudUrl: (UnifiedPhotoItem) -> String
     ): String {
         photo.thumbCachePath?.let { path ->
-            if (path.isNotEmpty() && isLocalFileValid(path)) return "file://$path"
+            if (path.isNotEmpty()) return "file://$path"
         }
 
         if (photo.isVideo()) {
@@ -27,14 +27,5 @@ object ThumbnailUrlResolver {
         }
 
         return if (photo.md5.isNotEmpty()) imageCloudUrl(photo) else ""
-    }
-
-    private fun isLocalFileValid(path: String): Boolean {
-        return try {
-            val file = File(path)
-            file.exists() && file.length() > 0
-        } catch (_: Exception) {
-            false
-        }
     }
 }

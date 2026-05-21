@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.ui.viewer
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -120,6 +122,7 @@ fun ViewerScreen(
                 Box(modifier = Modifier.fillMaxSize())
             } else {
                 ZoomableImage(
+                    photo = photo,
                     imageUrl = viewModel.getFullImageUrl(photo),
                     contentDescription = photo.fileName
                 )
@@ -150,26 +153,42 @@ fun ViewerScreen(
 
         Text(
             text = "${pagerState.settledPage + 1} / ${photos.size}",
-            color = Color.White.copy(alpha = 0.7f),
+            style = MaterialTheme.typography.labelLarge,
+            color = Color.White.copy(alpha = 0.85f),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 24.dp)
-                .background(Color.Black.copy(alpha = 0.4f))
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(bottom = 32.dp)
+                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(16.dp))
+                .padding(horizontal = 16.dp, vertical = 6.dp)
         )
     }
 }
 
 @Composable
 private fun ZoomableImage(
+    photo: UnifiedPhotoItem,
     imageUrl: String,
     contentDescription: String
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
+
+    val imageRequest = remember(imageUrl, photo.md5) {
+        coil.request.ImageRequest.Builder(context)
+            .data(imageUrl)
+            .diskCacheKey("${photo.md5}_full")
+            .memoryCacheKey("${photo.md5}_full")
+            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+            .build()
+    }
+
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
     AsyncImage(
-        model = imageUrl,
+        model = imageRequest,
+        imageLoader = app.fullImageLoader,
         contentDescription = contentDescription,
         contentScale = ContentScale.Fit,
         modifier = Modifier
