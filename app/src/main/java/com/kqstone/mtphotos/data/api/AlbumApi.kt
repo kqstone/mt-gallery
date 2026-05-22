@@ -55,7 +55,7 @@ interface AlbumApi {
 
     /** 检查【收藏夹】 相册是否已经创建过 */
     @POST("/api-album/checkForFavorites")
-    suspend fun AlbumControllerCheckAlbumForFav(): Unit
+    suspend fun AlbumControllerCheckAlbumForFav(): Map<String, Any>
 
     /** 添加文件至相册中 */
     @POST("/api-album/addFileToAlbum")

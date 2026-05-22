@@ -924,21 +924,67 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun checkOrCreateFavoritesAlbum(): Result<Double> {
         return try {
-            container.albumApi.AlbumControllerCheckAlbumForFav()
-            val albums = container.albumApi.AlbumControllerFindAll()
-            val favAlbum = albums.firstOrNull {
-                val name = it["name"] as? String
-                val theme = it["theme"] as? String
-                name == "收藏" || theme == "favorites"
-            }
-            val id = favAlbum?.let { (it["id"] as? Number)?.toDouble() }
+            val album = getFavoritesAlbum().getOrThrow()
+            val id = parseNumericId(album)
             if (id != null) {
                 Result.success(id)
             } else {
-                Result.failure(Exception("Favorites album not found"))
+                Result.failure(Exception("Favorites album id not found"))
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private suspend fun getFavoritesAlbum(): Result<Map<String, Any>> {
+        return try {
+            val checkedAlbum = container.albumApi.AlbumControllerCheckAlbumForFav()
+            if (parseNumericId(checkedAlbum) != null) {
+                return Result.success(checkedAlbum)
+            }
+
+            val albums = container.albumApi.AlbumControllerFindAll()
+            val favAlbum = albums.firstOrNull {
+                isFavoritesAlbum(it)
+            }
+            if (favAlbum != null) {
+                Result.success(favAlbum)
+            } else {
+                Result.failure(Exception("Favorites album not found: ${albums.map { it["name"] }}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun isFavoritesAlbum(album: Map<String, Any>): Boolean {
+        val name = (album["name"] as? String)?.trim().orEmpty()
+        val theme = (album["theme"] as? String)?.trim().orEmpty()
+        return name == "收藏" ||
+            name == "__mt_photo_favorites__" ||
+            theme == "favorites"
+    }
+
+    private fun parseNumericId(map: Map<String, Any>): Double? {
+        return when (val id = map["id"]) {
+            is Number -> id.toDouble()
+            is String -> id.toDoubleOrNull()
+            else -> null
+        }
+    }
+
+    private fun parseNumericValue(value: Any?): Double? {
+        return when (value) {
+            is Number -> value.toDouble()
+            is String -> value.toDoubleOrNull()
+            else -> null
+        }
+    }
+
+    private fun albumContainsFile(album: Map<String, Any>, photoId: Double): Boolean? {
+        val files = album["files"] as? List<*> ?: return null
+        return files.any { fileId ->
+            parseNumericValue(fileId)?.toInt() == photoId.toInt()
         }
     }
 
@@ -964,9 +1010,13 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun isFileInFavorites(photoId: Double): Result<Boolean> {
         return try {
-            val favAlbumId = checkOrCreateFavoritesAlbum().getOrThrow()
+            val favAlbum = getFavoritesAlbum().getOrThrow()
+            albumContainsFile(favAlbum, photoId)?.let { return Result.success(it) }
+
+            val favAlbumId = parseNumericId(favAlbum)
+                ?: return Result.failure(Exception("Favorites album id not found"))
             val albumIds = container.albumApi.AlbumControllerFileInAlbums(photoId)
-            Result.success(albumIds.contains(favAlbumId))
+            Result.success(albumIds.any { it.toInt() == favAlbumId.toInt() })
         } catch (e: Exception) {
             Result.failure(e)
         }
