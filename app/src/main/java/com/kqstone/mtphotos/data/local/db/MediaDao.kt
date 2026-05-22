@@ -155,13 +155,14 @@ interface MediaDao {
     fun getMediaBySyncStatusFlow(status: SyncStatus): Flow<List<MediaEntity>>
 
     /** 获取所有仅本地的文件（待备份） */
-    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') AND md5 != '' ORDER BY mtime DESC")
     suspend fun getPendingBackupMedia(): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
         WHERE syncStatus = 'LOCAL_ONLY'
         AND backupStatus IN ('NOT_STARTED', 'FAILED')
+        AND md5 != ''
         AND localFolderPath IN (:folderPaths)
         ORDER BY mtime DESC
     """)

@@ -23,6 +23,7 @@ import com.kqstone.mtphotos.data.repository.TimelineSnapshot
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
+import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -173,7 +174,11 @@ class GalleryViewModel(
                         }
                         "finalizing" -> {
                             _uiState.value = _uiState.value.copy(
-                                syncProgressText = "正在写入云端索引..."
+                                syncProgressText = if (progress.total > 0) {
+                                    "正在写入云端索引 ${progress.scanned.coerceAtMost(progress.total)}/${progress.total}..."
+                                } else {
+                                    "正在写入云端索引..."
+                                }
                             )
                         }
                         "cleanup" -> {
@@ -189,6 +194,14 @@ class GalleryViewModel(
                                     loadFromRoom(folders)
                                 }
                                 loadFromRoom(folders)
+                                if (prefsManager?.getBackupEnabledSync() == true &&
+                                    syncRepository.getPendingBackupMedia(folders).isNotEmpty()
+                                ) {
+                                    BackupScheduler.triggerImmediateBackup(
+                                        prefsManager.context,
+                                        prefsManager.getBackupWifiOnlySync()
+                                    )
+                                }
                             }
                         }
                     }

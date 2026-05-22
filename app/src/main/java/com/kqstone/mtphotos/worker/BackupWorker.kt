@@ -103,6 +103,7 @@ class BackupWorker(
             }
 
             val pendingFiles = syncRepo.getPendingBackupMedia(selectedFolders)
+                .filter { it.md5.isNotEmpty() }
             if (pendingFiles.isEmpty()) {
                 Log.d(TAG, "No files pending backup")
                 return@withContext Result.success()

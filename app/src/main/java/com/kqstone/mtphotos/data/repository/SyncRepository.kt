@@ -118,7 +118,9 @@ class SyncRepository(
             }
 
             emit(SyncProgress(scannedCount, 0, "finalizing", cloudPhotos.size))
-            upsertCloudPhotos(cloudPhotos, skipMd5s = matchedMd5s)
+            upsertCloudPhotos(cloudPhotos, skipMd5s = matchedMd5s) { written, total ->
+                emit(SyncProgress(written, total, "finalizing", total))
+            }
 
             emit(SyncProgress(scannedCount, scannedCount, "cleanup", cloudPhotos.size))
             val cleaned = cleanupOrphanedLocalRecords()
@@ -471,10 +473,32 @@ class SyncRepository(
         cloudPhotos: List<MediaEntity>,
         skipMd5s: Set<String> = emptySet()
     ): List<MediaEntity> {
+        return cloudPhotos
+            .filter { it.md5 !in skipMd5s }
+            .chunked(500)
+            .flatMap { buildCloudEntitiesChunk(it) }
+    }
+
+    private suspend fun buildCloudEntitiesChunk(
+        cloudPhotos: List<MediaEntity>
+    ): List<MediaEntity> {
+        if (cloudPhotos.isEmpty()) return emptyList()
+        val md5s = cloudPhotos.map { it.md5 }.filter { it.isNotEmpty() }.distinct()
+        val cloudIds = cloudPhotos.mapNotNull { it.cloudId }.distinct()
+        val existingByMd5 = if (md5s.isEmpty()) {
+            emptyMap()
+        } else {
+            mediaDao.findByMd5List(md5s).associateBy { it.md5.ifEmpty { it.cloudMd5 ?: "" } }
+        }
+        val existingByCloudId = if (cloudIds.isEmpty()) {
+            emptyMap()
+        } else {
+            mediaDao.findByCloudIds(cloudIds).associateBy { it.cloudId }
+        }
+
         val result = mutableListOf<MediaEntity>()
         for (cloud in cloudPhotos) {
-            if (cloud.md5 in skipMd5s) continue
-            val existing = findExistingEntity(cloud.md5, cloud.cloudId, null)
+            val existing = existingByMd5[cloud.md5] ?: existingByCloudId[cloud.cloudId]
             result.add(mergeMedia(existing, cloud = cloud))
         }
         return result
@@ -482,11 +506,19 @@ class SyncRepository(
 
     private suspend fun upsertCloudPhotos(
         cloudPhotos: List<MediaEntity>,
-        skipMd5s: Set<String> = emptySet()
+        skipMd5s: Set<String> = emptySet(),
+        batchSize: Int = 500,
+        onProgress: suspend (written: Int, total: Int) -> Unit = { _, _ -> }
     ) {
-        val merged = buildCloudEntities(cloudPhotos, skipMd5s)
-        if (merged.isNotEmpty()) {
-            mediaDao.insertAll(merged)
+        val candidates = cloudPhotos.filter { it.md5 !in skipMd5s }
+        var written = 0
+        for (chunk in candidates.chunked(batchSize.coerceAtLeast(1))) {
+            val merged = buildCloudEntitiesChunk(chunk)
+            if (merged.isNotEmpty()) {
+                mediaDao.insertAll(merged)
+                written += merged.size
+                onProgress(written, candidates.size)
+            }
         }
     }
 
