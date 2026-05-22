@@ -62,6 +62,18 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- 用于安全地共享缓存中下载的原始图片或视频给微信/系统等外部应用 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.kqstone.mtphotos.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
+
 
 </manifest>

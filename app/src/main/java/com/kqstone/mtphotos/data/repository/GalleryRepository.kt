@@ -903,4 +903,73 @@ class GalleryRepository(private val container: AppContainer) {
             LocationItem(city, count, coverMd5)
         }.sortedByDescending { it.count }
     }
+
+    suspend fun getFileExifInfo(id: Double): Result<Map<String, Any>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2FileExifInfo(id.toInt().toString())
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getFileDetail(id: Double, md5: String): Result<Map<String, Any>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2GetFileDetail(id.toInt().toString(), md5)
+            Result.success(response)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun checkOrCreateFavoritesAlbum(): Result<Double> {
+        return try {
+            container.albumApi.AlbumControllerCheckAlbumForFav()
+            val albums = container.albumApi.AlbumControllerFindAll()
+            val favAlbum = albums.firstOrNull {
+                val name = it["name"] as? String
+                val theme = it["theme"] as? String
+                name == "收藏" || theme == "favorites"
+            }
+            val id = favAlbum?.let { (it["id"] as? Number)?.toDouble() }
+            if (id != null) {
+                Result.success(id)
+            } else {
+                Result.failure(Exception("Favorites album not found"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun toggleFavorite(photoId: Double, isFavorite: Boolean): Result<Unit> {
+        return try {
+            val albumId = checkOrCreateFavoritesAlbum().getOrThrow()
+            if (isFavorite) {
+                container.albumApi.AlbumControllerAddFileToAlbum(mapOf(
+                    "albumId" to albumId,
+                    "fileIds" to listOf(photoId.toInt())
+                ))
+            } else {
+                container.albumApi.AlbumControllerRemoveFileFromAlbum(mapOf(
+                    "albumId" to albumId,
+                    "fileIds" to listOf(photoId.toInt())
+                ))
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun isFileInFavorites(photoId: Double): Result<Boolean> {
+        return try {
+            val favAlbumId = checkOrCreateFavoritesAlbum().getOrThrow()
+            val albumIds = container.albumApi.AlbumControllerFileInAlbums(photoId)
+            Result.success(albumIds.contains(favAlbumId))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+

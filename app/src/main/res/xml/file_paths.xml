@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Allow sharing files inside the cache/shared_media/ directory -->
+    <cache-path name="shared_media" path="shared_media/" />
+    <!-- Allow sharing original files if already cached in full_image_cache -->
+    <cache-path name="full_image_cache" path="full_image_cache/" />
+</paths>

@@ -9,6 +9,8 @@ import coil.request.CachePolicy
 import okhttp3.OkHttpClient
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
+import com.kqstone.mtphotos.data.api.AlbumApi
+import com.kqstone.mtphotos.data.api.ShareApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
@@ -137,6 +139,8 @@ class AppContainer(context: android.content.Context) {
     // API instances are derived from current Retrofit (rebuilt on URL change)
     val authApi: AuthApi get() = retrofitClient.create()
     val gatewayApi: GatewayApi get() = retrofitClient.create()
+    val albumApi: AlbumApi get() = retrofitClient.create()
+    val shareApi: ShareApi get() = retrofitClient.create()
 
     val authRepository = AuthRepository(this)
     val backupDestinationRepository = BackupDestinationRepository(this)

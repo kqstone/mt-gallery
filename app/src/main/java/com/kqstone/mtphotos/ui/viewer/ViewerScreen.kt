@@ -1,45 +1,48 @@
 package com.kqstone.mtphotos.ui.viewer
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,11 +50,14 @@ fun ViewerScreen(
     viewModel: ViewerViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val photos = uiState.photos
     val initialIndex = uiState.currentIndex
+
     var stopActivePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isExiting by remember { mutableStateOf(false) }
+
     val stopAndGoBack = {
         if (!isExiting) {
             isExiting = true
@@ -87,6 +93,11 @@ fun ViewerScreen(
 
     val currentPhoto = photos.getOrNull(pagerState.settledPage) ?: photos[initialIndex]
 
+    // UI visibility state for immersive full screen
+    var isUiVisible by remember { mutableStateOf(true) }
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -96,7 +107,7 @@ fun ViewerScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 0,
-            userScrollEnabled = true
+            userScrollEnabled = !showBottomSheet
         ) { page ->
             val photo = photos[page]
             val isCurrentPage = pagerState.settledPage == page
@@ -108,6 +119,8 @@ fun ViewerScreen(
                     VideoPlayer(
                         videoUrl = url,
                         isCurrentPage = true,
+                        isUiVisible = isUiVisible,
+                        onToggleUi = { isUiVisible = !isUiVisible },
                         onStopPlaybackReady = { stopActivePlayback = it }
                     )
                 } else {
@@ -115,7 +128,7 @@ fun ViewerScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Cannot play video", color = Color.White)
+                        Text("无法播放该视频", color = Color.White)
                     }
                 }
             } else if (isPlayableMedia) {
@@ -124,42 +137,292 @@ fun ViewerScreen(
                 ZoomableImage(
                     photo = photo,
                     imageUrl = viewModel.getFullImageUrl(photo),
-                    contentDescription = photo.fileName
+                    contentDescription = photo.fileName,
+                    onTap = { isUiVisible = !isUiVisible }
                 )
             }
         }
 
-        TopAppBar(
-            title = {
-                Text(
-                    text = currentPhoto.fileName.ifEmpty { "照片 ${pagerState.settledPage + 1}/${photos.size}" },
-                    color = Color.White
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = stopAndGoBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
+        // Top Gradient & AppBar
+        AnimatedVisibility(
+            visible = isUiVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        )
                     )
+                    .statusBarsPadding()
+                    .padding(vertical = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = stopAndGoBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val address = uiState.fileDetailInfo?.let {
+                            (it["addr"] ?: it["address"] ?: it["location"])?.toString()
+                        } ?: currentPhoto.addr
+                        val dateText = remember(currentPhoto.mtime) { formatFriendlyDateShort(currentPhoto.mtime) }
+
+                        if (!address.isNullOrBlank()) {
+                            Text(
+                                text = address,
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = dateText,
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            Text(
+                                text = dateText,
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom Gradient & Floating Action HUD Bar
+        AnimatedVisibility(
+            visible = isUiVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp, top = 24.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Pager Number Indicator
+                    Text(
+                        text = "${pagerState.settledPage + 1} / ${photos.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Control Buttons (Narrower width, no pill background)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Share
+                        HUDButton(
+                            icon = Icons.Default.Share,
+                            label = "分享",
+                            onClick = { viewModel.sharePhoto(context, currentPhoto) }
+                        )
+
+                        // Favorite with scale animation
+                        val favScale by animateFloatAsState(
+                            targetValue = if (uiState.isFavorite) 1.25f else 1.0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessLow
+                            ),
+                            label = "favorite_scale"
+                        )
+
+                        HUDButton(
+                            icon = if (uiState.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            label = if (uiState.isFavorite) "已收藏" else "收藏",
+                            iconColor = if (uiState.isFavorite) Color(0xFFFFD700) else Color.White,
+                            iconScale = favScale,
+                            onClick = { viewModel.toggleFavorite() }
+                        )
+
+                        // Delete
+                        HUDButton(
+                            icon = Icons.Default.Delete,
+                            label = "删除",
+                            onClick = { showDeleteDialog = true }
+                        )
+
+                        // Info Details
+                        HUDButton(
+                            icon = Icons.Default.Info,
+                            label = "信息",
+                            onClick = { showBottomSheet = true }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Sharing Overlay Indicator
+        if (uiState.isSharing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.width(180.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "正在下载原图...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal Bottom Sheet Details Drawer
+    if (showBottomSheet) {
+        DetailsBottomSheet(
+            photo = currentPhoto,
+            uiState = uiState,
+            onDismiss = { showBottomSheet = false }
+        )
+    }
+
+    // Elegant Delete Confirmation Dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "删除此媒体？", fontWeight = FontWeight.Bold)
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Black.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.statusBarsPadding()
+            text = {
+                Text(
+                    text = "确定要从本地存储与云端服务器永久删除此文件吗？该操作不可撤销。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        viewModel.deleteCurrentPhoto(onSuccess = {
+                            stopAndGoBack()
+                        })
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteDialog = false },
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("取消")
+                }
+            },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
         )
+    }
+}
 
-        Text(
-            text = "${pagerState.settledPage + 1} / ${photos.size}",
-            style = MaterialTheme.typography.labelLarge,
-            color = Color.White.copy(alpha = 0.85f),
+@Composable
+private fun HUDButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    iconColor: Color = Color.White,
+    iconScale: Float = 1.0f,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(8.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = iconColor,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
-                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(16.dp))
-                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.85f)
         )
     }
 }
@@ -168,7 +431,8 @@ fun ViewerScreen(
 private fun ZoomableImage(
     photo: UnifiedPhotoItem,
     imageUrl: String,
-    contentDescription: String
+    contentDescription: String,
+    onTap: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
@@ -183,7 +447,7 @@ private fun ZoomableImage(
             .build()
     }
 
-    var scale by remember { mutableFloatStateOf(1f) }
+    var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
     AsyncImage(
@@ -202,12 +466,12 @@ private fun ZoomableImage(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = true)
-
+                    var isClick = true
+                    var totalPan = Offset.Zero
                     do {
                         val event = awaitPointerEvent()
                         val zoom = event.calculateZoom()
 
-                        // Calculate pan from centroid movement
                         var panX = 0f
                         var panY = 0f
                         var panCount = 0
@@ -219,6 +483,11 @@ private fun ZoomableImage(
                             }
                         }
                         val pan = if (panCount > 0) Offset(panX / panCount, panY / panCount) else Offset.Zero
+                        totalPan += pan
+
+                        if (zoom != 1f || pan.getDistanceSquared() > 10f) {
+                            isClick = false
+                        }
 
                         if (zoom != 1f) {
                             scale = (scale * zoom).coerceIn(1f, 5f)
@@ -232,7 +501,353 @@ private fun ZoomableImage(
                             event.changes.forEach { it.consume() }
                         }
                     } while (event.changes.any { it.pressed })
+
+                    if (isClick && totalPan.getDistanceSquared() < 100f) {
+                        onTap()
+                    }
                 }
             }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DetailsBottomSheet(
+    photo: UnifiedPhotoItem,
+    uiState: ViewerUiState,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        scrimColor = Color.Black.copy(alpha = 0.45f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "详情",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Date and time
+            val friendlyDate = remember(photo.mtime) { formatFriendlyDate(photo.mtime) }
+            if (friendlyDate.isNotEmpty()) {
+                InfoSectionHeader(title = "拍摄时间")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = friendlyDate,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // Specs Section
+            InfoSectionHeader(title = "文件信息")
+            val sizeBytes = uiState.fileDetailInfo?.let {
+                (it["size"] ?: it["fileSize"])?.toString()?.toLongOrNull()
+            } ?: photo.fileSize
+            val widthVal = uiState.fileDetailInfo?.let {
+                (it["width"] ?: it["imageWidth"])?.toString()?.toDoubleOrNull()
+            } ?: photo.width
+            val heightVal = uiState.fileDetailInfo?.let {
+                (it["height"] ?: it["imageHeight"])?.toString()?.toDoubleOrNull()
+            } ?: photo.height
+
+            val formattedSize = remember(sizeBytes) { formatFileSize(sizeBytes) }
+            val formattedRes = remember(widthVal, heightVal) {
+                if (widthVal > 0 && heightVal > 0) "${widthVal.toInt()} × ${heightVal.toInt()}" else ""
+            }
+            val localPath = uiState.fileDetailInfo?.let {
+                (it["path"] ?: it["filePath"] ?: it["localUri"])?.toString()
+            } ?: photo.localUri.orEmpty()
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                InfoRowItem(label = "文件名", value = photo.fileName)
+                if (formattedSize.isNotEmpty()) {
+                    InfoRowItem(label = "大小", value = formattedSize)
+                }
+                if (formattedRes.isNotEmpty()) {
+                    InfoRowItem(label = "分辨率", value = formattedRes)
+                }
+                if (localPath.isNotEmpty()) {
+                    InfoRowItem(label = "存储路径", value = localPath)
+                }
+            }
+
+            // EXIF Camera Specs Grid
+            val make = uiState.exifInfo?.let { exif ->
+                (exif["Make"] ?: exif["make"] ?: exif["cameraMake"] ?: exif["CameraMake"])?.toString()?.trim()
+            }
+            val model = uiState.exifInfo?.let { exif ->
+                (exif["Model"] ?: exif["model"] ?: exif["cameraModel"] ?: exif["CameraModel"])?.toString()?.trim()
+            }
+            val lens = uiState.exifInfo?.let { exif ->
+                (exif["LensModel"] ?: exif["lensModel"] ?: exif["lens"] ?: exif["Lens"])?.toString()?.trim()
+            }
+            val aperture = uiState.exifInfo?.let { exif ->
+                val ap = exif["FNumber"] ?: exif["fNumber"] ?: exif["aperture"] ?: exif["Aperture"] ?: exif["f_number"]
+                ap?.let { "f/$it" }
+            }
+            val shutter = uiState.exifInfo?.let { exif ->
+                val sh = exif["ExposureTime"] ?: exif["exposureTime"] ?: exif["shutterSpeed"] ?: exif["shutter"] ?: exif["exposure_time"]
+                sh?.let {
+                    val doubleVal = it.toString().toDoubleOrNull()
+                    if (doubleVal != null && doubleVal > 0) {
+                        if (doubleVal < 1.0) {
+                            val shutterFraction = Math.round(1.0 / doubleVal)
+                            "1/$shutterFraction 秒"
+                        } else {
+                            "$doubleVal 秒"
+                        }
+                    } else {
+                        it.toString()
+                    }
+                }
+            }
+            val iso = uiState.exifInfo?.let { exif ->
+                (exif["ISOSpeedRatings"] ?: exif["isoSpeedRatings"] ?: exif["iso"] ?: exif["ISO"])?.toString()
+            }
+            val focal = uiState.exifInfo?.let { exif ->
+                val foc = exif["FocalLength"] ?: exif["focalLength"] ?: exif["focal"] ?: exif["focal_length"]
+                foc?.let { "$it mm" }
+            }
+
+            val exifCards = remember(make, model, lens, aperture, shutter, iso, focal) {
+                val list = mutableListOf<Pair<String, String>>()
+                if (!make.isNullOrBlank() || !model.isNullOrBlank()) {
+                    val deviceName = listOfNotNull(make, model).distinct().joinToString(" ")
+                    list.add("相机品牌/型号" to deviceName)
+                }
+                if (!lens.isNullOrBlank()) {
+                    list.add("镜头型号" to lens)
+                }
+                if (!aperture.isNullOrBlank()) {
+                    list.add("光圈" to aperture)
+                }
+                if (!shutter.isNullOrBlank()) {
+                    list.add("快门速度" to shutter)
+                }
+                if (!iso.isNullOrBlank()) {
+                    list.add("ISO 速度" to iso)
+                }
+                if (!focal.isNullOrBlank()) {
+                    list.add("焦距" to focal)
+                }
+                list
+            }
+
+            if (exifCards.isNotEmpty()) {
+                InfoSectionHeader(title = "拍摄参数 (EXIF)")
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    exifCards.forEach { (label, valStr) ->
+                        ExifCardItem(label = label, value = valStr)
+                    }
+                }
+            }
+
+            // Geographic Info
+            val addr = uiState.fileDetailInfo?.let {
+                (it["addr"] ?: it["address"] ?: it["location"])?.toString()
+            } ?: photo.addr
+
+            val gpsInfo = (uiState.fileDetailInfo?.get("gpsInfo") ?: uiState.fileDetailInfo?.get("gps_info") ?: uiState.exifInfo?.get("gpsInfo")) as? Map<*, *>
+            val lat = gpsInfo?.let { it["latitude"] ?: it["lat"] ?: it["Latitude"] }?.toString()?.toDoubleOrNull()
+            val lon = gpsInfo?.let { it["longitude"] ?: it["lon"] ?: it["Longitude"] }?.toString()?.toDoubleOrNull()
+
+            if (!addr.isNullOrBlank() || (lat != null && lon != null)) {
+                val displayAddr = addr ?: "照片位置 (${lat}, ${lon})"
+                InfoSectionHeader(title = "位置")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = displayAddr,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                try {
+                                    val uri = if (lat != null && lon != null) {
+                                        android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon(${URLEncoder.encode(displayAddr, "UTF-8")})")
+                                    } else {
+                                        android.net.Uri.parse("geo:0,0?q=${URLEncoder.encode(displayAddr, "UTF-8")}")
+                                    }
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "打开地图失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.align(Alignment.End),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Map,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "在地图中查看", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+private fun InfoRowItem(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 16.dp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ExifCardItem(label: String, value: String) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Column {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+private fun formatFriendlyDate(mtime: String): String {
+    if (mtime.isEmpty()) return ""
+    return try {
+        val clean = mtime.replace("T", " ").substringBefore("+").substringBefore("Z")
+        val formatIn = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val date = formatIn.parse(clean) ?: return mtime
+        val formatOut = SimpleDateFormat("yyyy年M月d日 EEEE a h:mm", Locale.CHINA)
+        formatOut.format(date)
+    } catch (e: Exception) {
+        mtime
+    }
+}
+
+private fun formatFriendlyDateShort(mtime: String): String {
+    if (mtime.isEmpty()) return ""
+    return try {
+        val clean = mtime.replace("T", " ").substringBefore("+").substringBefore("Z")
+        val formatIn = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val date = formatIn.parse(clean) ?: return mtime
+        val formatOut = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
+        formatOut.format(date)
+    } catch (e: Exception) {
+        mtime
+    }
+}
+
+private fun formatFileSize(sizeInBytes: Long): String {
+    if (sizeInBytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    val digitGroups = (Math.log10(sizeInBytes.toDouble()) / Math.log10(1024.0)).toInt()
+    if (digitGroups >= units.size) return "$sizeInBytes B"
+    return String.format(Locale.getDefault(), "%.2f %s", sizeInBytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
