@@ -27,7 +27,7 @@ interface GatewayApi {
 
     /** 照片-时间线 月数据 */
     @POST("/gateway/timelineMonth")
-    suspend fun GatewayControllerGetTimelineMonthData(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerGetTimelineMonthData(@Body body: Map<String, @JvmSuppressWildcards Any>): Map<String, Any>
 
     /** 用户的图库列表 */
     @GET("/gateway/myGalleryList")

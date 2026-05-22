@@ -18,6 +18,8 @@ import com.kqstone.mtphotos.data.repository.SearchRequest
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.data.repository.SyncRepository
+import com.kqstone.mtphotos.data.repository.TimelineMonth
+import com.kqstone.mtphotos.data.repository.TimelineSnapshot
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
@@ -38,7 +40,10 @@ data class MonthGroup(
     val yearMonth: String,
     val displayTitle: String,
     val totalCount: Int,
-    val days: List<DayGroup> = emptyList()
+    val days: List<DayGroup> = emptyList(),
+    val isLoaded: Boolean = true,
+    val isLoading: Boolean = false,
+    val loadError: String? = null
 )
 
 data class GalleryUiState(
@@ -73,6 +78,10 @@ class GalleryViewModel(
 
     private var searchTipsJob: Job? = null
     private var localVideoThumbJob: Job? = null
+    private var initialSyncJob: Job? = null
+    private val monthLoadJobs = mutableMapOf<String, Job>()
+    private var timelineMonthsByYearMonth: Map<String, TimelineMonth> = emptyMap()
+    private var currentLocalFolders: Set<String>? = null
     private var filterCandidatesLoaded = false
 
     val selectionManager = SelectionManager(
@@ -121,8 +130,10 @@ class GalleryViewModel(
                     if (syncRepository.hasData()) {
                         syncRepository.reconcileFolderSelection(folderSelection.folders)
                         loadFromRoom(folderSelection.folders)
+                        refreshCloudTimelineIndex(folderSelection.folders)
                         return@launch
                     }
+                    loadFromCloud()
                     triggerInitialSync(folderSelection.folders)
                 } catch (e: Exception) {
                     Log.e(TAG, "Hybrid load failed, fallback to cloud", e)
@@ -136,13 +147,14 @@ class GalleryViewModel(
 
     private fun triggerInitialSync(folders: Set<String>?) {
         if (syncRepository == null) return
+        if (initialSyncJob?.isActive == true) return
         _uiState.value = _uiState.value.copy(
             isSyncing = true,
             isLoading = false,
             syncProgressText = "正在加载云端数据..."
         )
 
-        viewModelScope.launch {
+        initialSyncJob = viewModelScope.launch {
             try {
                 syncRepository.performInitialSync(folders).collect { progress ->
                     when (progress.phase) {
@@ -182,6 +194,7 @@ class GalleryViewModel(
 
     private suspend fun loadFromRoom(folders: Set<String>?) {
         try {
+            currentLocalFolders = folders
             val photos = syncRepository?.getAllPhotos(folders).orEmpty()
             _uiState.value = _uiState.value.copy(
                 months = buildMonthGroups(photos),
@@ -197,8 +210,9 @@ class GalleryViewModel(
     private suspend fun loadFromCloud() {
         galleryRepository.getTimelineSnapshot().fold(
             onSuccess = { snapshot ->
+                timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
                 _uiState.value = _uiState.value.copy(
-                    months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
+                    months = buildMonthGroups(snapshot),
                     isLoading = false,
                     isHybridMode = false
                 )
@@ -208,6 +222,105 @@ class GalleryViewModel(
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "加载失败")
             }
         )
+    }
+
+    private fun refreshCloudTimelineIndex(folders: Set<String>?) {
+        viewModelScope.launch {
+            galleryRepository.getTimelineSnapshot().onSuccess { snapshot ->
+                timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
+                val prefetched = mutableMapOf<String, List<UnifiedPhotoItem>>()
+                for ((yearMonth, photos) in snapshot.photosByMonth) {
+                    prefetched[yearMonth] = syncRepository?.hydrateCloudPhotos(photos, folders)
+                        ?: photos.map { it.toUnifiedPhotoItem() }
+                }
+
+                val existingByMonth = _uiState.value.months.associateBy { it.yearMonth }
+                val cloudYearMonths = snapshot.months.map { it.yearMonth }.toSet()
+                val mergedCloudMonths = snapshot.months.map { month ->
+                    val existing = existingByMonth[month.yearMonth]
+                    val preloaded = prefetched[month.yearMonth]
+                    when {
+                        existing != null && existing.days.isNotEmpty() -> existing.copy(
+                            totalCount = maxOf(existing.totalCount, month.count),
+                            isLoaded = true,
+                            isLoading = false,
+                            loadError = null
+                        )
+                        preloaded != null -> MonthGroup(
+                            yearMonth = month.yearMonth,
+                            displayTitle = formatYearMonth(month.yearMonth),
+                            totalCount = month.count,
+                            days = buildDayGroups(preloaded),
+                            isLoaded = true
+                        )
+                        else -> MonthGroup(
+                            yearMonth = month.yearMonth,
+                            displayTitle = formatYearMonth(month.yearMonth),
+                            totalCount = month.count,
+                            isLoaded = month.count == 0
+                        )
+                    }
+                }
+                val localOnlyMonths = _uiState.value.months.filter { it.yearMonth !in cloudYearMonths }
+                _uiState.value = _uiState.value.copy(
+                    months = (mergedCloudMonths + localOnlyMonths).sortedByDescending { it.yearMonth }
+                )
+            }
+        }
+    }
+
+    fun loadTimelineMonth(yearMonth: String) {
+        if (_uiState.value.isSearchMode) return
+        val group = _uiState.value.months.firstOrNull { it.yearMonth == yearMonth } ?: return
+        if (group.isLoaded || group.isLoading) return
+        val month = timelineMonthsByYearMonth[yearMonth] ?: return
+        if (monthLoadJobs[yearMonth]?.isActive == true) return
+
+        _uiState.value = _uiState.value.copy(
+            months = _uiState.value.months.map {
+                if (it.yearMonth == yearMonth) it.copy(isLoading = true, loadError = null) else it
+            }
+        )
+
+        monthLoadJobs[yearMonth] = viewModelScope.launch {
+            galleryRepository.getTimelineMonthFiles(month).fold(
+                onSuccess = { photos ->
+                    syncRepository?.upsertCloudPhotoItems(photos)
+                    val unifiedPhotos = syncRepository?.hydrateCloudPhotos(photos, currentLocalFolders)
+                        ?: photos.map { it.toUnifiedPhotoItem() }
+                    _uiState.value = _uiState.value.copy(
+                        months = _uiState.value.months.map { current ->
+                            if (current.yearMonth == yearMonth) {
+                                current.copy(
+                                    totalCount = maxOf(current.totalCount, unifiedPhotos.size),
+                                    days = buildDayGroups(unifiedPhotos),
+                                    isLoaded = true,
+                                    isLoading = false,
+                                    loadError = null
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    )
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        months = _uiState.value.months.map { current ->
+                            if (current.yearMonth == yearMonth) {
+                                current.copy(
+                                    isLoading = false,
+                                    loadError = e.message ?: "鍔犺浇澶辫触"
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    )
+                }
+            )
+            monthLoadJobs.remove(yearMonth)
+        }
     }
 
     fun refresh() {
@@ -241,8 +354,9 @@ class GalleryViewModel(
             } else {
                 galleryRepository.getTimelineSnapshot().fold(
                     onSuccess = { snapshot ->
+                        timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
                         _uiState.value = _uiState.value.copy(
-                            months = buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() }),
+                            months = buildMonthGroups(snapshot),
                             isRefreshing = false
                         )
                     },
@@ -286,17 +400,40 @@ class GalleryViewModel(
             .groupBy { it.mtime.take(7) }
             .toSortedMap(compareByDescending { it })
             .map { (yearMonth, monthPhotos) ->
-                val days = monthPhotos
-                    .groupBy { extractDate(it.mtime) }
-                    .toSortedMap(compareByDescending { it })
-                    .map { (date, dayPhotos) -> DayGroup(date, dayPhotos) }
                 MonthGroup(
                     yearMonth = yearMonth,
                     displayTitle = formatYearMonth(yearMonth),
                     totalCount = monthPhotos.size,
-                    days = days
+                    days = buildDayGroups(monthPhotos),
+                    isLoaded = true
                 )
             }
+    }
+
+    private fun buildMonthGroups(snapshot: TimelineSnapshot): List<MonthGroup> {
+        if (snapshot.months.isEmpty()) {
+            return buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() })
+        }
+
+        return snapshot.months.map { month ->
+            val photos = snapshot.photosByMonth[month.yearMonth].orEmpty()
+                .map { it.toUnifiedPhotoItem() }
+            MonthGroup(
+                yearMonth = month.yearMonth,
+                displayTitle = formatYearMonth(month.yearMonth),
+                totalCount = month.count,
+                days = buildDayGroups(photos),
+                isLoaded = month.count == 0 || snapshot.photosByMonth.containsKey(month.yearMonth)
+            )
+        }
+    }
+
+    private fun buildDayGroups(photos: List<UnifiedPhotoItem>): List<DayGroup> {
+        return photos
+            .sortedByDescending { it.mtime }
+            .groupBy { extractDate(it.mtime) }
+            .toSortedMap(compareByDescending { it })
+            .map { (date, dayPhotos) -> DayGroup(date, dayPhotos) }
     }
 
     private fun buildOrderedSearchGroup(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
@@ -306,7 +443,8 @@ class GalleryViewModel(
                 yearMonth = "search",
                 displayTitle = "搜索结果",
                 totalCount = photos.size,
-                days = listOf(DayGroup("搜索结果", photos))
+                days = listOf(DayGroup("搜索结果", photos)),
+                isLoaded = true
             )
         )
     }
@@ -353,7 +491,7 @@ class GalleryViewModel(
                     day.copy(photos = day.photos.filter { it.id !in selectedIds })
                 }.filter { it.photos.isNotEmpty() }
                 month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
-            }.filter { it.days.isNotEmpty() }
+            }.filter { it.days.isNotEmpty() || !it.isLoaded || it.totalCount > 0 }
             _uiState.value = _uiState.value.copy(months = updatedMonths)
         }
     }

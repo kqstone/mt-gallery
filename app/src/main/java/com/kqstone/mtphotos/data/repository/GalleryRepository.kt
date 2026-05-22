@@ -5,12 +5,16 @@ import java.net.URLEncoder
 
 data class TimelineMonth(
     val yearMonth: String,
-    val count: Int
+    val count: Int,
+    val monthKey: String? = null,
+    val year: Int? = null,
+    val month: Int? = null
 )
 
 data class TimelineSnapshot(
     val months: List<TimelineMonth>,
-    val photos: List<PhotoItem>
+    val photos: List<PhotoItem>,
+    val photosByMonth: Map<String, List<PhotoItem>> = emptyMap()
 )
 
 data class PhotoItem(
@@ -124,10 +128,13 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getTimelineSnapshot(): Result<TimelineSnapshot> {
         return try {
             val response = container.gatewayApi.GatewayControllerGetTimelineData()
+            val months = parseTimelineMonths(response)
+            val photosByMonth = parseTimelinePhotosByMonth(response, months)
             Result.success(
                 TimelineSnapshot(
-                    months = parseTimelineMonths(response),
-                    photos = parseTimelinePhotos(response)
+                    months = months,
+                    photos = photosByMonth.values.flatten(),
+                    photosByMonth = photosByMonth
                 )
             )
         } catch (e: Exception) {
@@ -137,12 +144,42 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun getMonthFiles(yearMonth: String): Result<List<PhotoItem>> {
         return try {
-            // Get timeline data which includes photo details in "extra"
-            val response = container.gatewayApi.GatewayControllerGetTimelineData()
-            Result.success(parseTimelinePhotos(response).filter { it.mtime.startsWith(yearMonth) })
+            val snapshot = getTimelineSnapshot().getOrElse { throw it }
+            val month = snapshot.months.firstOrNull { it.yearMonth == yearMonth }
+            val prefetched = snapshot.photosByMonth[yearMonth]
+            when {
+                prefetched != null -> Result.success(prefetched)
+                month != null -> getTimelineMonthFiles(month)
+                else -> Result.success(emptyList())
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getTimelineMonthFiles(month: TimelineMonth): Result<List<PhotoItem>> {
+        val monthKey = month.monthKey
+            ?: return Result.failure(IllegalArgumentException("Timeline month ${month.yearMonth} has no month key"))
+        return try {
+            val response = container.gatewayApi.GatewayControllerGetTimelineMonthData(
+                mapOf(
+                    "monthList" to listOf(monthKey),
+                    "platform" to "web"
+                )
+            )
+            val photos = parseTimelineMonthResponse(response, monthKey)
+                .filter { it.mtime.startsWith(month.yearMonth) }
+            Result.success(photos)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun parseTimelineMonthResponse(response: Map<String, Any>, monthKey: String): List<PhotoItem> {
+        val monthData = response[monthKey]
+            ?: response.values.firstOrNull()
+            ?: return emptyList()
+        return parseTimelineMonthData(monthData)
     }
 
     suspend fun isClipSearchAvailable(): Result<Boolean> {
@@ -194,31 +231,62 @@ class GalleryRepository(private val container: AppContainer) {
         val list = response["list"] as? List<*> ?: emptyList<Any>()
         return list.mapNotNull { item ->
             val map = item as? Map<*, *> ?: return@mapNotNull null
-            val year = (map["year"] as? Double)?.toInt() ?: return@mapNotNull null
-            val month = (map["month"] as? Double)?.toInt() ?: return@mapNotNull null
-            val count = (map["count"] as? Double)?.toInt() ?: return@mapNotNull null
+            val year = (map["year"] as? Number)?.toInt() ?: return@mapNotNull null
+            val month = (map["month"] as? Number)?.toInt() ?: return@mapNotNull null
+            val count = (map["count"] as? Number)?.toInt() ?: return@mapNotNull null
+            val monthKey = map["m"] as? String
             val ym = "$year-${month.toString().padStart(2, '0')}"
-            TimelineMonth(ym, count)
+            TimelineMonth(
+                yearMonth = ym,
+                count = count,
+                monthKey = monthKey,
+                year = year,
+                month = month
+            )
         }
     }
 
     private fun parseTimelinePhotos(response: Map<String, Any>): List<PhotoItem> {
-        val extra = response["extra"] as? Map<*, *> ?: return emptyList()
+        return parseTimelinePhotosByMonth(response, parseTimelineMonths(response)).values.flatten()
+    }
+
+    private fun parseTimelinePhotosByMonth(
+        response: Map<String, Any>,
+        months: List<TimelineMonth>
+    ): Map<String, List<PhotoItem>> {
+        val extra = response["extra"] as? Map<*, *> ?: return emptyMap()
+        val monthKeyToYearMonth = months.mapNotNull { month ->
+            month.monthKey?.let { it to month.yearMonth }
+        }.toMap()
+        val result = linkedMapOf<String, List<PhotoItem>>()
+        for ((key, value) in extra) {
+            val photos = parseTimelineMonthData(value)
+            val yearMonth = monthKeyToYearMonth[key as? String]
+                ?: photos.firstOrNull()?.mtime?.take(7)
+                ?: continue
+            result[yearMonth] = photos
+        }
+        return result
+    }
+
+    private fun parseTimelineMonthData(value: Any?): List<PhotoItem> {
         val photos = mutableListOf<PhotoItem>()
-        for ((_, value) in extra) {
-            val monthData = value as? Map<*, *> ?: continue
-            val result = monthData["result"] as? List<*> ?: continue
-            for (dayEntry in result) {
-                val dayMap = dayEntry as? Map<*, *> ?: continue
-                val day = dayMap["day"] as? String ?: continue
-                val photoList = dayMap["list"] as? List<*> ?: continue
-                for (photo in photoList) {
-                    val photoMap = photo as? Map<*, *> ?: continue
-                    parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
+        when (value) {
+            is List<*> -> appendPhotoItems(value, photos)
+            is Map<*, *> -> {
+                val sections = listOf("result", "list", "fileList", "files", "rows")
+                var parsed = false
+                for (section in sections) {
+                    val items = value[section] as? List<*> ?: continue
+                    appendPhotoItems(items, photos)
+                    parsed = true
+                }
+                if (!parsed) {
+                    parsePhotoItem(value)?.let(photos::add)
                 }
             }
         }
-        return photos
+        return photos.distinctBy { it.id }
     }
 
     private fun buildSearchBody(request: SearchRequest): Map<String, Any> {

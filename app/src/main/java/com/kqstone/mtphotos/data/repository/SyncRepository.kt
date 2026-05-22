@@ -313,27 +313,25 @@ class SyncRepository(
 
     private suspend fun fetchAllCloudPhotos(): List<MediaEntity> {
         val snapshot = galleryRepository.getTimelineSnapshot().getOrElse { throw it }
-        val result = snapshot.photos.map { photo ->
-            MediaEntity(
-                cloudId = photo.id,
-                md5 = photo.md5,
-                cloudMd5 = photo.md5,
-                fileName = photo.fileName,
-                fileType = photo.fileType,
-                mtime = photo.mtime,
-                width = photo.width.toInt(),
-                height = photo.height.toInt(),
-                livePhotosVideoId = photo.livePhotosVideoId,
-                isLivePhotosVideo = photo.isLivePhotosVideo,
-                livePhotoUuid = photo.livePhotoUuid,
-                syncStatus = SyncStatus.CLOUD_ONLY,
-                backupStatus = BackupStatus.NOT_STARTED
-            )
+        val photosByMonth = linkedMapOf<String, List<PhotoItem>>()
+        photosByMonth.putAll(snapshot.photosByMonth)
+
+        for (month in snapshot.months) {
+            if (photosByMonth.containsKey(month.yearMonth)) continue
+            val monthPhotos = galleryRepository.getTimelineMonthFiles(month).getOrElse { throw it }
+            photosByMonth[month.yearMonth] = monthPhotos
         }
+
+        val result = photosByMonth.values.flatten().map { it.toCloudEntity() }
         if (snapshot.months.sumOf { it.count } > 0 && result.isEmpty()) {
             throw IllegalStateException("Cloud timeline has items, but no cloud file details were parsed")
         }
         return result
+    }
+
+    suspend fun upsertCloudPhotoItems(photos: List<PhotoItem>) = withContext(Dispatchers.IO) {
+        val cloudPhotos = normalizeCloudPhotos(photos.map { it.toCloudEntity() })
+        upsertCloudPhotos(cloudPhotos)
     }
 
     suspend fun getAllPhotos(localFolders: Set<String>? = null): List<UnifiedPhotoItem> {
@@ -373,6 +371,24 @@ class SyncRepository(
         return cloudPhotos
             .filter { it.md5.isNotEmpty() }
             .distinctBy { it.md5 }
+    }
+
+    private fun PhotoItem.toCloudEntity(): MediaEntity {
+        return MediaEntity(
+            cloudId = id,
+            md5 = md5,
+            cloudMd5 = md5,
+            fileName = fileName,
+            fileType = fileType,
+            mtime = mtime,
+            width = width.toInt(),
+            height = height.toInt(),
+            livePhotosVideoId = livePhotosVideoId,
+            isLivePhotosVideo = isLivePhotosVideo,
+            livePhotoUuid = livePhotoUuid,
+            syncStatus = SyncStatus.CLOUD_ONLY,
+            backupStatus = BackupStatus.NOT_STARTED
+        )
     }
 
     private suspend fun reconcileCloudDeletions(cloudPhotos: List<MediaEntity>): CloudDeleteChanges {

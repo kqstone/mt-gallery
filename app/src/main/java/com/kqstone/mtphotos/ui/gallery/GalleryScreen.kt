@@ -59,6 +59,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -82,6 +84,7 @@ import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.formatDayHeaderDate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -490,6 +493,7 @@ private fun PhotoGrid(
         val key: String,
         val monthTitle: String? = null,
         val monthCount: Int = 0,
+        val monthGroup: MonthGroup? = null,
         val dayGroup: DayGroup? = null,
         val photo: UnifiedPhotoItem? = null,
         val parentMonthTitle: String? = null
@@ -499,6 +503,19 @@ private fun PhotoGrid(
         derivedStateOf {
             val items = mutableListOf<GridItem>()
             for (month in months) {
+                if (!isSearchMode && (!month.isLoaded || (month.days.isEmpty() && month.totalCount > 0))) {
+                    items.add(
+                        GridItem(
+                            "month",
+                            "month_${month.yearMonth}",
+                            monthTitle = month.displayTitle,
+                            monthCount = month.totalCount,
+                            monthGroup = month,
+                            parentMonthTitle = month.displayTitle
+                        )
+                    )
+                    continue
+                }
                 for (day in month.days) {
                     items.add(
                         GridItem(
@@ -531,6 +548,20 @@ private fun PhotoGrid(
 
     val allPhotos = remember(gridItems) {
         gridItems.filter { it.type == "photo" }.map { it.photo!! }
+    }
+    val currentGridItems by rememberUpdatedState(gridItems)
+
+    LaunchedEffect(gridState, isSearchMode) {
+        if (isSearchMode) return@LaunchedEffect
+        snapshotFlow {
+            gridState.layoutInfo.visibleItemsInfo
+                .mapNotNull { itemInfo -> currentGridItems.getOrNull(itemInfo.index)?.monthGroup?.yearMonth }
+                .distinct()
+        }
+            .distinctUntilChanged()
+            .collect { visibleMonths ->
+                visibleMonths.forEach(viewModel::loadTimelineMonth)
+            }
     }
 
     var dragStartPhoto by remember { mutableStateOf<UnifiedPhotoItem?>(null) }
@@ -700,7 +731,7 @@ private fun PhotoGrid(
                 key = { it.key },
                 contentType = { it.type },
                 span = { item ->
-                    if (item.type == "day") {
+                    if (item.type == "day" || item.type == "month") {
                         GridItemSpan(maxLineSpan)
                     } else {
                         GridItemSpan(1)
@@ -708,6 +739,10 @@ private fun PhotoGrid(
                 }
             ) { item ->
                 when (item.type) {
+                    "month" -> MonthPlaceholder(
+                        monthGroup = item.monthGroup!!,
+                        onClick = { viewModel.loadTimelineMonth(item.monthGroup.yearMonth) }
+                    )
                     "day" -> DayHeader(dayGroup = item.dayGroup!!)
                     "photo" -> {
                         val photo = item.photo!!
@@ -743,6 +778,46 @@ private fun PhotoGrid(
                     }
                 },
                 modifier = Modifier.align(Alignment.CenterEnd)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthPlaceholder(
+    monthGroup: MonthGroup,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f))
+            .clickable(enabled = !monthGroup.isLoading, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = monthGroup.displayTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = monthGroup.loadError ?: "${monthGroup.totalCount} 项",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (monthGroup.loadError == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
+            )
+        }
+        if (monthGroup.isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp
             )
         }
     }
