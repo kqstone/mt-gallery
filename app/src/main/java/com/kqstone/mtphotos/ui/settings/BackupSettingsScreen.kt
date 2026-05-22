@@ -403,7 +403,10 @@ fun BackupSettingsScreen(
                     title = "选择备份文件夹",
                     subtitle = folderSubtitle,
                     icon = Icons.Default.Folder,
-                    onClick = { showFolderDialog = true },
+                    onClick = {
+                        showFolderDialog = true
+                        viewModel.loadFolders()
+                    },
                     enabled = uiState.backupEnabled
                 )
             }
@@ -520,10 +523,13 @@ fun BackupSettingsScreen(
     if (showFolderDialog) {
         FolderSelectionDialog(
             folders = uiState.folders,
+            isLoading = uiState.isLoadingFolders,
             onToggle = { path -> viewModel.toggleFolderSelection(path) },
             onDismiss = {
                 showFolderDialog = false
-                viewModel.saveFolderSelection()
+                if (!uiState.isLoadingFolders) {
+                    viewModel.saveFolderSelection()
+                }
             }
         )
     }
@@ -966,6 +972,7 @@ private fun FolderSelectionList(
 @Composable
 private fun FolderSelectionDialog(
     folders: List<FolderUiItem>,
+    isLoading: Boolean,
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -973,7 +980,7 @@ private fun FolderSelectionDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择备份文件夹") },
         text = {
-            if (folders.isEmpty()) {
+            if (isLoading) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -982,6 +989,12 @@ private fun FolderSelectionDialog(
                 ) {
                     CircularProgressIndicator()
                 }
+            } else if (folders.isEmpty()) {
+                Text(
+                    text = "未发现可选择的媒体文件夹",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             } else {
                 FolderSelectionList(
                     folders = folders,
@@ -991,7 +1004,10 @@ private fun FolderSelectionDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
                 Text("确定")
             }
         }

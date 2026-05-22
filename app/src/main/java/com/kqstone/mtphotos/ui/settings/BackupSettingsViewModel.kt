@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.settings
 
 import android.os.Build
+import android.os.Environment
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import com.kqstone.mtphotos.MTPhotosApp
@@ -46,6 +47,7 @@ data class BackupSettingsUiState(
     val isBackingUp: Boolean = false,
     val isOptimizing: Boolean = false,
     val isSyncing: Boolean = false,
+    val isLoadingFolders: Boolean = false,
     val isRepairingBackups: Boolean = false,
     val backupRepairMessage: String? = null,
     val folders: List<FolderUiItem> = emptyList(),
@@ -177,15 +179,25 @@ class BackupSettingsViewModel(
 
     fun loadFolders() {
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingFolders = true, error = null)
             try {
                 val scannedFolders = localMediaScanner.getMediaFolders()
+                    .map { it.copy(path = FolderPathMatcher.normalize(it.path)) }
+                    .distinctBy { it.path }
                 val scannedByPath = scannedFolders.associateBy { it.path }
                 val folderSelection = prefsManager.getBackupFolderSelectionSync()
-                val savedFolders = if (folderSelection.isConfigured) folderSelection.folders else null
-                val historicalPaths = if (folderSelection.isConfigured) {
-                    syncRepository.getKnownLocalFolders()
+                val savedFolders = if (folderSelection.isConfigured) {
+                    normalizeFolderPaths(folderSelection.folders.orEmpty())
                 } else {
-                    emptyList()
+                    null
+                }
+                val historicalPaths = if (folderSelection.isConfigured) {
+                    normalizeFolderPaths(
+                        syncRepository.getKnownLocalFolders() +
+                            prefsManager.getBackupFolderHistorySync()
+                    )
+                } else {
+                    emptySet()
                 }
                 val defaultSelection = scannedFolders
                     .filter { it.depth == 0 }
@@ -193,20 +205,23 @@ class BackupSettingsViewModel(
                     .toSet()
                     .ifEmpty { scannedFolders.map { it.path }.toSet() }
                 val selectedPaths = canonicalFolderSelection(savedFolders ?: defaultSelection)
+                val scannedOrder = scannedFolders
+                    .mapIndexed { index, folder -> folder.path to index }
+                    .toMap()
 
                 val mergedPaths = linkedSetOf<String>()
                 scannedFolders.mapTo(mergedPaths) { it.path }
-                savedFolders?.forEach { mergedPaths.add(it) }
-                historicalPaths.forEach { mergedPaths.add(it) }
+                expandFoldersWithParents(savedFolders.orEmpty()).forEach { mergedPaths.add(it) }
+                expandFoldersWithParents(historicalPaths).forEach { mergedPaths.add(it) }
 
-                val folderItems = mergedPaths.map { path ->
+                val folderItems = orderFolderPaths(mergedPaths, scannedOrder).map { path ->
                     val scanned = scannedByPath[path]
                     FolderUiItem(
                         path = path,
                         displayName = scanned?.displayName ?: File(path).name.ifBlank { path },
                         fileCount = scanned?.fileCount ?: 0,
                         directFileCount = scanned?.directFileCount ?: 0,
-                        depth = scanned?.depth ?: 0,
+                        depth = scanned?.depth ?: folderDepth(path),
                         isSelected = path in selectedPaths,
                         isCoveredBySelectedAncestor = path !in selectedPaths &&
                             FolderPathMatcher.hasAncestorSelected(path, selectedPaths),
@@ -220,11 +235,15 @@ class BackupSettingsViewModel(
                     selectedFolderCount = folderItems.count { it.isSelected },
                     historicalSelectedFolderCount = folderItems.count {
                         it.isSelected && it.isHistoricalOnly
-                    }
+                    },
+                    isLoadingFolders = false
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadFolders failed", e)
-                _uiState.value = _uiState.value.copy(error = e.message)
+                _uiState.value = _uiState.value.copy(
+                    error = e.message,
+                    isLoadingFolders = false
+                )
             }
         }
     }
@@ -370,8 +389,9 @@ class BackupSettingsViewModel(
 
     fun saveFolderSelection() {
         viewModelScope.launch {
-            val selected = selectedFolderPaths()
+            val selected = selectedFolderPathsAllowEmpty()
             prefsManager.saveBackupFolders(gson.toJson(selected))
+            prefsManager.addBackupFolderHistory(selected.toList())
 
             _uiState.value = _uiState.value.copy(isSyncing = true)
             try {
@@ -403,9 +423,10 @@ class BackupSettingsViewModel(
 
     fun completeInitialSetup(onComplete: () -> Unit) {
         viewModelScope.launch {
-            val selected = selectedFolderPaths()
+            val selected = selectedFolderPathsOrDefault()
             prefsManager.saveBackupEnabled(true)
             prefsManager.saveBackupFolders(gson.toJson(selected))
+            prefsManager.addBackupFolderHistory(selected.toList())
             ensureDeviceFolder()
             prefsManager.saveFolderSetupComplete(true)
 
@@ -418,17 +439,111 @@ class BackupSettingsViewModel(
         }
     }
 
-    private fun selectedFolderPaths(): Set<String> {
-        val selected = _uiState.value.folders
-            .filter { it.isSelected }
-            .map { it.path }
-            .toSet()
+    private fun selectedFolderPathsAllowEmpty(): Set<String> {
+        return canonicalFolderSelection(
+            _uiState.value.folders
+                .filter { it.isSelected }
+                .map { it.path }
+                .toSet()
+        )
+    }
+
+    private fun selectedFolderPathsOrDefault(): Set<String> {
+        val selected = selectedFolderPathsAllowEmpty()
+        if (selected.isNotEmpty()) return selected
+
         val fallback = _uiState.value.folders
             .filter { it.depth == 0 }
             .map { it.path }
             .toSet()
             .ifEmpty { _uiState.value.folders.map { it.path }.toSet() }
-        return canonicalFolderSelection(selected.ifEmpty { fallback })
+        return canonicalFolderSelection(fallback)
+    }
+
+    private fun normalizeFolderPaths(paths: Collection<String>): Set<String> {
+        return paths
+            .map { FolderPathMatcher.normalize(it) }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    private fun orderFolderPaths(
+        paths: Set<String>,
+        scannedOrder: Map<String, Int>
+    ): List<String> {
+        val childrenByParent = mutableMapOf<String?, MutableList<String>>()
+        paths.forEach { path ->
+            val parent = nearestKnownParent(path, paths)
+            childrenByParent.getOrPut(parent) { mutableListOf() }.add(path)
+        }
+
+        fun sortKey(path: String): Pair<Int, String> {
+            return (scannedOrder[path] ?: Int.MAX_VALUE) to path.lowercase()
+        }
+
+        val ordered = mutableListOf<String>()
+        fun append(path: String) {
+            ordered.add(path)
+            childrenByParent[path]
+                .orEmpty()
+                .sortedWith(compareBy({ sortKey(it).first }, { sortKey(it).second }))
+                .forEach { append(it) }
+        }
+
+        childrenByParent[null]
+            .orEmpty()
+            .sortedWith(compareBy({ sortKey(it).first }, { sortKey(it).second }))
+            .forEach { append(it) }
+
+        return ordered
+    }
+
+    private fun nearestKnownParent(path: String, knownPaths: Set<String>): String? {
+        var parent = File(path).parent?.let(FolderPathMatcher::normalize)
+        while (!parent.isNullOrBlank()) {
+            if (parent in knownPaths) return parent
+            val next = File(parent).parent?.let(FolderPathMatcher::normalize)
+            if (next.isNullOrBlank() || next == parent) return null
+            parent = next
+        }
+        return null
+    }
+
+    private fun expandFoldersWithParents(paths: Iterable<String>): List<String> {
+        val expanded = linkedSetOf<String>()
+        paths.forEach { rawPath ->
+            val storageRoot = storageRootFor(rawPath)
+            var current = FolderPathMatcher.normalize(rawPath)
+            while (current.isNotBlank() && current != storageRoot) {
+                expanded.add(current)
+                val parent = File(current).parent?.let(FolderPathMatcher::normalize).orEmpty()
+                if (parent.isBlank() || parent == current) break
+                current = parent
+            }
+        }
+        return expanded.sortedWith(compareBy<String> { folderDepth(it) }.thenBy { it.lowercase() })
+    }
+
+    private fun folderDepth(path: String): Int {
+        val normalized = FolderPathMatcher.normalize(path)
+        val root = storageRootFor(normalized)
+        val relative = root?.let {
+            normalized.removePrefix(it).trim('/')
+        } ?: normalized.trim('/')
+        return relative.split('/').count { it.isNotEmpty() }.minus(1).coerceAtLeast(0)
+    }
+
+    private fun storageRootFor(path: String): String? {
+        val normalized = FolderPathMatcher.normalize(path)
+        val externalRoot = FolderPathMatcher.normalize(Environment.getExternalStorageDirectory().absolutePath)
+        if (FolderPathMatcher.contains(externalRoot, normalized)) return externalRoot
+
+        val parts = normalized.split('/').filter { it.isNotEmpty() }
+        return if (parts.size >= 3 && parts.first() == "storage") {
+            "/" + parts.take(3).joinToString("/")
+        } else {
+            null
+        }
     }
 
     private fun canonicalFolderSelection(paths: Set<String>): Set<String> {

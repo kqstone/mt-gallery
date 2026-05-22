@@ -816,6 +816,10 @@ class SyncRepository(
         mediaDao.markAsStorageOptimized(dbId)
     }
 
+    suspend fun recordBackupFolderHistory(paths: Collection<String?>) {
+        container.prefsManager.addBackupFolderHistory(paths)
+    }
+
     suspend fun deleteByCloudId(cloudId: Double) {
         mediaDao.deleteByCloudId(cloudId)
     }
@@ -874,6 +878,7 @@ class SyncRepository(
     suspend fun deleteLocalMediaFiles(entities: List<MediaEntity>, useDirectDelete: Boolean = false) {
         if (entities.isEmpty()) return
         val context = container.prefsManager.context
+        recordBackupFolderHistory(entities.map { it.localFolderPath })
 
         val urisToDelete = mutableListOf<android.net.Uri>()
         for (entity in entities) {
@@ -957,6 +962,7 @@ class SyncRepository(
 
         if (toDelete.isNotEmpty()) {
             val entities = mediaDao.findByIds(toDelete)
+            recordBackupFolderHistory(entities.map { it.localFolderPath })
             for (entity in entities) {
                 entity.thumbCachePath?.let { path ->
                     try {
@@ -970,6 +976,8 @@ class SyncRepository(
         }
 
         if (toClearLocal.isNotEmpty()) {
+            val entities = mediaDao.findByIds(toClearLocal)
+            recordBackupFolderHistory(entities.map { it.localFolderPath })
             mediaDao.clearLocalFields(toClearLocal)
             Log.d(TAG, "Cleared local fields for ${toClearLocal.size} SYNCED records to CLOUD_ONLY")
         }

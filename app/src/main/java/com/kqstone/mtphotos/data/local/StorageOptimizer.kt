@@ -64,6 +64,7 @@ class StorageOptimizer(
     suspend fun optimizeStorage(filesToOptimize: List<MediaEntity>): Pair<Int, Int> = withContext(Dispatchers.IO) {
         var successCount = 0
         var failCount = 0
+        syncRepository.recordBackupFolderHistory(filesToOptimize.map { it.localFolderPath })
 
         for (media in filesToOptimize) {
             try {

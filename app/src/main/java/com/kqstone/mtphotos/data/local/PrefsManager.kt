@@ -43,6 +43,7 @@ class PrefsManager(val context: Context) {
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
         private val KEY_BACKUP_FOLDERS = stringPreferencesKey("backup_folders") // JSON array of paths
+        private val KEY_BACKUP_FOLDER_HISTORY = stringPreferencesKey("backup_folder_history")
         private val KEY_BACKUP_DEST_ID = longPreferencesKey("backup_destination_id")
         private val KEY_BACKUP_DEST_LABEL = stringPreferencesKey("backup_destination_label")
         private val KEY_BACKUP_DEST_PATH = stringPreferencesKey("backup_destination_path")
@@ -61,6 +62,9 @@ class PrefsManager(val context: Context) {
     val backupEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
     val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
+    val backupFolderHistory: Flow<String> = context.dataStore.data.map {
+        it[KEY_BACKUP_FOLDER_HISTORY] ?: ""
+    }
     val backupDestinationId: Flow<Long> = context.dataStore.data.map { it[KEY_BACKUP_DEST_ID] ?: 1L }
     val backupDestinationLabel: Flow<String> = context.dataStore.data.map {
         it[KEY_BACKUP_DEST_LABEL] ?: android.os.Build.MODEL
@@ -99,6 +103,10 @@ class PrefsManager(val context: Context) {
     fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
+    fun getBackupFolderHistorySync(): Set<String> = runBlocking {
+        val prefs = context.dataStore.data.first()
+        parseStringSet(prefs[KEY_BACKUP_FOLDER_HISTORY] ?: "")
+    }
     fun getBackupFolderSelectionSync(): BackupFolderSelection = runBlocking {
         val prefs = context.dataStore.data.first()
         val foldersJson = prefs[KEY_BACKUP_FOLDERS] ?: ""
@@ -170,6 +178,23 @@ class PrefsManager(val context: Context) {
         }
     }
 
+    suspend fun saveBackupFolderHistory(paths: Set<String>) {
+        val cleaned = cleanFolderPaths(paths)
+        context.dataStore.edit { prefs ->
+            prefs[KEY_BACKUP_FOLDER_HISTORY] = Gson().toJson(cleaned)
+        }
+    }
+
+    suspend fun addBackupFolderHistory(paths: Collection<String?>) {
+        val additions = cleanFolderPaths(paths.filterNotNull())
+        if (additions.isEmpty()) return
+
+        context.dataStore.edit { prefs ->
+            val existing = parseStringSet(prefs[KEY_BACKUP_FOLDER_HISTORY] ?: "")
+            prefs[KEY_BACKUP_FOLDER_HISTORY] = Gson().toJson((existing + additions).toSortedSet())
+        }
+    }
+
     suspend fun saveBackupDestination(id: Long, label: String, path: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_BACKUP_DEST_ID] = id
@@ -219,8 +244,7 @@ class PrefsManager(val context: Context) {
         }
 
         return try {
-            val type = object : TypeToken<Set<String>>() {}.type
-            BackupFolderSelection(Gson().fromJson<Set<String>>(foldersJson, type) ?: emptySet(), true)
+            BackupFolderSelection(parseStringSet(foldersJson), true)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse backup folders", e)
             if (setupComplete) {
@@ -229,6 +253,24 @@ class PrefsManager(val context: Context) {
                 BackupFolderSelection(null, false)
             }
         }
+    }
+
+    private fun parseStringSet(json: String): Set<String> {
+        if (json.isBlank()) return emptySet()
+        return try {
+            val type = object : TypeToken<Set<String>>() {}.type
+            cleanFolderPaths(Gson().fromJson<Set<String>>(json, type) ?: emptySet())
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse string set", e)
+            emptySet()
+        }
+    }
+
+    private fun cleanFolderPaths(paths: Collection<String>): Set<String> {
+        return paths
+            .map { FolderPathMatcher.normalize(it) }
+            .filter { it.isNotBlank() }
+            .toSortedSet()
     }
 
     private fun defaultBackupDestinationPath(username: String?): String {
