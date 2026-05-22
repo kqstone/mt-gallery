@@ -2,7 +2,9 @@ package com.kqstone.mtphotos.ui.discovery
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -155,6 +159,29 @@ fun CategoryFileListScreen(
             )
         }
 
+        if (loadType == "location" && uiState.locationDistricts.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = uiState.selectedDistrict == null,
+                    onClick = { viewModel.loadLocationFiles(loadParam, null) },
+                    label = { Text("全部") }
+                )
+                uiState.locationDistricts.forEach { district ->
+                    FilterChip(
+                        selected = uiState.selectedDistrict == district.city,
+                        onClick = { viewModel.loadLocationFiles(loadParam, district.city) },
+                        label = { Text("${district.city} ${district.count}") }
+                    )
+                }
+            }
+        }
+
         when {
             uiState.isLoading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -175,7 +202,7 @@ fun CategoryFileListScreen(
                                 when (loadType) {
                                     "people" -> viewModel.loadPeopleFiles(loadParam)
                                     "scene" -> viewModel.loadSceneFiles(loadParam, loadParam2)
-                                    "location" -> viewModel.loadLocationFiles(loadParam)
+                                    "location" -> viewModel.loadLocationFiles(loadParam, uiState.selectedDistrict)
                                 }
                             },
                             color = MaterialTheme.colorScheme.primary

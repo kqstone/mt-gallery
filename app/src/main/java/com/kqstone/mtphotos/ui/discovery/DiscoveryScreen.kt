@@ -140,7 +140,8 @@ fun DiscoveryScreen(
                             item {
                                 LocationSection(
                                     locations = uiState.locations,
-                                    onItemClick = { onLocationClick(it.city) }
+                                    onItemClick = { onLocationClick(it.city) },
+                                    thumbUrlProvider = { md5 -> viewModel.getThumbUrlByMd5(md5) }
                                 )
                             }
                         }
@@ -236,7 +237,8 @@ private fun SceneSection(
 @Composable
 private fun LocationSection(
     locations: List<LocationItem>,
-    onItemClick: (LocationItem) -> Unit
+    onItemClick: (LocationItem) -> Unit,
+    thumbUrlProvider: (String) -> String
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
@@ -254,7 +256,8 @@ private fun LocationSection(
             ) { location ->
                 LocationCard(
                     location = location,
-                    onClick = { onItemClick(location) }
+                    onClick = { onItemClick(location) },
+                    thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider)
                 )
             }
         }
@@ -338,7 +341,8 @@ private fun DiscoveryCard(
 @Composable
 private fun LocationCard(
     location: LocationItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    thumbUrl: String?
 ) {
     Card(
         modifier = Modifier
@@ -366,12 +370,23 @@ private fun LocationCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Place,
-                    contentDescription = "位置",
-                    tint = Color.White,
-                    modifier = Modifier.size(30.dp)
-                )
+                if (thumbUrl != null) {
+                    ThumbnailImage(
+                        url = thumbUrl,
+                        contentDescription = location.city,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        key = location.coverMd5
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Place,
+                        contentDescription = "位置",
+                        tint = Color.White,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(

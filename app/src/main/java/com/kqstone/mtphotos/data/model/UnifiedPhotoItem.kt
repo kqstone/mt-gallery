@@ -50,6 +50,8 @@ data class UnifiedPhotoItem(
     /** 文件大小（字节） */
     val fileSize: Long = 0,
 
+    val addr: String? = null,
+
     val livePhotosVideoId: Double? = null,
     val isLivePhotosVideo: Boolean = false,
     val livePhotoUuid: String? = null

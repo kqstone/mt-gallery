@@ -215,7 +215,7 @@ interface GatewayApi {
 
     /** 以市为单位的照片数量 */
     @GET("/gateway/addressCountByCity")
-    suspend fun GatewayControllerPart2AddressCountByCity(@Query("galleryIds") galleryIds: String, @Query("type") type: Any): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2AddressCountByCity(@Query("galleryIds") galleryIds: String, @Query("type") type: Any? = null): List<Map<String, Any>>
 
     /** 以区、县为单位的照片数量 */
     @GET("/gateway/addressCountByDistrict/{city}")
@@ -231,7 +231,7 @@ interface GatewayApi {
 
     /** 对应地区下的所有照片 */
     @GET("/gateway/filesInAddressV2")
-    suspend fun GatewayControllerPart2FilesInAddressV2(@Query("galleryIds") galleryIds: String, @Query("type") type: String, @Query("city") city: String, @Query("district") district: String? = null, @Query("township") township: String? = null): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilesInAddressV2(@Query("galleryIds") galleryIds: String, @Query("type") type: String, @Query("city") city: String, @Query("district") district: String? = null, @Query("township") township: String? = null): Map<String, Any>
 
     /** 按事物场景分类 */
     @GET("/gateway/classifyTopList")

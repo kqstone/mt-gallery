@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
@@ -18,6 +19,8 @@ import kotlinx.coroutines.launch
 
 data class CategoryFileListUiState(
     val photos: List<UnifiedPhotoItem> = emptyList(),
+    val locationDistricts: List<LocationItem> = emptyList(),
+    val selectedDistrict: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val columnCount: Int = 4
@@ -47,7 +50,41 @@ class CategoryFileListViewModel(
     }
 
     fun loadLocationFiles(city: String) {
-        loadFiles { galleryRepository.getFilesInCity(city) }
+        loadLocationFiles(city, district = null)
+    }
+
+    fun loadLocationFiles(city: String, district: String?) {
+        localVideoThumbJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            isLoading = true,
+            error = null,
+            selectedDistrict = district
+        )
+        viewModelScope.launch {
+            val filesResult = galleryRepository.getFilesInCity(city, district)
+            val districts = _uiState.value.locationDistricts.takeIf { it.isNotEmpty() }
+                ?: galleryRepository.getAddressCountByDistrict(city).getOrDefault(emptyList())
+            filesResult.fold(
+                onSuccess = { photos ->
+                    val unified = syncRepository?.hydrateCloudPhotos(photos)
+                        ?: photos.map { it.toCloudOnlyUnifiedPhotoItem() }
+                    _uiState.value = CategoryFileListUiState(
+                        photos = unified,
+                        locationDistricts = districts,
+                        selectedDistrict = district
+                    )
+                    warmLocalVideoThumbnails(unified)
+                },
+                onFailure = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "鍔犺浇澶辫触",
+                        locationDistricts = districts,
+                        selectedDistrict = district
+                    )
+                }
+            )
+        }
     }
 
     private fun loadFiles(loader: suspend () -> Result<List<PhotoItem>>) {

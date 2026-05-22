@@ -25,6 +25,7 @@ data class PhotoItem(
     val mtime: String,
     val width: Double,
     val height: Double,
+    val addr: String? = null,
     val livePhotosVideoId: Double? = null,
     val isLivePhotosVideo: Boolean = false,
     val livePhotoUuid: String? = null
@@ -62,7 +63,8 @@ data class SceneItem(
 
 data class LocationItem(
     val city: String,
-    val count: Int
+    val count: Int,
+    val coverMd5: String = ""
 )
 
 enum class SearchType {
@@ -378,20 +380,34 @@ class GalleryRepository(private val container: AppContainer) {
         return photos.distinctBy { it.id }
     }
 
-    private fun appendPhotoItems(items: List<*>, target: MutableList<PhotoItem>, fallbackMtime: String? = null) {
+    private fun appendPhotoItems(
+        items: List<*>,
+        target: MutableList<PhotoItem>,
+        fallbackMtime: String? = null,
+        fallbackAddr: String? = null
+    ) {
         for (item in items) {
             val map = item as? Map<*, *> ?: continue
             val day = map["day"] as? String
+            val addr = parseAddr(map) ?: fallbackAddr
             val nestedList = map["list"] as? List<*>
             if (nestedList != null) {
-                appendPhotoItems(nestedList, target, day ?: fallbackMtime)
+                appendPhotoItems(nestedList, target, day ?: fallbackMtime, addr)
                 continue
             }
-            parsePhotoItem(map, fallbackMtime = day ?: fallbackMtime)?.let(target::add)
+            parsePhotoItem(
+                map,
+                fallbackMtime = day ?: fallbackMtime,
+                fallbackAddr = addr
+            )?.let(target::add)
         }
     }
 
-    private fun parsePhotoItem(map: Map<*, *>, fallbackMtime: String? = null): PhotoItem? {
+    private fun parsePhotoItem(
+        map: Map<*, *>,
+        fallbackMtime: String? = null,
+        fallbackAddr: String? = null
+    ): PhotoItem? {
         val id = (map["id"] as? Number)?.toDouble()
             ?: (map["fileId"] as? Number)?.toDouble()
             ?: return null
@@ -408,6 +424,7 @@ class GalleryRepository(private val container: AppContainer) {
             ?: ""
         val width = (map["width"] as? Number)?.toDouble() ?: 0.0
         val height = (map["height"] as? Number)?.toDouble() ?: 0.0
+        val addr = parseAddr(map) ?: fallbackAddr
         val livePhotosVideoId = (map["livePhotosVideoId"] as? Number)?.toDouble()
             ?: (map["live_photos_video_id"] as? Number)?.toDouble()
         val isLivePhotosVideo = parseBoolean(map["isLivePhotosVideo"])
@@ -424,10 +441,44 @@ class GalleryRepository(private val container: AppContainer) {
             mtime = mtime,
             width = width,
             height = height,
+            addr = addr,
             livePhotosVideoId = livePhotosVideoId,
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid
         )
+    }
+
+    private fun parseAddr(map: Map<*, *>): String? {
+        val direct = firstNonBlankString(map, "addr", "address", "location")
+        if (direct != null) return direct
+
+        val gpsInfo = map["gpsInfo"] as? Map<*, *> ?: map["gps_info"] as? Map<*, *> ?: return null
+        val parts = listOfNotNull(
+            firstNonBlankString(gpsInfo, "city"),
+            firstNonBlankString(gpsInfo, "district"),
+            firstNonBlankString(gpsInfo, "township")
+        ).distinct()
+        return parts.joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    private fun firstNonBlankString(map: Map<*, *>, vararg keys: String): String? {
+        for (key in keys) {
+            val value = map[key]
+            if (value is String) {
+                val normalized = normalizeAddr(value)
+                if (normalized != null) return normalized
+            }
+        }
+        return null
+    }
+
+    private fun normalizeAddr(value: String): String? {
+        val normalized = value.trim()
+        return normalized.takeIf {
+            it.isNotEmpty() &&
+                !it.equals("null", ignoreCase = true) &&
+                it != "未知"
+        }
     }
 
     private fun parseBoolean(value: Any?): Boolean {
@@ -577,10 +628,11 @@ class GalleryRepository(private val container: AppContainer) {
                     for (dayEntry in result) {
                         val dayMap = dayEntry as? Map<*, *> ?: continue
                         val day = dayMap["day"] as? String ?: continue
+                        val addr = parseAddr(dayMap)
                         val photoList = dayMap["list"] as? List<*> ?: continue
                         for (photo in photoList) {
                             val photoMap = photo as? Map<*, *> ?: continue
-                            parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
+                            parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
                         }
                     }
                 }
@@ -593,10 +645,11 @@ class GalleryRepository(private val container: AppContainer) {
                     for (dayEntry in resultList) {
                         val dayMap = dayEntry as? Map<*, *> ?: continue
                         val day = dayMap["day"] as? String ?: continue
+                        val addr = parseAddr(dayMap)
                         val photoList = dayMap["list"] as? List<*> ?: continue
                         for (photo in photoList) {
                             val photoMap = photo as? Map<*, *> ?: continue
-                            parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
+                            parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
                         }
                     }
                 }
@@ -661,10 +714,11 @@ class GalleryRepository(private val container: AppContainer) {
                 for (dayEntry in resultList) {
                     val dayMap = dayEntry as? Map<*, *> ?: continue
                     val day = dayMap["day"] as? String ?: ""
+                    val addr = parseAddr(dayMap)
                     val photoList = dayMap["list"] as? List<*> ?: continue
                     for (photo in photoList) {
                         val photoMap = photo as? Map<*, *> ?: continue
-                        parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
+                        parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
                     }
                 }
             }
@@ -770,10 +824,11 @@ class GalleryRepository(private val container: AppContainer) {
                 for (dayEntry in resultList) {
                     val dayMap = dayEntry as? Map<*, *> ?: continue
                     val day = dayMap["day"] as? String ?: ""
+                    val addr = parseAddr(dayMap)
                     val photoList = dayMap["list"] as? List<*> ?: continue
                     for (photo in photoList) {
                         val photoMap = photo as? Map<*, *> ?: continue
-                        parsePhotoItem(photoMap, fallbackMtime = day)?.let(photos::add)
+                        parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
                     }
                 }
             }
@@ -800,27 +855,52 @@ class GalleryRepository(private val container: AppContainer) {
 
     suspend fun getAddressCountByCity(): Result<List<LocationItem>> {
         return try {
-            val list = container.gatewayApi.GatewayControllerPart2AddressCountByCity("all", "explore")
-            val locations = list.mapNotNull { item ->
-                val city = item["city"] as? String ?: item["name"] as? String ?: return@mapNotNull null
-                val count = (item["count"] as? Double)?.toInt() ?: 0
-                LocationItem(city, count)
-            }
+            val list = container.gatewayApi.GatewayControllerPart2AddressCountByCity("all")
+            val locations = parseLocationItems(list)
             Result.success(locations)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun getFilesInCity(city: String): Result<List<PhotoItem>> {
+    suspend fun getAddressCountByDistrict(city: String): Result<List<LocationItem>> {
         return try {
-            val list = container.gatewayApi.GatewayControllerPart2FilesInAddressV2("all", "city", city)
-            val photos = list.mapNotNull { item ->
-                parsePhotoItem(item)
-            }
-            Result.success(photos)
+            val list = container.gatewayApi.GatewayControllerPart2AddressCountByDistrict(city, "all")
+            Result.success(parseLocationItems(list))
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getFilesInCity(city: String, district: String? = null): Result<List<PhotoItem>> {
+        return try {
+            val type = if (district.isNullOrBlank()) "city" else "district"
+            val response = container.gatewayApi.GatewayControllerPart2FilesInAddressV2(
+                galleryIds = "all",
+                type = type,
+                city = city,
+                district = district?.takeIf { it.isNotBlank() }
+            )
+            Result.success(parseSearchPhotos(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun parseLocationItems(list: List<Map<String, Any>>): List<LocationItem> {
+        return list.mapNotNull { item ->
+            val city = (item["city"] as? String
+                ?: item["name"] as? String
+                ?: item["id"] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+                ?: return@mapNotNull null
+            val count = (item["count"] as? Number)?.toInt() ?: 0
+            if (count <= 0) return@mapNotNull null
+            val coverMd5 = (item["cover_md5"] as? String ?: item["coverMd5"] as? String ?: item["md5"] as? String)
+                ?.trim()
+                .orEmpty()
+            LocationItem(city, count, coverMd5)
+        }.sortedByDescending { it.count }
     }
 }

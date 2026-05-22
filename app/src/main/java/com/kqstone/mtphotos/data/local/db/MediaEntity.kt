@@ -85,6 +85,8 @@ data class MediaEntity(
     /** 云端 MD5（来自服务器） */
     val cloudMd5: String? = null,
 
+    val addr: String? = null,
+
     /** 本地缓存的缩略图路径 */
     val thumbCachePath: String? = null,
 

@@ -34,7 +34,8 @@ private const val TAG = "GalleryVM"
 
 data class DayGroup(
     val date: String,
-    val photos: List<UnifiedPhotoItem>
+    val photos: List<UnifiedPhotoItem>,
+    val addrSummary: String? = null
 )
 
 data class MonthGroup(
@@ -253,6 +254,10 @@ class GalleryViewModel(
         viewModelScope.launch {
             galleryRepository.getTimelineSnapshot().onSuccess { snapshot ->
                 timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
+                val prefetchedCloudPhotos = snapshot.photosByMonth.values.flatten()
+                if (prefetchedCloudPhotos.isNotEmpty()) {
+                    syncRepository?.upsertCloudPhotoItems(prefetchedCloudPhotos)
+                }
                 val prefetched = mutableMapOf<String, List<UnifiedPhotoItem>>()
                 for ((yearMonth, photos) in snapshot.photosByMonth) {
                     prefetched[yearMonth] = syncRepository?.hydrateCloudPhotos(photos, folders)
@@ -265,18 +270,22 @@ class GalleryViewModel(
                     val existing = existingByMonth[month.yearMonth]
                     val preloaded = prefetched[month.yearMonth]
                     when {
+                        preloaded != null -> MonthGroup(
+                            yearMonth = month.yearMonth,
+                            displayTitle = formatYearMonth(month.yearMonth),
+                            totalCount = maxOf(
+                                month.count,
+                                preloaded.size,
+                                existing?.totalCount ?: 0
+                            ),
+                            days = buildDayGroups(mergePhotos(existing, preloaded)),
+                            isLoaded = true
+                        )
                         existing != null && existing.days.isNotEmpty() -> existing.copy(
                             totalCount = maxOf(existing.totalCount, month.count),
                             isLoaded = true,
                             isLoading = false,
                             loadError = null
-                        )
-                        preloaded != null -> MonthGroup(
-                            yearMonth = month.yearMonth,
-                            displayTitle = formatYearMonth(month.yearMonth),
-                            totalCount = month.count,
-                            days = buildDayGroups(preloaded),
-                            isLoaded = true
                         )
                         else -> MonthGroup(
                             yearMonth = month.yearMonth,
@@ -292,6 +301,33 @@ class GalleryViewModel(
                 )
             }
         }
+    }
+
+    private fun mergePhotos(
+        existing: MonthGroup?,
+        preloaded: List<UnifiedPhotoItem>
+    ): List<UnifiedPhotoItem> {
+        if (existing == null) return preloaded
+        val result = linkedMapOf<String, UnifiedPhotoItem>()
+        for (photo in existing.days.flatMap { it.photos }) {
+            result[photo.mergeKey()] = photo
+        }
+        for (photo in preloaded) {
+            val key = photo.mergeKey()
+            val previous = result[key]
+            result[key] = when {
+                previous == null -> photo
+                previous.addr.isNullOrBlank() && !photo.addr.isNullOrBlank() -> photo
+                else -> previous
+            }
+        }
+        return result.values.toList()
+    }
+
+    private fun UnifiedPhotoItem.mergeKey(): String {
+        return cloudId?.let { "cloud:$it" }
+            ?: md5.takeIf { it.isNotBlank() }?.let { "md5:$it" }
+            ?: "db:$dbId"
     }
 
     fun loadTimelineMonth(yearMonth: String) {
@@ -458,7 +494,40 @@ class GalleryViewModel(
             .sortedByDescending { it.mtime }
             .groupBy { extractDate(it.mtime) }
             .toSortedMap(compareByDescending { it })
-            .map { (date, dayPhotos) -> DayGroup(date, dayPhotos) }
+            .map { (date, dayPhotos) ->
+                DayGroup(
+                    date = date,
+                    photos = dayPhotos,
+                    addrSummary = buildAddrSummary(dayPhotos)
+                )
+            }
+    }
+
+    private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): String? {
+        val addrCounts = photos
+            .mapNotNull { normalizeAddr(it.addr) }
+            .groupingBy { it }
+            .eachCount()
+
+        if (addrCounts.isEmpty()) return null
+        val primary = addrCounts.maxWithOrNull(
+            compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
+        )?.key ?: return null
+
+        return if (addrCounts.size == 1) {
+            primary
+        } else {
+            "$primary 等 ${addrCounts.size} 地"
+        }
+    }
+
+    private fun normalizeAddr(addr: String?): String? {
+        val normalized = addr?.trim().orEmpty()
+        return normalized.takeIf {
+            it.isNotEmpty() &&
+                !it.equals("null", ignoreCase = true) &&
+                it != "未知"
+        }
     }
 
     private fun buildOrderedSearchGroup(photos: List<UnifiedPhotoItem>): List<MonthGroup> {

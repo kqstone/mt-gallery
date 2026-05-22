@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.navigation
 
+import android.net.Uri
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -175,7 +176,7 @@ fun MainScreen(
                         innerNavController.navigate("scene/$id?cid=$cid")
                     },
                     onLocationClick = { city ->
-                        innerNavController.navigate("location/$city")
+                        innerNavController.navigate("location/${Uri.encode(city)}")
                     },
                     onSettingsClick = onNavigateToSettings
                 )
@@ -233,7 +234,7 @@ fun MainScreen(
             }
 
             composable("location/{city}") { backStackEntry ->
-                val city = backStackEntry.arguments?.getString("city") ?: return@composable
+                val city = backStackEntry.arguments?.getString("city")?.let(Uri::decode) ?: return@composable
                 CategoryFileListScreen(
                     viewModel = categoryFileListViewModel,
                     loadType = "location",
