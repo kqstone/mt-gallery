@@ -22,7 +22,10 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        
+        // Allow passing dynamic versionName from command line using -PversionName=...
+        val customVersionName = project.findProperty("versionName") as? String ?: "1.0"
+        versionName = customVersionName
     }
 
     signingConfigs {
@@ -95,4 +98,3 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
 }
-
