@@ -29,6 +29,8 @@ class PrefsManager(val context: Context) {
 
     companion object {
         private val KEY_SERVER_URL = stringPreferencesKey("server_url")
+        private val KEY_PRIMARY_SERVER_URL = stringPreferencesKey("primary_server_url")
+        private val KEY_SECONDARY_SERVER_URL = stringPreferencesKey("secondary_server_url")
         private val KEY_USERNAME = stringPreferencesKey("username")
         private val KEY_PASSWORD = stringPreferencesKey("password")
         private val KEY_TOKEN = stringPreferencesKey("token")
@@ -54,6 +56,10 @@ class PrefsManager(val context: Context) {
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
+    val primaryServerUrl: Flow<String> = context.dataStore.data.map {
+        it[KEY_PRIMARY_SERVER_URL] ?: it[KEY_SERVER_URL] ?: ""
+    }
+    val secondaryServerUrl: Flow<String> = context.dataStore.data.map { it[KEY_SECONDARY_SERVER_URL] ?: "" }
     val deleteMode: Flow<String> = context.dataStore.data.map { it[KEY_DELETE_MODE] ?: "" }
     val username: Flow<String> = context.dataStore.data.map { it[KEY_USERNAME] ?: "" }
     val password: Flow<String> = context.dataStore.data.map { it[KEY_PASSWORD] ?: "" }
@@ -84,6 +90,12 @@ class PrefsManager(val context: Context) {
 
     fun getServerUrlSync(): String = runBlocking {
         serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
+    }
+    fun getPrimaryServerUrlSync(): String = runBlocking {
+        primaryServerUrl.first().sanitizeUrl()
+    }
+    fun getSecondaryServerUrlSync(): String = runBlocking {
+        secondaryServerUrl.first().sanitizeUrl()
     }
     fun getUsernameSync(): String = runBlocking { username.first() }
     fun getPasswordSync(): String = runBlocking { password.first() }
@@ -125,8 +137,19 @@ class PrefsManager(val context: Context) {
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SERVER_URL] = serverUrl.sanitizeUrl()
+            if ((prefs[KEY_PRIMARY_SERVER_URL] ?: "").isBlank()) {
+                prefs[KEY_PRIMARY_SERVER_URL] = serverUrl.sanitizeUrl()
+            }
             prefs[KEY_USERNAME] = username.trim()
             prefs[KEY_PASSWORD] = password.trim()
+        }
+    }
+
+    suspend fun saveServerUrls(primaryUrl: String, secondaryUrl: String, activeUrl: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PRIMARY_SERVER_URL] = primaryUrl.sanitizeUrl()
+            prefs[KEY_SECONDARY_SERVER_URL] = secondaryUrl.sanitizeUrl()
+            prefs[KEY_SERVER_URL] = activeUrl.sanitizeUrl()
         }
     }
 

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -214,7 +215,8 @@ fun BackupSettingsScreen(
     viewModel: BackupSettingsViewModel,
     onBack: () -> Unit,
     setupMode: Boolean = false,
-    onSetupComplete: () -> Unit = {}
+    onSetupComplete: () -> Unit = {},
+    onServerConnection: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -317,6 +319,19 @@ fun BackupSettingsScreen(
                     pendingCount = uiState.pendingCount,
                     isBackingUp = uiState.isBackingUp
                 )
+            }
+
+            if (!setupMode) {
+                item { SectionTitle("服务器") }
+
+                item {
+                    SettingActionRow(
+                        title = "服务器连接",
+                        subtitle = "维护主/备用访问地址并重新登录",
+                        icon = Icons.Default.Link,
+                        onClick = onServerConnection
+                    )
+                }
             }
 
             item { SectionTitle("自动备份") }

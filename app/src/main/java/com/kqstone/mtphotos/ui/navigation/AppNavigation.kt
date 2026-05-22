@@ -85,15 +85,18 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         }
     }
 
-    val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.Factory(container.authRepository)
-    )
     val viewerViewModel: ViewerViewModel = viewModel(
         factory = ViewerViewModel.Factory(container.galleryRepository)
     )
 
     NavHost(navController = navController, startDestination = startDestination!!) {
         composable("settings") {
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.Factory(
+                    container.authRepository,
+                    credentialsEditable = true
+                )
+            )
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onConnected = {
@@ -102,6 +105,33 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                     val target = if (folderSetupDone) "main" else "backup_setup"
                     navController.navigate(target) {
                         popUpTo("settings") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable("server_connection") {
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.Factory(
+                    container.authRepository,
+                    credentialsEditable = false
+                )
+            )
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                reconnectMode = true,
+                onBack = { navController.popBackStack() },
+                onConnected = {
+                    if (container.prefsManager.getBackupEnabledSync()) {
+                        com.kqstone.mtphotos.worker.BackupScheduler.scheduleAll(
+                            context,
+                            container.prefsManager.getBackupWifiOnlySync(),
+                            container.prefsManager.getSyncIntervalSync().toLong()
+                        )
+                    }
+                    navController.navigate("main") {
+                        popUpTo("main") { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             )
@@ -174,7 +204,10 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             )
             BackupSettingsScreen(
                 viewModel = backupSettingsViewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onServerConnection = {
+                    navController.navigate("server_connection")
+                }
             )
         }
     }
