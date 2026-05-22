@@ -56,6 +56,9 @@ data class BackupSettingsUiState(
     val backupDestinationId: Long = DEFAULT_BACKUP_DEST_ID,
     val backupDestinationLabel: String = DEFAULT_BACKUP_DEST_LABEL,
     val backupDestinationPath: String = DEFAULT_BACKUP_DEST_PATH,
+    val defaultBackupDestinationLabel: String = DEFAULT_BACKUP_DEST_LABEL,
+    val defaultBackupDestinationPath: String = DEFAULT_BACKUP_DEST_PATH,
+    val isDefaultBackupDestination: Boolean = true,
     val backupDestinationNodes: List<BackupDestinationNode> = emptyList(),
     val backupDestinationBreadcrumbs: List<BackupDestinationBreadcrumb> = emptyList(),
     val isLoadingBackupDestinations: Boolean = false,
@@ -81,6 +84,8 @@ class BackupSettingsViewModel(
     val uiState: StateFlow<BackupSettingsUiState> = _uiState
 
     private val gson = Gson()
+    private var currentUsername = prefsManager.getUsernameSync()
+    private var currentDeviceName = prefsManager.getDeviceNameSync()
 
     init {
         viewModelScope.launch {
@@ -122,9 +127,23 @@ class BackupSettingsViewModel(
         }
         viewModelScope.launch {
             prefsManager.backupDestinationPath.collect { path ->
+                val destinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH }
                 _uiState.value = _uiState.value.copy(
-                    backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH }
+                    backupDestinationPath = destinationPath,
+                    isDefaultBackupDestination = isDefaultBackupDestinationPath(destinationPath)
                 )
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.username.collect { username ->
+                currentUsername = username
+                updateDefaultBackupDestinationState()
+            }
+        }
+        viewModelScope.launch {
+            prefsManager.deviceName.collect { deviceName ->
+                currentDeviceName = deviceName
+                updateDefaultBackupDestinationState()
             }
         }
     }
@@ -754,6 +773,34 @@ class BackupSettingsViewModel(
         saveBackupDestination(node.id, node.name, node.path)
     }
 
+    fun selectDefaultBackupDestination() {
+        viewModelScope.launch {
+            try {
+                val deviceDestination = backupDestinationRepository.ensureDefaultDeviceDestination(
+                    defaultDeviceName()
+                )
+                if (deviceDestination != null) {
+                    saveBackupDestinationNow(
+                        deviceDestination.id,
+                        deviceDestination.name,
+                        deviceDestination.path
+                    )
+                } else {
+                    saveBackupDestinationNow(
+                        DEFAULT_BACKUP_DEST_ID,
+                        defaultDeviceName(),
+                        defaultDestinationPath()
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "selectDefaultBackupDestination failed", e)
+                _uiState.value = _uiState.value.copy(
+                    backupDestinationError = e.message ?: "保存默认备份目录失败"
+                )
+            }
+        }
+    }
+
     fun selectRootBackupDestination() {
         saveBackupDestination(
             id = DEFAULT_BACKUP_DEST_ID,
@@ -807,11 +854,13 @@ class BackupSettingsViewModel(
     }
 
     private suspend fun saveBackupDestinationNow(id: Long, label: String, path: String) {
+        val destinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH }
         prefsManager.saveBackupDestination(id, label, path)
         _uiState.value = _uiState.value.copy(
             backupDestinationId = id,
             backupDestinationLabel = label.ifBlank { DEFAULT_BACKUP_DEST_LABEL },
-            backupDestinationPath = path.ifBlank { DEFAULT_BACKUP_DEST_PATH },
+            backupDestinationPath = destinationPath,
+            isDefaultBackupDestination = isDefaultBackupDestinationPath(destinationPath),
             backupDestinationError = null
         )
     }
@@ -820,7 +869,7 @@ class BackupSettingsViewModel(
         if (prefsManager.isBackupDestinationConfiguredSync()) return
 
         try {
-            val deviceDestination = backupDestinationRepository.ensureDefaultDeviceDestination(Build.MODEL)
+            val deviceDestination = backupDestinationRepository.ensureDefaultDeviceDestination(defaultDeviceName())
             if (deviceDestination != null) {
                 saveBackupDestinationNow(
                     deviceDestination.id,
@@ -833,6 +882,33 @@ class BackupSettingsViewModel(
         } catch (e: Exception) {
             Log.e(TAG, "ensureDeviceFolder failed", e)
         }
+    }
+
+    private fun updateDefaultBackupDestinationState() {
+        val defaultLabel = defaultDeviceName()
+        val defaultPath = defaultDestinationPath()
+        _uiState.value = _uiState.value.copy(
+            defaultBackupDestinationLabel = defaultLabel,
+            defaultBackupDestinationPath = defaultPath,
+            isDefaultBackupDestination = _uiState.value.backupDestinationPath == defaultPath
+        )
+    }
+
+    private fun defaultDeviceName(): String {
+        return currentDeviceName.trim().trim('/').ifEmpty {
+            Build.MODEL.trim().trim('/').ifEmpty { "Android" }
+        }
+    }
+
+    private fun defaultDestinationPath(): String {
+        return BackupDestinationDefaults.path(
+            currentUsername,
+            defaultDeviceName()
+        )
+    }
+
+    private fun isDefaultBackupDestinationPath(path: String): Boolean {
+        return path == defaultDestinationPath()
     }
 
     private fun rootBreadcrumb(): BackupDestinationBreadcrumb {

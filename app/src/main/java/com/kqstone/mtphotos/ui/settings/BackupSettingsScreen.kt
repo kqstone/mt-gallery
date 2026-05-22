@@ -83,6 +83,7 @@ fun BackupSetupScreen(
     }
 
     val backupDestinationSubtitle = backupDestinationSummary(uiState)
+    val defaultBackupDestinationSubtitle = defaultBackupDestinationSummary(uiState)
     val folderSubtitle = folderSelectionSummary(uiState)
 
     Scaffold(
@@ -177,6 +178,8 @@ fun BackupSetupScreen(
 
     if (showDestinationDialog) {
         BackupDestinationDialog(
+            isDefaultSelected = uiState.isDefaultBackupDestination,
+            defaultDestinationSummary = defaultBackupDestinationSubtitle,
             selectedDestinationId = uiState.backupDestinationId,
             selectedDestinationSummary = backupDestinationSubtitle,
             nodes = uiState.backupDestinationNodes,
@@ -189,16 +192,16 @@ fun BackupSetupScreen(
             onNavigateUp = { viewModel.navigateUpBackupDestination() },
             onOpen = { node -> viewModel.openBackupDestination(node) },
             onCreateFolder = { name -> viewModel.createFolder(name) },
+            onSelectDefault = {
+                viewModel.selectDefaultBackupDestination()
+                showDestinationDialog = false
+            },
             onSelectCurrent = {
                 viewModel.selectCurrentBackupDestination()
                 showDestinationDialog = false
             },
             onSelect = { node ->
                 viewModel.selectBackupDestination(node)
-                showDestinationDialog = false
-            },
-            onSelectRoot = {
-                viewModel.selectRootBackupDestination()
                 showDestinationDialog = false
             }
         )
@@ -237,15 +240,8 @@ fun BackupSettingsScreen(
             "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
         else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
     }
-    val backupDestinationSubtitle = when {
-        uiState.backupDestinationPath == "/" -> uiState.backupDestinationLabel
-        uiState.backupDestinationPath.isNotBlank() &&
-            uiState.backupDestinationPath != "/" &&
-            uiState.backupDestinationPath != uiState.backupDestinationLabel ->
-            "${uiState.backupDestinationLabel} · ${uiState.backupDestinationPath}"
-        uiState.backupDestinationPath.isNotBlank() -> uiState.backupDestinationPath
-        else -> uiState.backupDestinationLabel
-    }
+    val backupDestinationSubtitle = backupDestinationSummary(uiState)
+    val defaultBackupDestinationSubtitle = defaultBackupDestinationSummary(uiState)
 
     Scaffold(
         topBar = {
@@ -386,7 +382,7 @@ fun BackupSettingsScreen(
 
             item {
                 SettingActionRow(
-                    title = "备份到..",
+                    title = "备份到",
                     subtitle = backupDestinationSubtitle,
                     icon = Icons.Default.Cloud,
                     onClick = {
@@ -536,6 +532,8 @@ fun BackupSettingsScreen(
 
     if (showDestinationDialog) {
         BackupDestinationDialog(
+            isDefaultSelected = uiState.isDefaultBackupDestination,
+            defaultDestinationSummary = defaultBackupDestinationSubtitle,
             selectedDestinationId = uiState.backupDestinationId,
             selectedDestinationSummary = backupDestinationSubtitle,
             nodes = uiState.backupDestinationNodes,
@@ -548,16 +546,16 @@ fun BackupSettingsScreen(
             onNavigateUp = { viewModel.navigateUpBackupDestination() },
             onOpen = { node -> viewModel.openBackupDestination(node) },
             onCreateFolder = { name -> viewModel.createFolder(name) },
+            onSelectDefault = {
+                viewModel.selectDefaultBackupDestination()
+                showDestinationDialog = false
+            },
             onSelectCurrent = {
                 viewModel.selectCurrentBackupDestination()
                 showDestinationDialog = false
             },
             onSelect = { node ->
                 viewModel.selectBackupDestination(node)
-                showDestinationDialog = false
-            },
-            onSelectRoot = {
-                viewModel.selectRootBackupDestination()
                 showDestinationDialog = false
             }
         )
@@ -751,9 +749,19 @@ private fun backupDestinationSummary(uiState: BackupSettingsUiState): String {
         uiState.backupDestinationPath.isNotBlank() &&
             uiState.backupDestinationPath != "/" &&
             uiState.backupDestinationPath != uiState.backupDestinationLabel ->
-            "${uiState.backupDestinationLabel} 路 ${uiState.backupDestinationPath}"
+            "${uiState.backupDestinationLabel} · ${uiState.backupDestinationPath}"
         uiState.backupDestinationPath.isNotBlank() -> uiState.backupDestinationPath
         else -> uiState.backupDestinationLabel
+    }
+}
+
+private fun defaultBackupDestinationSummary(uiState: BackupSettingsUiState): String {
+    return when {
+        uiState.defaultBackupDestinationPath.isNotBlank() &&
+            uiState.defaultBackupDestinationPath != uiState.defaultBackupDestinationLabel ->
+            "${uiState.defaultBackupDestinationLabel} · ${uiState.defaultBackupDestinationPath}"
+        uiState.defaultBackupDestinationPath.isNotBlank() -> uiState.defaultBackupDestinationPath
+        else -> uiState.defaultBackupDestinationLabel
     }
 }
 
@@ -1016,6 +1024,8 @@ private fun FolderSelectionDialog(
 
 @Composable
 private fun BackupDestinationDialog(
+    isDefaultSelected: Boolean,
+    defaultDestinationSummary: String,
     selectedDestinationId: Long,
     selectedDestinationSummary: String,
     nodes: List<BackupDestinationNode>,
@@ -1028,85 +1038,100 @@ private fun BackupDestinationDialog(
     onNavigateUp: () -> Unit,
     onOpen: (BackupDestinationNode) -> Unit,
     onCreateFolder: (String) -> Unit,
+    onSelectDefault: () -> Unit,
     onSelectCurrent: () -> Unit,
-    onSelect: (BackupDestinationNode) -> Unit,
-    onSelectRoot: () -> Unit
+    onSelect: (BackupDestinationNode) -> Unit
 ) {
     val currentLocation = breadcrumbs.lastOrNull()?.path ?: "/"
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showCustomPicker by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择备份到..") },
+        title = { Text("选择备份到") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "当前已选：$selectedDestinationSummary",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                BackupDestinationModeRow(
+                    title = "默认",
+                    subtitle = defaultDestinationSummary,
+                    selected = isDefaultSelected && !showCustomPicker,
+                    onClick = {
+                        showCustomPicker = false
+                        onSelectDefault()
+                    }
                 )
-                Text(
-                    text = "当前位置：$currentLocation",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
+                BackupDestinationModeRow(
+                    title = "自定义",
+                    subtitle = if (isDefaultSelected) {
+                        "选择服务端文件夹"
+                    } else {
+                        selectedDestinationSummary
+                    },
+                    selected = showCustomPicker || !isDefaultSelected,
+                    onClick = { showCustomPicker = true }
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onSelectCurrent) {
-                        Text("选择当前目录")
-                    }
-                    TextButton(onClick = onSelectRoot) {
-                        Text("使用根目录")
-                    }
-                    if (breadcrumbs.size > 1) {
-                        TextButton(onClick = onNavigateUp) {
-                            Text("上一级")
-                        }
-                    }
-                    TextButton(
-                        onClick = { showCreateDialog = true },
-                        enabled = !isCreatingFolder
-                    ) {
-                        Text(if (isCreatingFolder) "创建中…" else "新建文件夹")
-                    }
-                }
 
-                when {
-                    isLoading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
-                            contentAlignment = Alignment.Center
+                if (showCustomPicker) {
+                    Text(
+                        text = "当前位置：$currentLocation",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onSelectCurrent) {
+                            Text("选择当前目录")
+                        }
+                        if (breadcrumbs.size > 1) {
+                            TextButton(onClick = onNavigateUp) {
+                                Text("上一级")
+                            }
+                        }
+                        TextButton(
+                            onClick = { showCreateDialog = true },
+                            enabled = !isCreatingFolder
                         ) {
-                            CircularProgressIndicator()
+                            Text(if (isCreatingFolder) "创建中…" else "新建文件夹")
                         }
                     }
 
-                    error != null -> {
-                        Text(
-                            text = error,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
+                    when {
+                        isLoading -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
 
-                    nodes.isEmpty() -> {
-                        Text(
-                            text = "当前目录下没有可选子目录",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                        error != null -> {
+                            Text(
+                                text = error,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
 
-                    else -> {
-                        LazyColumn(modifier = Modifier.height(320.dp)) {
-                            items(nodes) { node ->
-                                BackupDestinationRow(
-                                    node = node,
-                                    selected = node.id == selectedDestinationId,
-                                    onOpen = { onOpen(node) },
-                                    onSelect = { onSelect(node) }
-                                )
+                        nodes.isEmpty() -> {
+                            Text(
+                                text = "当前目录下没有可选子目录",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        else -> {
+                            LazyColumn(modifier = Modifier.height(320.dp)) {
+                                items(nodes) { node ->
+                                    BackupDestinationRow(
+                                        node = node,
+                                        selected = !isDefaultSelected && node.id == selectedDestinationId,
+                                        onOpen = { onOpen(node) },
+                                        onSelect = { onSelect(node) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1119,8 +1144,10 @@ private fun BackupDestinationDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onReload) {
-                Text("刷新")
+            if (showCustomPicker) {
+                TextButton(onClick = onReload) {
+                    Text("刷新")
+                }
             }
         }
     )
@@ -1158,6 +1185,37 @@ private fun BackupDestinationDialog(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun BackupDestinationModeRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
