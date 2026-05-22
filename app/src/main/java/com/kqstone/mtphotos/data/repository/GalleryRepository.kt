@@ -948,12 +948,12 @@ class GalleryRepository(private val container: AppContainer) {
             if (isFavorite) {
                 container.albumApi.AlbumControllerAddFileToAlbum(mapOf(
                     "albumId" to albumId,
-                    "fileIds" to listOf(photoId.toInt())
+                    "files" to listOf(photoId.toInt())
                 ))
             } else {
                 container.albumApi.AlbumControllerRemoveFileFromAlbum(mapOf(
                     "albumId" to albumId,
-                    "fileIds" to listOf(photoId.toInt())
+                    "files" to listOf(photoId.toInt())
                 ))
             }
             Result.success(Unit)
