@@ -171,11 +171,23 @@ class GalleryViewModel(
                                 syncProgressText = "已扫描 ${progress.scanned} 个本地文件..."
                             )
                         }
+                        "finalizing" -> {
+                            _uiState.value = _uiState.value.copy(
+                                syncProgressText = "正在写入云端索引..."
+                            )
+                        }
+                        "cleanup" -> {
+                            _uiState.value = _uiState.value.copy(
+                                syncProgressText = "正在整理本地记录..."
+                            )
+                        }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(isSyncing = false, syncProgressText = null)
                             loadFromRoom(folders)
                             launch {
-                                syncRepository.computeMd5InBackground()
+                                syncRepository.computeMd5InBackground {
+                                    loadFromRoom(folders)
+                                }
                                 loadFromRoom(folders)
                             }
                         }

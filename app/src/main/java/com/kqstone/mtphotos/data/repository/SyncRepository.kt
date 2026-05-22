@@ -95,20 +95,15 @@ class SyncRepository(
             localScanner.scanMediaFlow(
                 folderPaths = localFolders,
                 batchSize = 50,
-                computeMd5 = true
+                computeMd5 = false
             ).collect { batch ->
                 scannedCount += batch.size
 
                 val mergedBatch = mutableListOf<MediaEntity>()
                 for (local in batch) {
                     val md5 = local.md5
-                    if (md5.isEmpty()) {
-                        Log.w(TAG, "Skipping local item without md5 during initial sync: ${local.localPath}")
-                        continue
-                    }
-                    if (!seenLocalMd5s.add(md5)) continue
-
-                    val cloud = cloudMd5Map[md5]
+                    if (md5.isNotEmpty() && !seenLocalMd5s.add(md5)) continue
+                    val cloud = md5.takeIf { it.isNotEmpty() }?.let { cloudMd5Map[it] }
                     if (cloud != null) {
                         matchedMd5s.add(md5)
                     }
@@ -235,10 +230,17 @@ class SyncRepository(
         }
     }
 
-    suspend fun computeMd5InBackground() = withContext(Dispatchers.IO) {
+    suspend fun computeMd5InBackground(
+        batchSize: Int = 25,
+        onBatchComplete: suspend () -> Unit = {}
+    ) = withContext(Dispatchers.IO) {
         try {
             val needMd5 = mediaDao.getMediaBySyncStatus(SyncStatus.LOCAL_ONLY)
                 .filter { it.md5.isEmpty() && !it.localPath.isNullOrEmpty() }
+                .sortedWith(
+                    compareBy<MediaEntity> { it.fileType.startsWith("video", ignoreCase = true) }
+                        .thenByDescending { it.mtime }
+                )
 
             if (needMd5.isEmpty()) {
                 Log.d(TAG, "No files need MD5 computation")
@@ -246,25 +248,32 @@ class SyncRepository(
             }
 
             Log.d(TAG, "Computing MD5 for ${needMd5.size} files...")
-            val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
-            val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
+            val cloudMd5Map = mediaDao.getCloudBoundMedia()
+                .mapNotNull { entity ->
+                    val md5 = entity.cloudMd5 ?: entity.md5
+                    md5.takeIf { it.isNotEmpty() }?.let { it to entity }
+                }
+                .toMap()
 
             var updated = 0
-            for (entity in needMd5) {
-                val md5 = LocalMediaScanner.computeFileMd5(entity.localPath!!)
-                if (md5.isEmpty()) continue
+            for (chunk in needMd5.chunked(batchSize.coerceAtLeast(1))) {
+                for (entity in chunk) {
+                    val md5 = LocalMediaScanner.computeFileMd5(entity.localPath!!)
+                    if (md5.isEmpty()) continue
 
-                val cloud = cloudMd5Map[md5]
-                val localWithMd5 = entity.copy(md5 = md5)
-                val existing = findExistingEntity(md5, cloud?.cloudId, entity.localMediaStoreId)
-                val target = if (existing != null && existing.id != entity.id) existing else entity
-                val merged = mergeMedia(target, local = localWithMd5, cloud = cloud)
+                    val cloud = cloudMd5Map[md5]
+                    val localWithMd5 = entity.copy(md5 = md5)
+                    val existing = findExistingEntity(md5, cloud?.cloudId, entity.localMediaStoreId)
+                    val target = if (existing != null && existing.id != entity.id) existing else entity
+                    val merged = mergeMedia(target, local = localWithMd5, cloud = cloud)
 
-                if (existing != null && existing.id != entity.id) {
-                    mediaDao.deleteById(entity.id)
+                    if (existing != null && existing.id != entity.id) {
+                        mediaDao.deleteById(entity.id)
+                    }
+                    mediaDao.insert(merged)
+                    updated++
                 }
-                mediaDao.insert(merged)
-                updated++
+                onBatchComplete()
             }
             Log.d(TAG, "MD5 computation complete: $updated files updated")
         } catch (e: Exception) {
