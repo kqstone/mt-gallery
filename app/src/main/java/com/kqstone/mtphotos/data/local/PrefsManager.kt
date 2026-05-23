@@ -38,9 +38,6 @@ class PrefsManager(val context: Context) {
         private val KEY_AUTH_CODE = stringPreferencesKey("auth_code")
         private val KEY_AUTH_CODE_EXPIRY = longPreferencesKey("auth_code_expiry")
 
-        // 删除方式："direct" = 直接删除（需 MANAGE_EXTERNAL_STORAGE），"confirm" = 系统确认删除
-        private val KEY_DELETE_MODE = stringPreferencesKey("delete_mode")
-
         // 备份相关
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
@@ -60,7 +57,6 @@ class PrefsManager(val context: Context) {
         it[KEY_PRIMARY_SERVER_URL] ?: it[KEY_SERVER_URL] ?: ""
     }
     val secondaryServerUrl: Flow<String> = context.dataStore.data.map { it[KEY_SECONDARY_SERVER_URL] ?: "" }
-    val deleteMode: Flow<String> = context.dataStore.data.map { it[KEY_DELETE_MODE] ?: "" }
     val username: Flow<String> = context.dataStore.data.map { it[KEY_USERNAME] ?: "" }
     val password: Flow<String> = context.dataStore.data.map { it[KEY_PASSWORD] ?: "" }
     val token: Flow<String> = context.dataStore.data.map { it[KEY_TOKEN] ?: "" }
@@ -111,7 +107,6 @@ class PrefsManager(val context: Context) {
             ""
         }
     }
-    fun getDeleteModeSync(): String = runBlocking { deleteMode.first() }
     fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
@@ -174,12 +169,6 @@ class PrefsManager(val context: Context) {
             prefs[KEY_AUTH_CODE] = authCode
             // 23 hours expiry (safety margin before 24h actual expiry)
             prefs[KEY_AUTH_CODE_EXPIRY] = System.currentTimeMillis() + 23 * 60 * 60 * 1000
-        }
-    }
-
-    suspend fun saveDeleteMode(mode: String) {
-        context.dataStore.edit { prefs ->
-            prefs[KEY_DELETE_MODE] = mode
         }
     }
 

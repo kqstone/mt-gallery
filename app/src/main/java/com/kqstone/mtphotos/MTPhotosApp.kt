@@ -159,5 +159,5 @@ class AppContainer(context: android.content.Context) {
     val thumbnailCacheManager = ThumbnailCacheManager(context)
 
     // 存储优化器
-    val storageOptimizer = StorageOptimizer(context, syncRepository)
+    val storageOptimizer = StorageOptimizer(syncRepository)
 }

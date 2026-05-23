@@ -536,6 +536,7 @@ class GalleryRepository(private val container: AppContainer) {
 
             // 查找 Room 中的实体（按 cloudId 和 dbId 查询，覆盖所有同步状态）
             val entities = syncRepo.findMediaEntitiesByIds(ids)
+            syncRepo.deleteLocalMediaFiles(entities)
 
             // 仅将有 cloudId 的文件发送到云端 API 删除
             val cloudIds = entities.mapNotNull { it.cloudId }.filter { it > 0 }
@@ -549,9 +550,7 @@ class GalleryRepository(private val container: AppContainer) {
             }
 
             // 清理本地文件和 Room 记录
-            val deleteMode = container.prefsManager.getDeleteModeSync()
-            val useDirectDelete = deleteMode == "direct"
-            syncRepo.deleteLocalMediaFiles(entities, useDirectDelete)
+            syncRepo.deleteMediaRecords(entities)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

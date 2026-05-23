@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
@@ -58,6 +59,7 @@ import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.LazyGridVerticalFastScroller
 import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
+import com.kqstone.mtphotos.ui.util.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +74,7 @@ fun FolderDetailScreen(
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     val gridState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
@@ -302,7 +305,9 @@ fun FolderDetailScreen(
             selectedCount = selectedIds.size,
             onConfirm = {
                 showDeleteDialog = false
-                viewModel.deleteSelected()
+                if (PermissionHelper.requestManageStoragePermission(context)) {
+                    viewModel.deleteSelected()
+                }
             },
             onDismiss = { showDeleteDialog = false }
         )

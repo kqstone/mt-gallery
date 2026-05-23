@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.util.PermissionHelper
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -365,9 +366,11 @@ fun ViewerScreen(
                 Button(
                     onClick = {
                         showDeleteDialog = false
-                        viewModel.deleteCurrentPhoto(onSuccess = {
-                            stopAndGoBack()
-                        })
+                        if (PermissionHelper.requestManageStoragePermission(context)) {
+                            viewModel.deleteCurrentPhoto(onSuccess = {
+                                stopAndGoBack()
+                            })
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,

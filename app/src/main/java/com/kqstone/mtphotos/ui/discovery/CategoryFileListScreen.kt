@@ -44,12 +44,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.LazyGridVerticalFastScroller
 import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
+import com.kqstone.mtphotos.ui.util.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,6 +68,7 @@ fun CategoryFileListScreen(
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     val gridState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
@@ -311,7 +314,9 @@ fun CategoryFileListScreen(
             selectedCount = selectedIds.size,
             onConfirm = {
                 showDeleteDialog = false
-                viewModel.deleteSelected()
+                if (PermissionHelper.requestManageStoragePermission(context)) {
+                    viewModel.deleteSelected()
+                }
             },
             onDismiss = { showDeleteDialog = false }
         )

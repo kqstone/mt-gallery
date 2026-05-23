@@ -1,11 +1,5 @@
 package com.kqstone.mtphotos.data.local
 
-import android.content.ContentResolver
-import android.content.ContentUris
-import android.content.Context
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import android.util.Log
 import com.kqstone.mtphotos.data.local.db.MediaEntity
 import com.kqstone.mtphotos.data.repository.SyncRepository
@@ -20,7 +14,6 @@ private const val TAG = "StorageOptimizer"
  * 这是一个高风险操作，需要用户手动触发并二次确认。
  */
 class StorageOptimizer(
-    private val context: Context,
     private val syncRepository: SyncRepository
 ) {
 
@@ -68,7 +61,7 @@ class StorageOptimizer(
 
         for (media in filesToOptimize) {
             try {
-                val deleted = deleteLocalMedia(media)
+                val deleted = syncRepository.deleteLocalMediaForOptimization(media)
                 if (deleted) {
                     syncRepository.markAsStorageOptimized(media.id)
                     successCount++
@@ -87,27 +80,4 @@ class StorageOptimizer(
         Pair(successCount, failCount)
     }
 
-    /**
-     * 从 MediaStore 中删除本地文件
-     */
-    private fun deleteLocalMedia(media: MediaEntity): Boolean {
-        val localId = media.localMediaStoreId ?: return false
-
-        return try {
-            val contentUri = if (media.fileType.startsWith("video")) {
-                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, localId)
-            } else {
-                ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, localId)
-            }
-
-            val deleted = context.contentResolver.delete(contentUri, null, null)
-            deleted > 0
-        } catch (e: SecurityException) {
-            Log.w(TAG, "SecurityException deleting $localId, may need user consent", e)
-            false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error deleting $localId", e)
-            false
-        }
-    }
 }

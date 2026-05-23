@@ -879,47 +879,19 @@ class SyncRepository(
         return (mediaDao.findByCloudIds(cloudIds) + mediaDao.findByIds(dbIds)).distinctBy { it.id }
     }
 
-    suspend fun deleteLocalMediaFiles(entities: List<MediaEntity>, useDirectDelete: Boolean = false) {
-        if (entities.isEmpty()) return
+    suspend fun deleteLocalMediaFiles(entities: List<MediaEntity>) = withContext(Dispatchers.IO) {
+        if (entities.isEmpty()) return@withContext
         val context = container.prefsManager.context
         recordBackupFolderHistory(entities.map { it.localFolderPath })
 
-        val urisToDelete = mutableListOf<android.net.Uri>()
-        for (entity in entities) {
-            val localId = entity.localMediaStoreId ?: continue
-            val contentUri = if (entity.fileType.startsWith("video")) {
-                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, localId)
-            } else {
-                ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, localId)
-            }
-            urisToDelete.add(contentUri)
+        val localEntities = entities.filter { it.localMediaStoreId != null }
+        if (localEntities.isNotEmpty() && !isManageStorageGranted()) {
+            throw SecurityException("MANAGE_EXTERNAL_STORAGE is required for direct local delete")
         }
 
-        if (urisToDelete.isNotEmpty()) {
-            if (useDirectDelete && isManageStorageGranted()) {
-                for (uri in urisToDelete) {
-                    try {
-                        context.contentResolver.delete(uri, null, null)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Direct local delete failed: $uri", e)
-                    }
-                }
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                try {
-                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, urisToDelete)
-                    pendingIntent.send()
-                } catch (e: Exception) {
-                    Log.w(TAG, "createDeleteRequest failed", e)
-                }
-            } else {
-                for (uri in urisToDelete) {
-                    try {
-                        context.contentResolver.delete(uri, null, null)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Local delete failed: $uri", e)
-                    }
-                }
-            }
+        val failed = localEntities.filterNot { deleteLocalMediaDirect(it) }
+        if (failed.isNotEmpty()) {
+            throw IllegalStateException("Local delete failed for ${failed.size} file(s)")
         }
 
         for (entity in entities) {
@@ -930,8 +902,20 @@ class SyncRepository(
                 }
             }
         }
+    }
 
+    suspend fun deleteMediaRecords(entities: List<MediaEntity>) {
+        if (entities.isEmpty()) return
         mediaDao.deleteByIds(entities.map { it.id })
+    }
+
+    suspend fun deleteLocalMediaForOptimization(entity: MediaEntity): Boolean = withContext(Dispatchers.IO) {
+        val localId = entity.localMediaStoreId ?: return@withContext false
+        if (!isManageStorageGranted()) {
+            Log.w(TAG, "Skip optimization delete without MANAGE_EXTERNAL_STORAGE: $localId")
+            return@withContext false
+        }
+        deleteLocalMediaDirect(entity)
     }
 
     private fun isManageStorageGranted(): Boolean {
@@ -940,6 +924,65 @@ class SyncRepository(
         } else {
             true
         }
+    }
+
+    private fun deleteLocalMediaDirect(entity: MediaEntity): Boolean {
+        val localId = entity.localMediaStoreId ?: return true
+        val context = container.prefsManager.context
+        val contentUri = if (entity.isVideoMedia()) {
+            ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, localId)
+        } else {
+            ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, localId)
+        }
+
+        return try {
+            val deletedRows = context.contentResolver.delete(contentUri, null, null)
+            if (deletedRows > 0 || !mediaStoreUriExists(contentUri)) {
+                true
+            } else {
+                deleteLocalPathFallback(entity) && !File(entity.localPath.orEmpty()).exists()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct local delete failed: $contentUri", e)
+            deleteLocalPathFallback(entity) && !File(entity.localPath.orEmpty()).exists()
+        }
+    }
+
+    private fun mediaStoreUriExists(uri: android.net.Uri): Boolean {
+        val context = container.prefsManager.context
+        return try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns._ID),
+                null,
+                null,
+                null
+            )?.use { cursor -> cursor.moveToFirst() } ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore verify failed: $uri", e)
+            true
+        }
+    }
+
+    private fun deleteLocalPathFallback(entity: MediaEntity): Boolean {
+        val path = entity.localPath ?: return false
+        return try {
+            val file = File(path)
+            !file.exists() || file.delete()
+        } catch (e: Exception) {
+            Log.w(TAG, "File fallback delete failed: $path", e)
+            false
+        }
+    }
+
+    private fun MediaEntity.isVideoMedia(): Boolean {
+        val type = fileType.lowercase()
+        return type.startsWith("video") ||
+            type in setOf("mp4", "mov", "avi", "mkv") ||
+            fileName.endsWith(".mp4", true) ||
+            fileName.endsWith(".mov", true) ||
+            fileName.endsWith(".avi", true) ||
+            fileName.endsWith(".mkv", true)
     }
 
     suspend fun cleanupOrphanedLocalRecords(): Int {

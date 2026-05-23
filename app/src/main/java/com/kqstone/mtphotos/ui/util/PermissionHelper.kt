@@ -150,6 +150,19 @@ object PermissionHelper {
             data = Uri.parse("package:${context.packageName}")
         }
     }
+
+    fun requestManageStoragePermission(context: android.content.Context): Boolean {
+        if (hasManageStoragePermission()) return true
+
+        val appSpecificIntent = getManageStorageIntent(context)
+        val fallbackIntent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        try {
+            context.startActivity(appSpecificIntent)
+        } catch (_: Exception) {
+            context.startActivity(fallbackIntent)
+        }
+        return false
+    }
 }
 
 /**

@@ -102,7 +102,6 @@ fun GalleryScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var isSearchPanelActive by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showDeleteModeDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -234,30 +233,11 @@ fun GalleryScreen(
             selectedCount = selectedIds.size,
             onConfirm = {
                 showDeleteDialog = false
-                if (viewModel.getDeleteMode().isEmpty()) {
-                    showDeleteModeDialog = true
-                } else {
+                if (PermissionHelper.requestManageStoragePermission(context)) {
                     viewModel.deleteSelected()
                 }
             },
             onDismiss = { showDeleteDialog = false }
-        )
-    }
-
-    if (showDeleteModeDialog) {
-        DeleteModeDialog(
-            onChooseDirect = {
-                showDeleteModeDialog = false
-                viewModel.saveDeleteMode("direct")
-                context.startActivity(PermissionHelper.getManageStorageIntent(context))
-                viewModel.deleteSelected()
-            },
-            onChooseConfirm = {
-                showDeleteModeDialog = false
-                viewModel.saveDeleteMode("confirm")
-                viewModel.deleteSelected()
-            },
-            onDismiss = { showDeleteModeDialog = false }
         )
     }
 }

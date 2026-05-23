@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.repository.BackupDestinationNode
+import com.kqstone.mtphotos.ui.util.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -462,25 +463,6 @@ fun BackupSettingsScreen(
                 )
             }
 
-            item { SectionTitle("删除方式") }
-
-            item {
-                DeleteModeSetting(
-                    currentMode = uiState.deleteMode,
-                    onModeChange = { mode ->
-                        if (mode == "direct" &&
-                            !com.kqstone.mtphotos.ui.util.PermissionHelper.hasManageStoragePermission()
-                        ) {
-                            val intent =
-                                com.kqstone.mtphotos.ui.util.PermissionHelper.getManageStorageIntent(
-                                    context
-                                )
-                            context.startActivity(intent)
-                        }
-                        viewModel.setDeleteMode(mode)
-                    }
-                )
-            }
         }
     }
 
@@ -517,7 +499,9 @@ fun BackupSettingsScreen(
                 TextButton(
                     onClick = {
                         showCleanupConfirm = false
-                        viewModel.optimizeStorage()
+                        if (PermissionHelper.requestManageStoragePermission(context)) {
+                            viewModel.optimizeStorage()
+                        }
                     }
                 ) {
                     Text("确认删除", color = MaterialTheme.colorScheme.error)
@@ -1287,61 +1271,6 @@ data class FolderUiItem(
     val hasLocalMedia: Boolean,
     val isHistoricalOnly: Boolean
 )
-
-@Composable
-private fun DeleteModeSetting(
-    currentMode: String,
-    onModeChange: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onModeChange("direct") }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(
-                selected = currentMode == "direct",
-                onClick = { onModeChange("direct") }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text("直接删除", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "需要“所有文件访问权限”，删除时无弹窗",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onModeChange("confirm") }
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(
-                selected = currentMode == "confirm",
-                onClick = { onModeChange("confirm") }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text("确认后删除", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "每次删除时系统弹窗确认，无需特殊权限",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun SyncIntervalSetting(

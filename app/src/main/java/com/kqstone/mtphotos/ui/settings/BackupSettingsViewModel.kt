@@ -64,7 +64,6 @@ data class BackupSettingsUiState(
     val isLoadingBackupDestinations: Boolean = false,
     val isCreatingFolder: Boolean = false,
     val backupDestinationError: String? = null,
-    val deleteMode: String = "",
     val syncInterval: Int = 60,
     val coilDiskCacheMb: Int = 512,
     val thumbnailCacheSizeFormatted: String = "0 MB",
@@ -96,11 +95,6 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.backupWifiOnly.collect { wifiOnly ->
                 _uiState.value = _uiState.value.copy(wifiOnly = wifiOnly)
-            }
-        }
-        viewModelScope.launch {
-            prefsManager.deleteMode.collect { mode ->
-                _uiState.value = _uiState.value.copy(deleteMode = mode)
             }
         }
         viewModelScope.launch {
@@ -291,12 +285,6 @@ class BackupSettingsViewModel(
                 val syncInterval = prefsManager.getSyncIntervalSync().toLong()
                 BackupScheduler.scheduleAll(prefsManager.context, wifiOnly, syncInterval)
             }
-        }
-    }
-
-    fun setDeleteMode(mode: String) {
-        viewModelScope.launch {
-            prefsManager.saveDeleteMode(mode)
         }
     }
 

@@ -815,14 +815,6 @@ class GalleryViewModel(
 
     private fun extractDate(mtime: String): String = mtime.take(10)
 
-    fun getDeleteMode(): String = prefsManager?.getDeleteModeSync() ?: ""
-
-    fun saveDeleteMode(mode: String) {
-        viewModelScope.launch {
-            prefsManager?.saveDeleteMode(mode)
-        }
-    }
-
     class Factory(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,
