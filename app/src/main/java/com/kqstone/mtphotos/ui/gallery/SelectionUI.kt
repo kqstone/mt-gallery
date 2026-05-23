@@ -36,12 +36,12 @@ fun SelectionTopBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
     onDelete: () -> Unit,
-    onClearSelection: () -> Unit
+    onClearSelection: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .statusBarsPadding()
             .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
