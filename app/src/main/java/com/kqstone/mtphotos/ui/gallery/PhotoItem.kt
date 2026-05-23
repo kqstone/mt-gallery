@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.outlined.Circle
@@ -66,13 +68,6 @@ fun PhotoThumbnail(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            )
-            .then(
-                if (isSelected) {
-                    Modifier.border(3.dp, MaterialTheme.colorScheme.primary)
-                } else {
-                    Modifier
-                }
             )
     ) {
         AsyncImage(
@@ -124,20 +119,21 @@ fun PhotoThumbnail(
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
             ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "已选中",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Outlined.Circle,
-                        contentDescription = "未选中",
-                        tint = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(24.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), shape = CircleShape)
+                        .border(width = 1.dp, color = Color.White.copy(alpha = 0.8f), shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "已选中",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
@@ -146,7 +142,7 @@ fun PhotoThumbnail(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                    .background(Color.Black.copy(alpha = 0.35f))
             )
         }
     }

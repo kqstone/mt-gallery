@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.discovery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
@@ -67,6 +68,10 @@ fun CategoryFileListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+
+    BackHandler(enabled = isSelectionMode) {
+        viewModel.selectionManager.clearSelection()
+    }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val gridState = rememberLazyGridState()
@@ -225,9 +230,9 @@ fun CategoryFileListScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(uiState.columnCount),
-                        contentPadding = PaddingValues(2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        contentPadding = PaddingValues(1.dp),
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
                         state = gridState,
                         modifier = Modifier
                             .fillMaxSize()
