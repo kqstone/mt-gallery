@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.folder
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -73,6 +75,10 @@ fun FolderDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+
+    BackHandler(enabled = isSelectionMode) {
+        viewModel.selectionManager.clearSelection()
+    }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -151,7 +157,8 @@ fun FolderDetailScreen(
                 selectedCount = selectedIds.size,
                 onSelectAll = { viewModel.selectAll() },
                 onDelete = { showDeleteDialog = true },
-                onClearSelection = { viewModel.selectionManager.clearSelection() }
+                onClearSelection = { viewModel.selectionManager.clearSelection() },
+                modifier = Modifier.statusBarsPadding()
             )
         } else {
             TopAppBar(
@@ -190,9 +197,9 @@ fun FolderDetailScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(uiState.columnCount),
-                        contentPadding = PaddingValues(2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        contentPadding = PaddingValues(1.dp),
+                        horizontalArrangement = Arrangement.spacedBy(1.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
                         state = gridState,
                         modifier = Modifier
                             .fillMaxSize()
