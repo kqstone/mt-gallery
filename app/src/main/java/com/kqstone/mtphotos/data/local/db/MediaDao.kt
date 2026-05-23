@@ -276,6 +276,12 @@ interface MediaDao {
     @Query("SELECT COUNT(*) FROM media WHERE backupStatus = :status")
     suspend fun getCountByBackupStatus(status: BackupStatus): Int
 
+    @Query("SELECT COUNT(*) FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') AND md5 != ''")
+    suspend fun getPendingBackupCount(): Int
+
+    @Query("SELECT COUNT(*) FROM media WHERE backupStatus = 'COMPLETED' AND localUri IS NOT NULL AND isStorageOptimized = 0")
+    suspend fun getOptimizableCount(): Int
+
     @Query("SELECT COALESCE(SUM(fileSize), 0) FROM media WHERE backupStatus = 'COMPLETED' AND localUri IS NOT NULL AND isStorageOptimized = 0")
     suspend fun getOptimizableSize(): Long
 

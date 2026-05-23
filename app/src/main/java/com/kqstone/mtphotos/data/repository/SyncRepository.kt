@@ -722,6 +722,14 @@ class SyncRepository(
         }
     }
 
+    suspend fun getPendingBackupCount(localFolders: Set<String>? = null): Int {
+        return when {
+            localFolders == null -> mediaDao.getPendingBackupCount()
+            localFolders.isEmpty() -> 0
+            else -> getPendingBackupMedia(localFolders).size
+        }
+    }
+
     suspend fun retryBackupsMissingFromCloud(dbIds: List<Long>): Int = withContext(Dispatchers.IO) {
         if (dbIds.isEmpty()) return@withContext 0
 
@@ -786,6 +794,10 @@ class SyncRepository(
 
     suspend fun getOptimizableMedia(): List<MediaEntity> {
         return mediaDao.getOptimizableMedia()
+    }
+
+    suspend fun getOptimizableCount(): Int {
+        return mediaDao.getOptimizableCount()
     }
 
     suspend fun getOptimizableSize(): Long {

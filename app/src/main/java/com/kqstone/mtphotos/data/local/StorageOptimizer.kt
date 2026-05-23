@@ -34,6 +34,22 @@ class StorageOptimizer(
         }
     }
 
+    data class OptimizationStatsSummary(
+        val totalFiles: Int,
+        val totalSize: Long
+    ) {
+        val totalSizeMB: Double get() = totalSize / (1024.0 * 1024.0)
+        val totalSizeGB: Double get() = totalSize / (1024.0 * 1024.0 * 1024.0)
+
+        fun formattedSize(): String {
+            return if (totalSizeGB >= 1.0) {
+                "%.2f GB".format(totalSizeGB)
+            } else {
+                "%.1f MB".format(totalSizeMB)
+            }
+        }
+    }
+
     /**
      * 获取可优化的文件统计（已备份但本地原图未清理的文件）
      */
@@ -44,6 +60,13 @@ class StorageOptimizer(
             totalFiles = files.size,
             totalSize = totalSize,
             files = files
+        )
+    }
+
+    suspend fun getOptimizationStatsSummary(): OptimizationStatsSummary {
+        return OptimizationStatsSummary(
+            totalFiles = syncRepository.getOptimizableCount(),
+            totalSize = syncRepository.getOptimizableSize()
         )
     }
 

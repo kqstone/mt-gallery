@@ -1,6 +1,8 @@
 package com.kqstone.mtphotos.ui.viewer
 
 import android.view.LayoutInflater
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -124,8 +126,13 @@ fun VideoPlayer(
     DisposableEffect(exoPlayer) {
         onDispose {
             pausePlayback()
-            exoPlayer.clearVideoSurface()
-            exoPlayer.release()
+            Handler(Looper.getMainLooper()).postDelayed(
+                {
+                    exoPlayer.clearVideoSurface()
+                    exoPlayer.release()
+                },
+                220L
+            )
         }
     }
 

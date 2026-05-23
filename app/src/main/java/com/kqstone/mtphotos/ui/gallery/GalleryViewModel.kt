@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.BackupFolderSelection
+import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "GalleryVM"
+private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
 
 data class DayGroup(
     val date: String,
@@ -84,6 +86,8 @@ class GalleryViewModel(
     private val monthLoadJobs = mutableMapOf<String, Job>()
     private var timelineMonthsByYearMonth: Map<String, TimelineMonth> = emptyMap()
     private var currentLocalFolders: Set<String>? = null
+    private var lastFolderSelectionKey: String? = null
+    private var skipNextResumeRefresh = false
     private var filterCandidatesLoaded = false
 
     val selectionManager = SelectionManager(
@@ -109,6 +113,18 @@ class GalleryViewModel(
         return prefsManager?.getBackupFolderSelectionSync() ?: BackupFolderSelection(null, false)
     }
 
+    private fun BackupFolderSelection.refreshKey(): String {
+        return if (!isConfigured) {
+            "unconfigured"
+        } else {
+            folders.orEmpty().sorted().joinToString(separator = "\n", prefix = "configured\n")
+        }
+    }
+
+    fun skipNextResumeRefresh() {
+        skipNextResumeRefresh = true
+    }
+
     fun loadTimeline() {
         _uiState.value = _uiState.value.copy(
             isLoading = true,
@@ -124,6 +140,7 @@ class GalleryViewModel(
                         return@launch
                     }
                     val folderSelection = getFolderSelectionState()
+                    lastFolderSelectionKey = folderSelection.refreshKey()
                     if (prefsManager != null && !folderSelection.isConfigured) {
                         Log.w(TAG, "Folder setup complete but folder selection missing, fallback to cloud-only")
                         loadFromCloud()
@@ -440,14 +457,36 @@ class GalleryViewModel(
         viewModelScope.launch {
             try {
                 val folderSelection = getFolderSelectionState()
+                val folderKey = folderSelection.refreshKey()
+                val folderChanged = lastFolderSelectionKey != null && lastFolderSelectionKey != folderKey
+                val mediaChanged = MediaChangeObserver.isDirty
+
+                if (skipNextResumeRefresh && !folderChanged && !mediaChanged) {
+                    skipNextResumeRefresh = false
+                    Log.d(TAG, "Quick refresh skipped once after navigation")
+                    return@launch
+                }
+                skipNextResumeRefresh = false
+
+                if (!folderChanged && !mediaChanged) {
+                    Log.d(TAG, "Quick refresh skipped: no media or folder changes")
+                    return@launch
+                }
+
                 if (!folderSelection.isConfigured) {
                     Log.w(TAG, "Quick refresh skipped local scope because folder selection is missing")
+                    lastFolderSelectionKey = folderKey
                     loadFromCloud()
                     return@launch
                 }
                 val folders = folderSelection.folders
-                syncRepository.reconcileFolderSelection(folders)
-                syncRepository.syncLocalMedia(folders)
+                if (folderChanged) {
+                    syncRepository.reconcileFolderSelection(folders)
+                    lastFolderSelectionKey = folderKey
+                }
+                if (mediaChanged) {
+                    syncRepository.syncLocalMedia(folders)
+                }
                 loadFromRoom(folders)
             } catch (e: Exception) {
                 Log.w(TAG, "Quick refresh failed", e)
@@ -626,20 +665,27 @@ class GalleryViewModel(
     private fun warmLocalVideoThumbnails(photos: List<UnifiedPhotoItem>) {
         localVideoThumbJob?.cancel()
         localVideoThumbJob = viewModelScope.launch {
-            LocalVideoThumbnailWarmup.warm(photos, syncRepository) { photo, path ->
-                updatePhotoThumbCachePath(photo.dbId, path)
+            val updates = mutableListOf<Pair<Long, String>>()
+            LocalVideoThumbnailWarmup.warm(photos.take(LOCAL_VIDEO_THUMB_WARMUP_LIMIT), syncRepository) { photo, path ->
+                updates.add(photo.dbId to path)
             }
+            updatePhotoThumbCachePaths(updates)
         }
     }
 
-    private fun updatePhotoThumbCachePath(dbId: Long, path: String) {
-        if (dbId <= 0) return
+    private fun updatePhotoThumbCachePaths(updates: List<Pair<Long, String>>) {
+        val byDbId = updates
+            .filter { (dbId, path) -> dbId > 0 && path.isNotBlank() }
+            .toMap()
+        if (byDbId.isEmpty()) return
+
         val updatedMonths = _uiState.value.months.map { month ->
             month.copy(
                 days = month.days.map { day ->
                     day.copy(
                         photos = day.photos.map { photo ->
-                            if (photo.dbId == dbId) photo.copy(thumbCachePath = path) else photo
+                            byDbId[photo.dbId]?.let { path -> photo.copy(thumbCachePath = path) }
+                                ?: photo
                         }
                     )
                 }

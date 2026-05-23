@@ -170,6 +170,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 galleryViewModel = galleryViewModel,
                 viewerViewModel = viewerViewModel,
                 onNavigateToViewer = { photos, index ->
+                    galleryViewModel.skipNextResumeRefresh()
                     viewerViewModel.setPhotos(photos, index)
                     navController.navigate("viewer")
                 },

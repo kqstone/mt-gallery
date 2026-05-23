@@ -232,9 +232,12 @@ fun BackupSettingsScreen(
     LaunchedEffect(Unit) {
         if (setupMode) {
             viewModel.ensureInitialBackupDefaults()
+            viewModel.loadFolders()
+        } else {
+            viewModel.loadFolderSelectionSummary()
         }
         viewModel.loadStats()
-        viewModel.loadFolders()
+        viewModel.loadCacheStats()
     }
 
     val folderSubtitle = when {

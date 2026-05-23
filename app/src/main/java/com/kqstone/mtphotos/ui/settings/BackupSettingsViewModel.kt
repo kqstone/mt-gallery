@@ -17,9 +17,12 @@ import com.kqstone.mtphotos.data.repository.BackupDestinationNode
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.worker.BackupScheduler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val TAG = "BackupSettingsVM"
@@ -71,6 +74,20 @@ data class BackupSettingsUiState(
     val error: String? = null
 )
 
+private data class BackupSettingsStats(
+    val syncedCount: Int,
+    val backedUpCount: Int,
+    val backedUpSize: Long,
+    val pendingCount: Int,
+    val optimizableCount: Int,
+    val optimizableSizeFormatted: String
+)
+
+private data class CacheStats(
+    val thumbnailCacheSize: Long,
+    val mediaCacheSize: Long
+)
+
 class BackupSettingsViewModel(
     private val prefsManager: PrefsManager,
     private val syncRepository: SyncRepository,
@@ -85,6 +102,7 @@ class BackupSettingsViewModel(
     private val gson = Gson()
     private var currentUsername = prefsManager.getUsernameSync()
     private var currentDeviceName = prefsManager.getDeviceNameSync()
+    private var lastSavedFolderSelection: Set<String>? = null
 
     init {
         viewModelScope.launch {
@@ -146,47 +164,83 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             try {
                 if (!syncRepository.hasData()) {
-                    Log.d(TAG, "Room DB is empty, triggering initial sync...")
-                    _uiState.value = _uiState.value.copy(isSyncing = true)
-                    try {
-                        syncRepository.performFullSync(prefsManager.getBackupFolderSelectionSync().folders)
-                        Log.d(TAG, "Initial sync completed")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Initial sync failed", e)
-                    } finally {
-                        _uiState.value = _uiState.value.copy(isSyncing = false)
-                    }
+                    Log.d(TAG, "Room DB is empty, skipping settings-entry full sync")
+                    _uiState.value = _uiState.value.copy(
+                        syncedCount = 0,
+                        backedUpCount = 0,
+                        backedUpSizeFormatted = formatSize(0),
+                        pendingCount = 0,
+                        optimizableCount = 0,
+                        optimizableSizeFormatted = formatSize(0)
+                    )
+                    return@launch
                 }
 
-                val synced = syncRepository.getSyncedCount()
-                val backedUp = syncRepository.getBackedUpCount()
-                val backedUpSize = syncRepository.getBackedUpSize()
-                val pending = syncRepository
-                    .getPendingBackupMedia(prefsManager.getBackupFolderSelectionSync().folders)
-                    .size
-                val stats = storageOptimizer.getOptimizationStats()
-
-                val context = prefsManager.context
-                val coilCacheDir = context.cacheDir.resolve("coil_image_cache")
-                val fullCacheDir = context.cacheDir.resolve("full_image_cache")
-                val videoCacheDir = context.cacheDir.resolve("video_cache")
-                val thumbnailCacheSize = getDirectorySize(coilCacheDir)
-                val mediaCacheSize = getDirectorySize(fullCacheDir) + getDirectorySize(videoCacheDir)
+                val stats = withContext(Dispatchers.IO) {
+                    val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
+                    val optimizable = storageOptimizer.getOptimizationStatsSummary()
+                    BackupSettingsStats(
+                        syncedCount = syncRepository.getSyncedCount(),
+                        backedUpCount = syncRepository.getBackedUpCount(),
+                        backedUpSize = syncRepository.getBackedUpSize(),
+                        pendingCount = syncRepository.getPendingBackupCount(selectedFolders),
+                        optimizableCount = optimizable.totalFiles,
+                        optimizableSizeFormatted = optimizable.formattedSize()
+                    )
+                }
 
                 _uiState.value = _uiState.value.copy(
-                    syncedCount = synced,
-                    backedUpCount = backedUp,
-                    backedUpSizeFormatted = formatSize(backedUpSize),
-                    pendingCount = pending,
-                    optimizableCount = stats.totalFiles,
-                    optimizableSizeFormatted = stats.formattedSize(),
-                    thumbnailCacheSizeFormatted = formatSize(thumbnailCacheSize),
-                    mediaCacheSizeFormatted = formatSize(mediaCacheSize)
+                    syncedCount = stats.syncedCount,
+                    backedUpCount = stats.backedUpCount,
+                    backedUpSizeFormatted = formatSize(stats.backedUpSize),
+                    pendingCount = stats.pendingCount,
+                    optimizableCount = stats.optimizableCount,
+                    optimizableSizeFormatted = stats.optimizableSizeFormatted
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadStats failed", e)
                 _uiState.value = _uiState.value.copy(error = e.message)
             }
+        }
+    }
+
+    fun loadCacheStats(delayMillis: Long = 250L) {
+        viewModelScope.launch {
+            delay(delayMillis)
+            try {
+                val stats = withContext(Dispatchers.IO) {
+                    val context = prefsManager.context
+                    val coilCacheDir = context.cacheDir.resolve("coil_image_cache")
+                    val fullCacheDir = context.cacheDir.resolve("full_image_cache")
+                    val videoCacheDir = context.cacheDir.resolve("video_cache")
+                    CacheStats(
+                        thumbnailCacheSize = getDirectorySize(coilCacheDir),
+                        mediaCacheSize = getDirectorySize(fullCacheDir) + getDirectorySize(videoCacheDir)
+                    )
+                }
+                _uiState.value = _uiState.value.copy(
+                    thumbnailCacheSizeFormatted = formatSize(stats.thumbnailCacheSize),
+                    mediaCacheSizeFormatted = formatSize(stats.mediaCacheSize)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "loadCacheStats failed", e)
+            }
+        }
+    }
+
+    fun loadFolderSelectionSummary() {
+        viewModelScope.launch {
+            val selection = prefsManager.getBackupFolderSelectionSync()
+            val selected = if (selection.isConfigured) {
+                canonicalFolderSelection(normalizeFolderPaths(selection.folders.orEmpty()))
+            } else {
+                emptySet()
+            }
+            lastSavedFolderSelection = selected
+            _uiState.value = _uiState.value.copy(
+                selectedFolderCount = selected.size,
+                historicalSelectedFolderCount = 0
+            )
         }
     }
 
@@ -218,6 +272,7 @@ class BackupSettingsViewModel(
                     .toSet()
                     .ifEmpty { scannedFolders.map { it.path }.toSet() }
                 val selectedPaths = canonicalFolderSelection(savedFolders ?: defaultSelection)
+                lastSavedFolderSelection = selectedPaths
                 val scannedOrder = scannedFolders
                     .mapIndexed { index, folder -> folder.path to index }
                     .toMap()
@@ -397,6 +452,10 @@ class BackupSettingsViewModel(
     fun saveFolderSelection() {
         viewModelScope.launch {
             val selected = selectedFolderPathsAllowEmpty()
+            if (lastSavedFolderSelection == selected) {
+                Log.d(TAG, "Folder selection unchanged, skipping full sync")
+                return@launch
+            }
             prefsManager.saveBackupFolders(gson.toJson(selected))
             prefsManager.addBackupFolderHistory(selected.toList())
 
@@ -420,6 +479,7 @@ class BackupSettingsViewModel(
                     optimizableSizeFormatted = stats.formattedSize(),
                     isSyncing = false
                 )
+                lastSavedFolderSelection = selected
                 loadFolders()
             } catch (e: Exception) {
                 Log.e(TAG, "Re-sync after folder change failed", e)
