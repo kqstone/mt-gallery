@@ -11,21 +11,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
@@ -43,6 +40,7 @@ import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 
@@ -67,7 +65,7 @@ fun FolderDetailScreen(
     }
 
     val showDeleteDialog = remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     LaunchedEffect(folderId) {
         viewModel.loadFolder(folderId)
@@ -79,17 +77,12 @@ fun FolderDetailScreen(
                 selectedCount = selectedIds.size,
                 onSelectAll = { viewModel.selectAll() },
                 onDelete = { showDeleteDialog.value = true },
-                onClearSelection = { viewModel.selectionManager.clearSelection() },
-                modifier = Modifier.statusBarsPadding()
+                onClearSelection = { viewModel.selectionManager.clearSelection() }
             )
         } else {
-            TopAppBar(
-                title = { Text(uiState.folderName.ifEmpty { "文件夹" }) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
+            BackTitleTopBar(
+                title = uiState.folderName.ifEmpty { "文件夹" },
+                onBack = onBack
             )
         }
 

@@ -1,10 +1,15 @@
 package com.kqstone.mtphotos.ui.util
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -18,35 +23,97 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalDate
 
 @Composable
+fun AppTopBarContainer(
+    modifier: Modifier = Modifier,
+    expandedContent: (@Composable () -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+        expandedContent?.invoke()
+    }
+}
+
+@Composable
+fun TitleTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    AppTopBarContainer(modifier = modifier) {
+        if (navigationIcon != null) {
+            navigationIcon()
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        actions()
+    }
+}
+
+@Composable
+fun BackTitleTopBar(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    TitleTopBar(
+        title = title,
+        modifier = modifier,
+        navigationIcon = {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        actions = actions
+    )
+}
+
+@Composable
 fun SimpleTitleHeader(
     title: String,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
-        IconButton(
-            onClick = onSettingsClick,
-            modifier = Modifier.size(36.dp)
-        ) {
-            Icon(
-                Icons.Default.Settings,
-                contentDescription = "设置",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
+    TitleTopBar(
+        title = title,
+        modifier = modifier,
+        actions = {
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "设置",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
-    }
+    )
 }
 
 fun formatDayHeaderDate(dateStr: String): String {

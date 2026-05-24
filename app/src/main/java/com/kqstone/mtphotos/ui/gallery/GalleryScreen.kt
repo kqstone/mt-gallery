@@ -134,7 +134,7 @@ fun GalleryScreen(
                 onClearSelection = { viewModel.selectionManager.clearSelection() }
             )
         } else {
-            SearchHeader(
+            UnifiedSearchHeader(
                 query = uiState.searchQuery,
                 searchType = uiState.searchType,
                 searchFilters = uiState.searchFilters,

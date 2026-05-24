@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.discovery
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,21 +9,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,9 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
+import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
-import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
+import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,17 +77,12 @@ fun CategoryFileListScreen(
                 selectedCount = selectedIds.size,
                 onSelectAll = { viewModel.selectAll() },
                 onDelete = { showDeleteDialog.value = true },
-                onClearSelection = { viewModel.selectionManager.clearSelection() },
-                modifier = Modifier.statusBarsPadding()
+                onClearSelection = { viewModel.selectionManager.clearSelection() }
             )
         } else {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                }
+            BackTitleTopBar(
+                title = title,
+                onBack = onBack
             )
         }
 
@@ -133,12 +122,9 @@ fun CategoryFileListScreen(
                             text = uiState.error!!,
                             color = MaterialTheme.colorScheme.error
                         )
-                        androidx.compose.foundation.text.ClickableText(
-                            text = androidx.compose.ui.text.AnnotatedString("点击重试"),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.primary
-                            ),
-                            onClick = {
+                        Text(
+                            text = "点击重试",
+                            modifier = Modifier.clickable {
                                 when (loadType) {
                                     "people" -> viewModel.loadPeopleFiles(loadParam)
                                     "scene" -> viewModel.loadSceneFiles(loadParam, loadParam2)
@@ -149,7 +135,8 @@ fun CategoryFileListScreen(
                                     "videos" -> viewModel.loadVideoFiles()
                                     "trash" -> viewModel.loadTrashFiles()
                                 }
-                            }
+                            },
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
