@@ -223,15 +223,16 @@ fun GalleryScreen(
                     onRefresh = { viewModel.refresh() },
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    PhotoGrid(
+                    TimelinePhotoGrid(
                         months = uiState.months,
-                        viewModel = viewModel,
                         columnCount = uiState.columnCount,
                         selectedPhotoIds = selectedIds,
                         isSelectionMode = isSelectionMode,
-                        isSearchMode = uiState.isSearchMode,
+                        selectionManager = viewModel.selectionManager,
+                        getThumbUrl = viewModel::getThumbUrl,
                         onPhotoClick = onPhotoClick,
-                        onColumnCountChange = { viewModel.updateColumnCount(it) }
+                        onColumnCountChange = { viewModel.updateColumnCount(it) },
+                        onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) }
                     )
                 }
             }

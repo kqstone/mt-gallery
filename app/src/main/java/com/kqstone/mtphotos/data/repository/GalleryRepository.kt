@@ -44,6 +44,14 @@ data class FolderDetailData(
     val subfolders: List<FolderItem>
 )
 
+data class AlbumItem(
+    val id: Double,
+    val name: String,
+    val coverMd5: String,
+    val coverFileId: Double,
+    val fileCount: Int
+)
+
 data class PersonItem(
     val id: String,
     val name: String,
@@ -380,6 +388,27 @@ class GalleryRepository(private val container: AppContainer) {
         return photos.distinctBy { it.id }
     }
 
+    private fun parsePhotoItems(response: Map<String, Any>): List<PhotoItem> {
+        val photos = mutableListOf<PhotoItem>()
+        val extra = response["extra"] as? Map<*, *>
+        if (extra != null) {
+            for ((_, value) in extra) {
+                photos += parseTimelineMonthData(value)
+            }
+        }
+        return if (photos.isNotEmpty()) {
+            photos.distinctBy { it.id }
+        } else {
+            parseSearchPhotos(response)
+        }
+    }
+
+    private fun parsePhotoItems(response: List<*>): List<PhotoItem> {
+        val photos = mutableListOf<PhotoItem>()
+        appendPhotoItems(response, photos)
+        return photos.distinctBy { it.id }
+    }
+
     private fun appendPhotoItems(
         items: List<*>,
         target: MutableList<PhotoItem>,
@@ -587,6 +616,55 @@ class GalleryRepository(private val container: AppContainer) {
         }
     }
 
+    suspend fun getAlbums(): Result<List<AlbumItem>> {
+        return try {
+            val rawAlbums = container.albumApi.AlbumControllerFindAll()
+            val albums = rawAlbums.mapNotNull { item ->
+                val id = parseNumericValue(item["id"]) ?: return@mapNotNull null
+                val name = (item["name"] as? String)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: return@mapNotNull null
+                val coverRaw = item["cover"]
+                val coverFileId = parseNumericValue(
+                    item["coverFileId"] ?: item["coverId"] ?: item["fileId"] ?: coverRaw
+                ) ?: 0.0
+                val coverMd5 = when (coverRaw) {
+                    is String -> coverRaw.substringBefore(",").trim().takeIf { it.length >= 16 }.orEmpty()
+                    else -> ""
+                }
+                val fileCount = parseNumericValue(
+                    item["fileNums"] ?: item["count"] ?: item["fileCount"] ?: item["total"]
+                )?.toInt() ?: 0
+                AlbumItem(
+                    id = id,
+                    name = name,
+                    coverMd5 = coverMd5,
+                    coverFileId = coverFileId,
+                    fileCount = fileCount
+                )
+            }
+
+            val missingCoverIds = albums
+                .filter { it.coverMd5.isBlank() && it.coverFileId > 0 }
+                .map { it.coverFileId }
+                .distinct()
+            val md5Map = if (missingCoverIds.isNotEmpty()) getFileMd5ByIds(missingCoverIds) else emptyMap()
+
+            Result.success(
+                albums.map { album ->
+                    if (album.coverMd5.isNotBlank()) {
+                        album
+                    } else {
+                        album.copy(coverMd5 = md5Map[album.coverFileId].orEmpty())
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getFolderDetail(folderId: String): Result<FolderDetailData> {
         return try {
             val response = container.gatewayApi.GatewayControllerPart5FolderViewDetail(folderId)
@@ -616,57 +694,43 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getFolderFiles(folderId: String): Result<List<PhotoItem>> {
         return try {
             val response = container.gatewayApi.GatewayControllerPart5FolderFileInTimeline(folderId)
-            val photos = mutableListOf<PhotoItem>()
+            Result.success(parsePhotoItems(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            // Try timeline-style "extra" format
-            val extra = response["extra"] as? Map<*, *>
-            if (extra != null) {
-                for ((_, value) in extra) {
-                    val monthData = value as? Map<*, *> ?: continue
-                    val result = monthData["result"] as? List<*> ?: continue
-                    for (dayEntry in result) {
-                        val dayMap = dayEntry as? Map<*, *> ?: continue
-                        val day = dayMap["day"] as? String ?: continue
-                        val addr = parseAddr(dayMap)
-                        val photoList = dayMap["list"] as? List<*> ?: continue
-                        for (photo in photoList) {
-                            val photoMap = photo as? Map<*, *> ?: continue
-                            parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
-                        }
-                    }
-                }
-            }
+    suspend fun getAlbumFiles(albumId: Double): Result<List<PhotoItem>> {
+        return try {
+            val response = container.albumApi.AlbumControllerFindAlbumFilesV2(albumId, "v2")
+            Result.success(parsePhotoItems(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            // Try "result" timeline-style format (list of day groups with "day" and "list")
-            if (photos.isEmpty()) {
-                val resultList = response["result"] as? List<*>
-                if (resultList != null) {
-                    for (dayEntry in resultList) {
-                        val dayMap = dayEntry as? Map<*, *> ?: continue
-                        val day = dayMap["day"] as? String ?: continue
-                        val addr = parseAddr(dayMap)
-                        val photoList = dayMap["list"] as? List<*> ?: continue
-                        for (photo in photoList) {
-                            val photoMap = photo as? Map<*, *> ?: continue
-                            parsePhotoItem(photoMap, fallbackMtime = day, fallbackAddr = addr)?.let(photos::add)
-                        }
-                    }
-                }
-            }
+    suspend fun getRecentFiles(): Result<List<PhotoItem>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart3FilesRecent("all")
+            Result.success(parsePhotoItems(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            // Try flat list format
-            if (photos.isEmpty()) {
-                val list = response["fileList"] as? List<*>
-                    ?: response["list"] as? List<*>
-                    ?: response["files"] as? List<*>
-                    ?: emptyList<Any>()
-                for (item in list) {
-                    val map = item as? Map<*, *> ?: continue
-                    parsePhotoItem(map)?.let(photos::add)
-                }
-            }
+    suspend fun getVideoFiles(): Result<List<PhotoItem>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2FilesInCategoriesV2("all", "videos")
+            Result.success(parsePhotoItems(response))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
-            Result.success(photos)
+    suspend fun getTrashFiles(): Result<List<PhotoItem>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2FilesInTrashFlat()
+            Result.success(parsePhotoItems(response))
         } catch (e: Exception) {
             Result.failure(e)
         }

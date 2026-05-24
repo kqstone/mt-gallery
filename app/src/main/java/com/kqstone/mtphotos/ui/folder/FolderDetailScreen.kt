@@ -2,33 +2,21 @@ package com.kqstone.mtphotos.ui.folder
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalDensity
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,24 +32,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kqstone.mtphotos.ui.util.ThumbnailImage
-import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
-import com.kqstone.mtphotos.ui.gallery.LazyGridVerticalFastScroller
-import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
+import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
+import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.ThumbnailImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,77 +58,16 @@ fun FolderDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+    val timelineLayout = remember(uiState.photos) {
+        buildPhotoTimelineLayout(uiState.photos)
+    }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.selectionManager.clearSelection()
     }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
 
-    val gridState = rememberLazyGridState()
-    val coroutineScope = rememberCoroutineScope()
-
-    var dragStartPhoto by remember { mutableStateOf<UnifiedPhotoItem?>(null) }
-    var initialSelection by remember { mutableStateOf<Set<Double>>(emptySet()) }
-    var currentDragPosition by remember { mutableStateOf<Offset?>(null) }
-
-    fun updateDragSelection(pointerOffset: Offset) {
-        val currentItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-            val x = pointerOffset.x.toInt()
-            val y = pointerOffset.y.toInt()
-            x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
-            y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
-        }
-        if (currentItem != null) {
-            val photoId = currentItem.key as? Double
-            if (photoId != null) {
-                val currentPhoto = uiState.photos.find { it.id == photoId }
-                val startPhoto = dragStartPhoto
-                if (currentPhoto != null && startPhoto != null) {
-                    val startIndex = uiState.photos.indexOf(startPhoto)
-                    val currentIndex = uiState.photos.indexOf(currentPhoto)
-                    if (startIndex != -1 && currentIndex != -1) {
-                        val min = minOf(startIndex, currentIndex)
-                        val max = maxOf(startIndex, currentIndex)
-                        val dragRangeIds = uiState.photos.subList(min, max + 1).map { it.id }.toSet()
-                        viewModel.selectionManager.setSelectedIds(initialSelection + dragRangeIds)
-                    }
-                }
-            }
-        }
-    }
-
-    val density = LocalDensity.current
-    LaunchedEffect(currentDragPosition) {
-        val pos = currentDragPosition
-        if (pos != null) {
-            val gridHeight = gridState.layoutInfo.viewportSize.height
-            if (gridHeight > 0) {
-                val threshold = with(density) { 80.dp.toPx() }
-                val maxScrollSpeed = 25f
-
-                if (pos.y < threshold) {
-                    while (currentDragPosition != null && currentDragPosition!!.y < threshold) {
-                        val activePos = currentDragPosition ?: break
-                        val ratio = ((threshold - activePos.y) / threshold).coerceIn(0f, 1f)
-                        val scrollAmount = -(maxScrollSpeed * ratio)
-                        gridState.scrollBy(scrollAmount)
-                        updateDragSelection(activePos)
-                        delay(16)
-                    }
-                } else if (pos.y > gridHeight - threshold) {
-                    while (currentDragPosition != null && currentDragPosition!!.y > gridHeight - threshold) {
-                        val activePos = currentDragPosition ?: break
-                        val ratio = ((activePos.y - (gridHeight - threshold)) / threshold).coerceIn(0f, 1f)
-                        val scrollAmount = maxScrollSpeed * ratio
-                        gridState.scrollBy(scrollAmount)
-                        updateDragSelection(activePos)
-                        delay(16)
-                    }
-                }
-            }
-        }
-    }
+    val showDeleteDialog = remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(folderId) {
         viewModel.loadFolder(folderId)
@@ -156,7 +78,7 @@ fun FolderDetailScreen(
             SelectionTopBar(
                 selectedCount = selectedIds.size,
                 onSelectAll = { viewModel.selectAll() },
-                onDelete = { showDeleteDialog = true },
+                onDelete = { showDeleteDialog.value = true },
                 onClearSelection = { viewModel.selectionManager.clearSelection() },
                 modifier = Modifier.statusBarsPadding()
             )
@@ -184,7 +106,6 @@ fun FolderDetailScreen(
                             text = uiState.error!!,
                             color = MaterialTheme.colorScheme.error
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "点击重试",
                             modifier = Modifier.clickable { viewModel.loadFolder(folderId) },
@@ -193,130 +114,53 @@ fun FolderDetailScreen(
                     }
                 }
             }
-            else -> {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(uiState.columnCount),
-                        contentPadding = PaddingValues(1.dp),
-                        horizontalArrangement = Arrangement.spacedBy(1.dp),
-                        verticalArrangement = Arrangement.spacedBy(1.dp),
-                        state = gridState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(uiState.columnCount) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { offset ->
-                                        val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-                                            val x = offset.x.toInt()
-                                            val y = offset.y.toInt()
-                                            x in itemInfo.offset.x .. (itemInfo.offset.x + itemInfo.size.width) &&
-                                            y in itemInfo.offset.y .. (itemInfo.offset.y + itemInfo.size.height)
-                                        }
-                                        if (startItem != null) {
-                                            val photoId = startItem.key as? Double
-                                            if (photoId != null) {
-                                                val photo = uiState.photos.find { it.id == photoId }
-                                                if (photo != null) {
-                                                    dragStartPhoto = photo
-                                                    val currentSelected = viewModel.selectionManager.selectedPhotoIds.value
-                                                    if (photo.id !in currentSelected) {
-                                                        viewModel.selectionManager.toggleSelection(photo.id)
-                                                    }
-                                                    initialSelection = viewModel.selectionManager.selectedPhotoIds.value
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onDrag = { change, _ ->
-                                        change.consume()
-                                        currentDragPosition = change.position
-                                        updateDragSelection(change.position)
-                                    },
-                                    onDragEnd = {
-                                        currentDragPosition = null
-                                        coroutineScope.launch {
-                                            delay(150)
-                                            dragStartPhoto = null
-                                        }
-                                    },
-                                    onDragCancel = {
-                                        currentDragPosition = null
-                                        coroutineScope.launch {
-                                            delay(150)
-                                            dragStartPhoto = null
-                                        }
-                                    }
-                                )
-                            }
-                    ) {
-                        if (uiState.subfolders.isNotEmpty()) {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                SubfolderSection(
-                                    subfolders = uiState.subfolders,
-                                    onFolderClick = onFolderClick,
-                                    thumbUrlProvider = { md5, _ -> viewModel.getThumbUrlByMd5(md5) }
-                                )
-                            }
-                        }
-
-                        if (uiState.photos.isEmpty() && uiState.subfolders.isEmpty()) {
-                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "文件夹为空",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        items(
-                            items = uiState.photos,
-                            key = { it.id }
-                        ) { photo ->
-                            PhotoThumbnail(
-                                photo = photo,
-                                thumbUrl = viewModel.getThumbUrl(photo),
-                                onClick = {
-                                    if (dragStartPhoto?.id != photo.id) {
-                                        if (isSelectionMode) {
-                                            viewModel.selectionManager.toggleSelection(photo.id)
-                                        } else {
-                                            onPhotoClick(photo)
-                                        }
-                                    }
-                                },
-                                onLongClick = null,
-                                isSelected = photo.id in selectedIds,
-                                isSelectionMode = isSelectionMode
-                            )
-                        }
-                    }
-
-                    LazyGridVerticalFastScroller(
-                        gridState = gridState,
-                        modifier = Modifier.align(Alignment.CenterEnd)
+            uiState.photos.isEmpty() && uiState.subfolders.isEmpty() -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "文件夹为空",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            else -> {
+                TimelinePhotoGrid(
+                    months = timelineLayout.months,
+                    columnCount = uiState.columnCount,
+                    selectedPhotoIds = selectedIds,
+                    isSelectionMode = isSelectionMode,
+                    selectionManager = viewModel.selectionManager,
+                    getThumbUrl = viewModel::getThumbUrl,
+                    onPhotoClick = onPhotoClick,
+                    onColumnCountChange = viewModel::updateColumnCount,
+                    showMonthHeaders = timelineLayout.showMonthHeaders,
+                    showDayHeaders = timelineLayout.showDayHeaders,
+                    modifier = Modifier.fillMaxSize(),
+                    leadingContent = if (uiState.subfolders.isNotEmpty()) {
+                        {
+                            SubfolderSection(
+                                subfolders = uiState.subfolders,
+                                onFolderClick = onFolderClick,
+                                thumbUrlProvider = viewModel::getThumbUrlByMd5
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                )
             }
         }
     }
 
-    if (showDeleteDialog) {
+    if (showDeleteDialog.value) {
         DeleteConfirmDialog(
             selectedCount = selectedIds.size,
             onConfirm = {
-                showDeleteDialog = false
+                showDeleteDialog.value = false
                 if (PermissionHelper.requestManageStoragePermission(context)) {
                     viewModel.deleteSelected()
                 }
             },
-            onDismiss = { showDeleteDialog = false }
+            onDismiss = { showDeleteDialog.value = false }
         )
     }
 }
@@ -325,7 +169,7 @@ fun FolderDetailScreen(
 private fun SubfolderSection(
     subfolders: List<FolderItem>,
     onFolderClick: (String) -> Unit,
-    thumbUrlProvider: (String, Double) -> String
+    thumbUrlProvider: (String) -> String
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
@@ -343,9 +187,7 @@ private fun SubfolderSection(
             ) { folder ->
                 SubfolderCard(
                     folder = folder,
-                    thumbUrl = if (folder.coverMd5.isNotEmpty()) {
-                        thumbUrlProvider(folder.coverMd5, folder.coverFileId)
-                    } else null,
+                    thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider),
                     onClick = { onFolderClick(folder.id) }
                 )
             }
@@ -381,12 +223,14 @@ private fun SubfolderCard(
                     )
                 } else {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "📁")
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
@@ -398,7 +242,7 @@ private fun SubfolderCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${folder.fileCount} 张",
+                    text = "${folder.fileCount} 项",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
