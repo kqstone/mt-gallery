@@ -127,7 +127,10 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
             val wifiOnly = container.prefsManager.getBackupWifiOnlySync()
             val syncInterval = container.prefsManager.getSyncIntervalSync().toLong()
             BackupScheduler.scheduleAll(this, wifiOnly, syncInterval)
+        } else {
+            BackupScheduler.schedulePeriodicCloudDelete(this)
         }
+        BackupScheduler.triggerCloudDeleteWork(this)
     }
 }
 
