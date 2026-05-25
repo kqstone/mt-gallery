@@ -11,6 +11,7 @@ import com.google.gson.Gson
 import com.kqstone.mtphotos.data.local.BackupDestinationDefaults
 import com.kqstone.mtphotos.data.local.FolderPathMatcher
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
+import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.repository.BackupDestinationNode
@@ -626,7 +627,10 @@ class BackupSettingsViewModel(
             _uiState.value = _uiState.value.copy(isOptimizing = true)
             try {
                 val stats = storageOptimizer.getOptimizationStats()
-                storageOptimizer.optimizeStorage(stats.files)
+                val (successCount, _) = storageOptimizer.optimizeStorage(stats.files)
+                if (successCount > 0) {
+                    MediaChangeObserver.markDirty()
+                }
                 loadStats()
                 loadFolders()
             } catch (e: Exception) {

@@ -247,7 +247,7 @@ interface GatewayApi {
 
     /** 按类型分类的文件列表 */
     @GET("/gateway/filesInCategoriesV2")
-    suspend fun GatewayControllerPart2FilesInCategoriesV2(@Query("galleryIds") galleryIds: String, @Query("type") type: String): List<Map<String, Any>>
+    suspend fun GatewayControllerPart2FilesInCategoriesV2(@Query("galleryIds") galleryIds: String, @Query("type") type: String): Map<String, Any>
 
     /** 回收站中的文件 - 已废弃 */
     @GET("/gateway/filesInTrash")

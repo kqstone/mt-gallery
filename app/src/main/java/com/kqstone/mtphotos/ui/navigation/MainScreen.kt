@@ -1,31 +1,24 @@
 package com.kqstone.mtphotos.ui.navigation
 
 import android.net.Uri
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -58,7 +51,7 @@ private data class TabItem(
 
 private val tabs = listOf(
     TabItem("photos", "照片", Icons.Default.PhotoLibrary),
-    TabItem("folders", "文件夹", Icons.Default.Folder),
+    TabItem("folders", "图集", Icons.Default.Folder),
     TabItem("discovery", "发现", Icons.Default.Explore)
 )
 
@@ -160,8 +153,14 @@ fun MainScreen(
             composable("folders") {
                 FolderScreen(
                     viewModel = folderViewModel,
+                    onAlbumClick = { albumId, title ->
+                        innerNavController.navigate("album/$albumId/${Uri.encode(title)}")
+                    },
                     onFolderClick = { folderId ->
                         innerNavController.navigate("folder/$folderId")
+                    },
+                    onCategoryClick = { type ->
+                        innerNavController.navigate("collectionCategory/$type")
                     },
                     onSettingsClick = onNavigateToSettings
                 )
@@ -196,6 +195,39 @@ fun MainScreen(
                     },
                     onPhotoClick = { photo ->
                         val allPhotos = folderDetailViewModel.getAllLoadedPhotos()
+                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                        onNavigateToViewer(allPhotos, index)
+                    },
+                    onBack = { innerNavController.popBackStack() }
+                )
+            }
+
+            composable("album/{albumId}/{title}") { backStackEntry ->
+                val albumId = backStackEntry.arguments?.getString("albumId") ?: return@composable
+                val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode) ?: "相册"
+                CategoryFileListScreen(
+                    viewModel = categoryFileListViewModel,
+                    loadType = "album",
+                    loadParam = albumId,
+                    title = title,
+                    onPhotoClick = { photo ->
+                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                        onNavigateToViewer(allPhotos, index)
+                    },
+                    onBack = { innerNavController.popBackStack() }
+                )
+            }
+
+            composable("collectionCategory/{type}") { backStackEntry ->
+                val type = backStackEntry.arguments?.getString("type") ?: return@composable
+                CategoryFileListScreen(
+                    viewModel = categoryFileListViewModel,
+                    loadType = type,
+                    loadParam = "",
+                    title = collectionCategoryTitle(type),
+                    onPhotoClick = { photo ->
+                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                         val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(allPhotos, index)
                     },
@@ -263,5 +295,15 @@ fun MainScreen(
                 )
             }
         }
+    }
+}
+
+private fun collectionCategoryTitle(type: String): String {
+    return when (type) {
+        "favorites" -> "收藏"
+        "recent" -> "最近添加"
+        "videos" -> "视频"
+        "trash" -> "回收站"
+        else -> "类别"
     }
 }

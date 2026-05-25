@@ -49,6 +49,26 @@ class CategoryFileListViewModel(
         loadFiles { galleryRepository.getClassifyFileList(id, cid) }
     }
 
+    fun loadAlbumFiles(albumId: Double) {
+        loadFiles { galleryRepository.getAlbumFiles(albumId) }
+    }
+
+    fun loadFavoritesFiles() {
+        loadAlbumFiles(1.0)
+    }
+
+    fun loadRecentFiles() {
+        loadFiles { galleryRepository.getRecentFiles() }
+    }
+
+    fun loadVideoFiles() {
+        loadFiles { galleryRepository.getVideoFiles() }
+    }
+
+    fun loadTrashFiles() {
+        loadFiles { galleryRepository.getTrashFiles() }
+    }
+
     fun loadLocationFiles(city: String) {
         loadLocationFiles(city, district = null)
     }
