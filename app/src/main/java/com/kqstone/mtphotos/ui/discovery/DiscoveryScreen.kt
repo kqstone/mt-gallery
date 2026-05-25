@@ -61,6 +61,8 @@ import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Map
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +71,7 @@ fun DiscoveryScreen(
     onPersonClick: (String) -> Unit,
     onSceneClick: (String, String?) -> Unit,
     onLocationClick: (String) -> Unit,
+    onMapClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -110,6 +113,11 @@ fun DiscoveryScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        // 足迹地图入口卡片
+                        item {
+                            MapEntryCard(onClick = onMapClick)
+                        }
+
                         if (uiState.people.isNotEmpty()) {
                             item {
                                 PeopleSection(
@@ -400,6 +408,79 @@ private fun LocationCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun MapEntryCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .bounceClick(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Transparent
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF6C8CF5),
+                            Color(0xFF9B7CF5),
+                            Color(0xFFB06CF5)
+                        )
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            Color.White.copy(alpha = 0.2f),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Map,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "足迹地图",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "在地图上查看你的照片足迹",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.8f),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }

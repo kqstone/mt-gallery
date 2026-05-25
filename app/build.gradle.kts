@@ -96,5 +96,8 @@ dependencies {
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
 
+    // 高德地图 SDK
+    implementation(libs.amap.map3d)
+
     debugImplementation(libs.androidx.ui.tooling)
 }

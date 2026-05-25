@@ -46,6 +46,8 @@ import com.kqstone.mtphotos.ui.folder.FolderScreen
 import com.kqstone.mtphotos.ui.folder.FolderViewModel
 import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.map.MapScreen
+import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 
 private data class TabItem(
@@ -88,6 +90,9 @@ fun MainScreen(
     )
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
+    )
+    val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = MapViewModel.Factory(container.galleryRepository)
     )
 
     Scaffold(
@@ -178,6 +183,9 @@ fun MainScreen(
                     onLocationClick = { city ->
                         innerNavController.navigate("location/${Uri.encode(city)}")
                     },
+                    onMapClick = {
+                        innerNavController.navigate("map")
+                    },
                     onSettingsClick = onNavigateToSettings
                 )
             }
@@ -245,6 +253,13 @@ fun MainScreen(
                         val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(allPhotos, index)
                     },
+                    onBack = { innerNavController.popBackStack() }
+                )
+            }
+
+            composable("map") {
+                MapScreen(
+                    viewModel = mapViewModel,
                     onBack = { innerNavController.popBackStack() }
                 )
             }

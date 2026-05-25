@@ -67,6 +67,19 @@ data class LocationItem(
     val coverMd5: String = ""
 )
 
+/**
+ * 地图专用照片项，包含 GPS 坐标信息。
+ */
+data class MapPhotoItem(
+    val id: Double,
+    val md5: String,
+    val lat: Double,
+    val lng: Double,
+    val fileName: String = "",
+    val fileType: String = "",
+    val mtime: String = ""
+)
+
 enum class SearchType {
     AUTO,
     FILE_NAME,
@@ -1017,6 +1030,64 @@ class GalleryRepository(private val container: AppContainer) {
             val albumIds = container.albumApi.AlbumControllerFileInAlbums(photoId)
             Result.success(albumIds.any { it.toInt() == favAlbumId.toInt() })
         } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 获取所有带 GPS 坐标的照片，供足迹地图使用。
+     * 调用 /gateway/allFilesForMap 接口。
+     */
+    suspend fun getAllFilesForMap(): Result<List<MapPhotoItem>> {
+        return try {
+            val list = container.gatewayApi.GatewayControllerPart4GetAllFilesForMap()
+            val photos = list.mapNotNull { item ->
+                val id = item["id"]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
+                val md5 = item["MD5"] as? String ?: item["md5"] as? String ?: return@mapNotNull null
+
+                // 尝试从 gps 对象提取坐标
+                val gps = item["gps"] as? Map<*, *>
+                var lat: Double? = null
+                var lng: Double? = null
+
+                if (gps != null) {
+                    lat = gps["lat"]?.toString()?.toDoubleOrNull()
+                        ?: gps["latitude"]?.toString()?.toDoubleOrNull()
+                    lng = gps["lng"]?.toString()?.toDoubleOrNull()
+                        ?: gps["lon"]?.toString()?.toDoubleOrNull()
+                        ?: gps["longitude"]?.toString()?.toDoubleOrNull()
+                }
+
+                // 直接从顶层字段提取
+                if (lat == null || lng == null) {
+                    lat = item["lat"]?.toString()?.toDoubleOrNull()
+                        ?: item["latitude"]?.toString()?.toDoubleOrNull()
+                    lng = item["lng"]?.toString()?.toDoubleOrNull()
+                        ?: item["lon"]?.toString()?.toDoubleOrNull()
+                        ?: item["longitude"]?.toString()?.toDoubleOrNull()
+                }
+
+                // 过滤无效坐标
+                if (lat == null || lng == null || lat == 0.0 || lng == 0.0) return@mapNotNull null
+
+                val fileName = item["fileName"] as? String ?: item["name"] as? String ?: ""
+                val fileType = item["fileType"] as? String ?: ""
+                val mtime = item["mtime"] as? String ?: ""
+
+                MapPhotoItem(
+                    id = id,
+                    md5 = md5,
+                    lat = lat,
+                    lng = lng,
+                    fileName = fileName,
+                    fileType = fileType,
+                    mtime = mtime
+                )
+            }
+            android.util.Log.d("MapRepo", "getAllFilesForMap: ${list.size} total, ${photos.size} with GPS")
+            Result.success(photos)
+        } catch (e: Exception) {
+            android.util.Log.e("MapRepo", "getAllFilesForMap failed", e)
             Result.failure(e)
         }
     }
