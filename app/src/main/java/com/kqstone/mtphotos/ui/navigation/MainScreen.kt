@@ -287,11 +287,18 @@ fun MainScreen(
 
             composable("map") {
                 val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-                    factory = MapViewModel.Factory(container.galleryRepository)
+                    factory = MapViewModel.Factory(
+                        galleryRepository = container.galleryRepository,
+                        syncRepository = container.syncRepository
+                    )
                 )
                 MapScreen(
                     viewModel = mapViewModel,
-                    onBack = { innerNavController.popBackStack() }
+                    onBack = { innerNavController.popBackStack() },
+                    onPhotoClick = { photo, list ->
+                        val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                        onNavigateToViewer(list, index)
+                    }
                 )
             }
         }

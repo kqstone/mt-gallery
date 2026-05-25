@@ -4,23 +4,20 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MapPhotoItem
+import com.kqstone.mtphotos.data.repository.SyncRepository
+import com.kqstone.mtphotos.data.repository.toUnifiedPhotoItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sqrt
 
-/**
- * 地图上一个聚合标记点，包含一组相邻照片。
- */
 data class MapCluster(
     val lat: Double,
     val lng: Double,
     val photos: List<MapPhotoItem>,
-    /** 用作封面缩略图的 MD5 */
     val coverMd5: String
 ) {
     val count: Int get() = photos.size
@@ -30,10 +27,25 @@ data class MapUiState(
     val isLoading: Boolean = true,
     val allPhotos: List<MapPhotoItem> = emptyList(),
     val clusters: List<MapCluster> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val selectedCluster: MapCluster? = null,
+    val selectedClusterPhotos: List<UnifiedPhotoItem> = emptyList(),
+    val isResolvingSelectedCluster: Boolean = false,
+    val cameraState: MapCameraState? = null
 )
 
-class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
+data class MapCameraState(
+    val lat: Double,
+    val lng: Double,
+    val zoom: Float,
+    val tilt: Float,
+    val bearing: Float
+)
+
+class MapViewModel(
+    private val galleryRepository: GalleryRepository,
+    private val syncRepository: SyncRepository? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
@@ -64,10 +76,6 @@ class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel
         }
     }
 
-    /**
-     * 地图缩放级别变化时，重新计算聚合。
-     * @param zoomLevel 高德地图缩放级别 (3-20)
-     */
     fun onZoomChanged(zoomLevel: Float) {
         val photos = _uiState.value.allPhotos
         if (photos.isEmpty()) return
@@ -76,37 +84,85 @@ class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel
         )
     }
 
-    fun getThumbUrlByMd5(md5: String): String {
-        return galleryRepository.getThumbUrlByMd5(md5)
-    }
-
     fun getThumbUrl(md5: String, fileId: Double): String {
         return galleryRepository.getThumbUrl(md5, fileId)
     }
 
-    /**
-     * 基于网格的快速聚合算法。
-     * 将地图按经纬度网格划分，同一网格内的照片聚合为一个标记。
-     * 网格大小根据缩放级别动态调整。
-     */
+    fun updateCameraState(
+        lat: Double,
+        lng: Double,
+        zoom: Float,
+        tilt: Float,
+        bearing: Float
+    ) {
+        val newState = MapCameraState(
+            lat = lat,
+            lng = lng,
+            zoom = zoom,
+            tilt = tilt,
+            bearing = bearing
+        )
+        if (_uiState.value.cameraState != newState) {
+            _uiState.value = _uiState.value.copy(cameraState = newState)
+        }
+    }
+
+    fun selectCluster(cluster: MapCluster?) {
+        if (cluster == null) {
+            _uiState.value = _uiState.value.copy(
+                selectedCluster = null,
+                selectedClusterPhotos = emptyList(),
+                isResolvingSelectedCluster = false
+            )
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            selectedCluster = cluster,
+            selectedClusterPhotos = emptyList(),
+            isResolvingSelectedCluster = true
+        )
+
+        viewModelScope.launch {
+            val resolvedPhotos = resolveClusterPhotos(cluster.photos)
+            val currentState = _uiState.value
+            if (currentState.selectedCluster == cluster) {
+                _uiState.value = currentState.copy(
+                    selectedClusterPhotos = resolvedPhotos,
+                    isResolvingSelectedCluster = false
+                )
+            }
+        }
+    }
+
+    private suspend fun resolveClusterPhotos(photos: List<MapPhotoItem>): List<UnifiedPhotoItem> {
+        if (photos.isEmpty()) return emptyList()
+
+        val entitiesByCloudId = syncRepository
+            ?.findMediaEntitiesByIds(photos.map { it.id })
+            ?.associateBy { it.cloudId }
+            .orEmpty()
+
+        return photos.map { photo ->
+            entitiesByCloudId[photo.id]?.toUnifiedPhotoItem() ?: photo.toUnifiedPhotoItem()
+        }
+    }
+
     private fun clusterPhotos(photos: List<MapPhotoItem>, zoomLevel: Float): List<MapCluster> {
         if (photos.isEmpty()) return emptyList()
 
-        // 根据缩放级别计算网格大小（度）
-        // 缩放级别越高，网格越小，标记越分散
         val gridSize = when {
-            zoomLevel >= 18 -> 0.0005   // 街道级别：几乎不聚合
+            zoomLevel >= 18 -> 0.0005
             zoomLevel >= 16 -> 0.002
             zoomLevel >= 14 -> 0.008
             zoomLevel >= 12 -> 0.03
             zoomLevel >= 10 -> 0.1
-            zoomLevel >= 8  -> 0.4
-            zoomLevel >= 6  -> 1.5
-            zoomLevel >= 4  -> 5.0
-            else -> 15.0              // 世界级别：大范围聚合
+            zoomLevel >= 8 -> 0.4
+            zoomLevel >= 6 -> 1.5
+            zoomLevel >= 4 -> 5.0
+            else -> 15.0
         }
 
-        // 按网格分组
         val grid = mutableMapOf<Pair<Int, Int>, MutableList<MapPhotoItem>>()
         for (photo in photos) {
             val gridX = (photo.lng / gridSize).toInt()
@@ -115,7 +171,6 @@ class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel
             grid.getOrPut(key) { mutableListOf() }.add(photo)
         }
 
-        // 每个网格生成一个聚合点
         return grid.values.map { group ->
             val centerLat = group.sumOf { it.lat } / group.size
             val centerLng = group.sumOf { it.lng } / group.size
@@ -128,15 +183,30 @@ class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel
         }
     }
 
-    class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val galleryRepository: GalleryRepository,
+        private val syncRepository: SyncRepository? = null
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MapViewModel(galleryRepository) as T
+            return MapViewModel(galleryRepository, syncRepository) as T
         }
     }
 
     companion object {
-        /** 默认缩放级别 */
         const val DEFAULT_ZOOM_LEVEL = 5f
     }
+}
+
+private fun MapPhotoItem.toUnifiedPhotoItem(): UnifiedPhotoItem {
+    return UnifiedPhotoItem(
+        cloudId = id,
+        md5 = md5,
+        fileName = fileName,
+        fileType = fileType,
+        mtime = mtime,
+        width = 0.0,
+        height = 0.0,
+        syncStatus = SyncStatus.CLOUD_ONLY
+    )
 }

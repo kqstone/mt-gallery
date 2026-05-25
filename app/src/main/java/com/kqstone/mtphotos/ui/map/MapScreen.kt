@@ -1,7 +1,12 @@
 package com.kqstone.mtphotos.ui.map
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,13 +14,12 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,25 +27,16 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,15 +48,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.ImageLoader
@@ -71,45 +65,68 @@ import com.amap.api.maps.MapView
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.CameraPosition
 import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.LatLngBounds
 import com.amap.api.maps.model.Marker
 import com.amap.api.maps.model.MarkerOptions
-import com.kqstone.mtphotos.ui.util.ThumbnailImage
+import com.amap.api.maps.model.MyLocationStyle
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
+import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     viewModel: MapViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
     val imageLoader = remember { ImageLoader(context) }
+    val markerBitmapCache = remember { mutableMapOf<String, Bitmap>() }
 
-    // BottomSheet 状态
-    var selectedCluster by remember { mutableStateOf<MapCluster?>(null) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        )
+    }
 
-    // MapView 引用
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineLocationGranted || coarseLocationGranted) {
+            hasLocationPermission = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    val selectedCluster = uiState.selectedCluster
+
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var aMap by remember { mutableStateOf<AMap?>(null) }
-
-    // 当前标记列表（用于清除重绘）
     var currentMarkers by remember { mutableStateOf<List<Marker>>(emptyList()) }
-
-    // 标记地图缩放级别，避免重复刷新
     var lastZoomLevel by remember { mutableStateOf(MapViewModel.DEFAULT_ZOOM_LEVEL) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 高德地图 AndroidView
         AndroidView(
             factory = { ctx ->
-                // 高德地图隐私合规接口调用（8.1.0及以上版本必须在 MapView 实例化之前调用）
                 com.amap.api.maps.MapsInitializer.updatePrivacyShow(ctx, true, true)
                 com.amap.api.maps.MapsInitializer.updatePrivacyAgree(ctx, true)
 
@@ -119,7 +136,6 @@ fun MapScreen(
                     val map = mv.map
                     aMap = map
 
-                    // 设置地图风格
                     map.uiSettings.apply {
                         isZoomControlsEnabled = false
                         isCompassEnabled = true
@@ -127,38 +143,49 @@ fun MapScreen(
                         isMyLocationButtonEnabled = false
                     }
 
-                    // 设置初始中心（中国中心）和缩放级别
+                    val initialCameraState = uiState.cameraState
                     map.moveCamera(
                         CameraUpdateFactory.newCameraPosition(
-                            CameraPosition(
-                                LatLng(35.0, 105.0), // 中国中心
-                                MapViewModel.DEFAULT_ZOOM_LEVEL,
-                                0f, 0f
-                            )
+                            if (initialCameraState != null) {
+                                CameraPosition(
+                                    LatLng(initialCameraState.lat, initialCameraState.lng),
+                                    initialCameraState.zoom,
+                                    initialCameraState.tilt,
+                                    initialCameraState.bearing
+                                )
+                            } else {
+                                CameraPosition(
+                                    LatLng(35.0, 105.0),
+                                    MapViewModel.DEFAULT_ZOOM_LEVEL,
+                                    0f,
+                                    0f
+                                )
+                            }
                         )
                     )
 
-                    // 监听缩放变化
                     map.setOnCameraChangeListener(object : AMap.OnCameraChangeListener {
-                        override fun onCameraChange(pos: CameraPosition?) {}
+                        override fun onCameraChange(pos: CameraPosition?) = Unit
+
                         override fun onCameraChangeFinish(pos: CameraPosition?) {
-                            pos?.let {
-                                val newZoom = it.zoom
-                                // 缩放级别变化超过 0.5 才触发重新聚合
-                                if (kotlin.math.abs(newZoom - lastZoomLevel) > 0.5f) {
-                                    lastZoomLevel = newZoom
-                                    viewModel.onZoomChanged(newZoom)
-                                }
+                            val cameraPosition = pos ?: return
+                            viewModel.updateCameraState(
+                                lat = cameraPosition.target.latitude,
+                                lng = cameraPosition.target.longitude,
+                                zoom = cameraPosition.zoom,
+                                tilt = cameraPosition.tilt,
+                                bearing = cameraPosition.bearing
+                            )
+                            val newZoom = cameraPosition.zoom
+                            if (abs(newZoom - lastZoomLevel) > 0.5f) {
+                                lastZoomLevel = newZoom
+                                viewModel.onZoomChanged(newZoom)
                             }
                         }
                     })
 
-                    // 点击标记
                     map.setOnMarkerClickListener { marker ->
-                        val cluster = marker.`object` as? MapCluster
-                        if (cluster != null) {
-                            selectedCluster = cluster
-                        }
+                        (marker.`object` as? MapCluster)?.let(viewModel::selectCluster)
                         true
                     }
                 }
@@ -166,14 +193,13 @@ fun MapScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // 生命周期管理
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 when (event) {
                     Lifecycle.Event.ON_RESUME -> mapView?.onResume()
                     Lifecycle.Event.ON_PAUSE -> mapView?.onPause()
                     Lifecycle.Event.ON_DESTROY -> mapView?.onDestroy()
-                    else -> {}
+                    else -> Unit
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -183,49 +209,75 @@ fun MapScreen(
             }
         }
 
-        // 当聚合数据更新时，重新绘制标记
+        LaunchedEffect(aMap, hasLocationPermission) {
+            val map = aMap ?: return@LaunchedEffect
+            if (hasLocationPermission) {
+                val myLocationStyle = MyLocationStyle()
+                myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW)
+                map.setMyLocationStyle(myLocationStyle)
+                map.isMyLocationEnabled = true
+                map.uiSettings.isMyLocationButtonEnabled = true
+            }
+        }
+
         LaunchedEffect(aMap, uiState.clusters) {
             val map = aMap ?: return@LaunchedEffect
             val clusters = uiState.clusters
             if (clusters.isEmpty() && !uiState.isLoading) return@LaunchedEffect
             Log.d("MapScreen", "draw markers clusters=${clusters.size}")
 
-            // 清除旧标记
             currentMarkers.forEach { it.remove() }
             val newMarkers = mutableListOf<Marker>()
+            val pendingMarkers = mutableListOf<PendingMarkerRender>()
 
             for (cluster in clusters) {
-                val markerBitmap = MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
+                val coverPhoto = cluster.photos.firstOrNull()
+                val thumbUrl = coverPhoto?.let { viewModel.getThumbUrl(it.md5, it.id) }
+                val cacheKey = buildMarkerCacheKey(cluster, thumbUrl)
+                val cachedBitmap = markerBitmapCache[cacheKey]
+                val initialBitmap = cachedBitmap ?: MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
 
-                val markerOptions = MarkerOptions()
-                    .position(LatLng(cluster.lat, cluster.lng))
-                    .icon(BitmapDescriptorFactory.fromBitmap(markerBitmap))
-                    .anchor(0.5f, 1.0f)
-
-                val marker = map.addMarker(markerOptions)
+                val marker = map.addMarker(
+                    MarkerOptions()
+                        .position(LatLng(cluster.lat, cluster.lng))
+                        .icon(BitmapDescriptorFactory.fromBitmap(initialBitmap))
+                        .anchor(0.5f, 0.5f)
+                )
                 marker?.setObject(cluster)
-                marker?.let { newMarkers.add(it) }
+                marker?.let {
+                    newMarkers.add(it)
+                    if (cachedBitmap == null && !thumbUrl.isNullOrEmpty()) {
+                        pendingMarkers += PendingMarkerRender(
+                            cacheKey = cacheKey,
+                            cluster = cluster,
+                            thumbUrl = thumbUrl,
+                            marker = it
+                        )
+                    }
+                }
             }
 
             currentMarkers = newMarkers
 
-            // 首次加载时，自动缩放到包含所有标记的范围
-            if (uiState.allPhotos.isNotEmpty() && lastZoomLevel == MapViewModel.DEFAULT_ZOOM_LEVEL) {
-                val boundsBuilder = LatLngBounds.Builder()
-                uiState.allPhotos.forEach { photo ->
-                    boundsBuilder.include(LatLng(photo.lat, photo.lng))
-                }
-                try {
-                    map.animateCamera(
-                        CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 80)
+            pendingMarkers.forEach { pending ->
+                launch(Dispatchers.IO) {
+                    val bitmap = MapClusterRenderer.createCircularThumbMarkerBitmap(
+                        context = context,
+                        thumbUrl = pending.thumbUrl,
+                        count = pending.cluster.count,
+                        imageLoader = imageLoader
                     )
-                } catch (_: Exception) {
-                    // 防止只有一个点时 bounds 异常
+                    markerBitmapCache[pending.cacheKey] = bitmap
+                    withContext(Dispatchers.Main) {
+                        if (pending.marker in currentMarkers && pending.marker.`object` == pending.cluster) {
+                            pending.marker.setIcon(BitmapDescriptorFactory.fromBitmap(bitmap))
+                            pending.marker.setAnchor(0.5f, 0.5f)
+                        }
+                    }
                 }
             }
         }
 
-        // 顶部半透明状态栏 + 返回按钮
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -246,7 +298,7 @@ fun MapScreen(
             ) {
                 IconButton(onClick = onBack) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "返回",
                         tint = Color.White
                     )
@@ -269,16 +321,13 @@ fun MapScreen(
             }
         }
 
-        // 加载指示器
         if (uiState.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "正在加载照片位置...",
@@ -289,7 +338,6 @@ fun MapScreen(
             }
         }
 
-        // 错误提示
         if (uiState.error != null) {
             Box(
                 modifier = Modifier
@@ -303,7 +351,7 @@ fun MapScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = uiState.error ?: "",
+                    text = uiState.error.orEmpty(),
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -329,22 +377,62 @@ fun MapScreen(
                 )
             }
         }
-    }
 
-    // 照片列表 BottomSheet
-    if (selectedCluster != null) {
-        ModalBottomSheet(
-            onDismissRequest = { selectedCluster = null },
-            sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
+        AnimatedVisibility(
+            visible = selectedCluster != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize()
         ) {
-            ClusterPhotoGrid(
-                cluster = selectedCluster!!,
-                thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
-                onDismiss = { selectedCluster = null }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { viewModel.selectCluster(null) }
+                    )
             )
+        }
+
+        AnimatedVisibility(
+            visible = selectedCluster != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            selectedCluster?.let { cluster ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                        )
+                ) {
+                    Column {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(top = 12.dp, bottom = 8.dp)
+                                .size(width = 32.dp, height = 4.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    shape = CircleShape
+                                )
+                        )
+                        ClusterPhotoGrid(
+                            cluster = cluster,
+                            photos = uiState.selectedClusterPhotos,
+                            isLoading = uiState.isResolvingSelectedCluster,
+                            thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
+                            onDismiss = { viewModel.selectCluster(null) },
+                            onPhotoClick = onPhotoClick
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -352,18 +440,42 @@ fun MapScreen(
 @Composable
 private fun ClusterPhotoGrid(
     cluster: MapCluster,
+    photos: List<UnifiedPhotoItem>,
+    isLoading: Boolean,
     thumbUrlProvider: (String, Double) -> String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val selectionManager = remember {
+        SelectionManager(
+            scope = coroutineScope,
+            onDelete = { Result.success(Unit) },
+            onError = {}
+        )
+    }
+
+    LaunchedEffect(photos) {
+        selectionManager.clearSelection()
+    }
+
+    val selectedPhotoIds by selectionManager.selectedPhotoIds.collectAsState()
+    val isSelectionMode = selectedPhotoIds.isNotEmpty()
+    var columnCount by remember { mutableStateOf(4) }
+
+    val timelineLayout = remember(photos) {
+        buildPhotoTimelineLayout(photos)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp)
     ) {
-        // 标题行
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -380,33 +492,56 @@ private fun ClusterPhotoGrid(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 照片网格
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            contentPadding = PaddingValues(bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.height(400.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(400.dp),
+            contentAlignment = Alignment.Center
         ) {
-            items(
-                items = cluster.photos,
-                key = { it.id }
-            ) { photo ->
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(4.dp))
-                ) {
-                    ThumbnailImage(
-                        url = thumbUrlProvider(photo.md5, photo.id),
-                        contentDescription = photo.fileName,
-                        modifier = Modifier.fillMaxSize(),
-                        key = photo.md5
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+
+                photos.isEmpty() -> {
+                    Text(
+                        text = "未找到可展示的照片",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                else -> {
+                    TimelinePhotoGrid(
+                        months = timelineLayout.months,
+                        columnCount = columnCount,
+                        selectedPhotoIds = selectedPhotoIds,
+                        isSelectionMode = isSelectionMode,
+                        selectionManager = selectionManager,
+                        getThumbUrl = { photo -> thumbUrlProvider(photo.md5, photo.id) },
+                        onPhotoClick = { photo -> onPhotoClick(photo, photos) },
+                        onColumnCountChange = { columnCount = it },
+                        showMonthHeaders = timelineLayout.showMonthHeaders,
+                        showDayHeaders = timelineLayout.showDayHeaders,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
         }
     }
+}
+
+private data class PendingMarkerRender(
+    val cacheKey: String,
+    val cluster: MapCluster,
+    val thumbUrl: String,
+    val marker: Marker
+)
+
+private fun buildMarkerCacheKey(cluster: MapCluster, thumbUrl: String?): String {
+    return listOf(
+        cluster.coverMd5,
+        cluster.count.toString(),
+        thumbUrl.orEmpty()
+    ).joinToString("|")
 }
