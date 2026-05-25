@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.map
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -46,12 +47,15 @@ class MapViewModel(private val galleryRepository: GalleryRepository) : ViewModel
         viewModelScope.launch {
             val result = galleryRepository.getAllFilesForMap()
             result.onSuccess { photos ->
+                val clusters = clusterPhotos(photos, DEFAULT_ZOOM_LEVEL)
+                Log.d("MapViewModel", "loadMapPhotos photos=${photos.size}, clusters=${clusters.size}")
                 _uiState.value = MapUiState(
                     isLoading = false,
                     allPhotos = photos,
-                    clusters = clusterPhotos(photos, DEFAULT_ZOOM_LEVEL)
+                    clusters = clusters
                 )
             }.onFailure { error ->
+                Log.e("MapViewModel", "loadMapPhotos failed", error)
                 _uiState.value = MapUiState(
                     isLoading = false,
                     error = error.message ?: "加载失败"

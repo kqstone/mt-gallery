@@ -91,10 +91,6 @@ fun MainScreen(
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
-    val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = MapViewModel.Factory(container.galleryRepository)
-    )
-
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -258,6 +254,9 @@ fun MainScreen(
             }
 
             composable("map") {
+                val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                    factory = MapViewModel.Factory(container.galleryRepository)
+                )
                 MapScreen(
                     viewModel = mapViewModel,
                     onBack = { innerNavController.popBackStack() }

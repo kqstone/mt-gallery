@@ -1041,55 +1041,152 @@ class GalleryRepository(private val container: AppContainer) {
     suspend fun getAllFilesForMap(): Result<List<MapPhotoItem>> {
         return try {
             val list = container.gatewayApi.GatewayControllerPart4GetAllFilesForMap()
-            val photos = list.mapNotNull { item ->
-                val id = item["id"]?.toString()?.toDoubleOrNull() ?: return@mapNotNull null
-                val md5 = item["MD5"] as? String ?: item["md5"] as? String ?: return@mapNotNull null
-
-                // 尝试从 gps 对象提取坐标
-                val gps = item["gps"] as? Map<*, *>
-                var lat: Double? = null
-                var lng: Double? = null
-
-                if (gps != null) {
-                    lat = gps["lat"]?.toString()?.toDoubleOrNull()
-                        ?: gps["latitude"]?.toString()?.toDoubleOrNull()
-                    lng = gps["lng"]?.toString()?.toDoubleOrNull()
-                        ?: gps["lon"]?.toString()?.toDoubleOrNull()
-                        ?: gps["longitude"]?.toString()?.toDoubleOrNull()
-                }
-
-                // 直接从顶层字段提取
-                if (lat == null || lng == null) {
-                    lat = item["lat"]?.toString()?.toDoubleOrNull()
-                        ?: item["latitude"]?.toString()?.toDoubleOrNull()
-                    lng = item["lng"]?.toString()?.toDoubleOrNull()
-                        ?: item["lon"]?.toString()?.toDoubleOrNull()
-                        ?: item["longitude"]?.toString()?.toDoubleOrNull()
-                }
-
-                // 过滤无效坐标
-                if (lat == null || lng == null || lat == 0.0 || lng == 0.0) return@mapNotNull null
-
-                val fileName = item["fileName"] as? String ?: item["name"] as? String ?: ""
-                val fileType = item["fileType"] as? String ?: ""
-                val mtime = item["mtime"] as? String ?: ""
-
-                MapPhotoItem(
-                    id = id,
-                    md5 = md5,
-                    lat = lat,
-                    lng = lng,
-                    fileName = fileName,
-                    fileType = fileType,
-                    mtime = mtime
+            val primaryParsed = list.mapNotNull(::parseMapPhotoItem)
+            val parsed = if (primaryParsed.isNotEmpty()) {
+                primaryParsed
+            } else {
+                val directList = runCatching {
+                    container.gatewayApi.GatewayControllerPart4GetFilesForMapDirect()
+                }.getOrDefault(emptyList())
+                val directParsed = directList.mapNotNull(::parseMapPhotoItem)
+                android.util.Log.d(
+                    "MapRepo",
+                    "allFilesForMap parsed empty; direct total=${directList.size}, parsed=${directParsed.size}"
+                )
+                directParsed
+            }
+            val missingInfoIds = parsed.filter { it.md5.isBlank() }.map { it.id }.distinct()
+            val infoById = if (missingInfoIds.isNotEmpty()) {
+                getMapFileInfoByIds(missingInfoIds)
+            } else {
+                emptyMap()
+            }
+            val photos = parsed.map { photo ->
+                val info = infoById[photo.id]
+                photo.copy(
+                    md5 = photo.md5.ifBlank { info?.md5.orEmpty() },
+                    fileName = photo.fileName.ifBlank { info?.fileName.orEmpty() },
+                    fileType = photo.fileType.ifBlank { info?.fileType.orEmpty() },
+                    mtime = photo.mtime.ifBlank { info?.mtime.orEmpty() }
                 )
             }
-            android.util.Log.d("MapRepo", "getAllFilesForMap: ${list.size} total, ${photos.size} with GPS")
+            android.util.Log.d(
+                "MapRepo",
+                "getAllFilesForMap: ${list.size} total, ${parsed.size} parsed, ${photos.count { it.md5.isNotBlank() }} with md5"
+            )
             Result.success(photos)
         } catch (e: Exception) {
             android.util.Log.e("MapRepo", "getAllFilesForMap failed", e)
             Result.failure(e)
         }
+    }
+
+    private fun parseMapPhotoItem(item: Map<String, Any>): MapPhotoItem? {
+        val id = firstDouble(item, "id", "fileId", "file_id")
+            ?: return null
+        val coordinates = parseMapCoordinates(item) ?: return null
+        if (coordinates.first == 0.0 || coordinates.second == 0.0) return null
+
+        return MapPhotoItem(
+            id = id,
+            md5 = firstRawString(item, "MD5", "md5", "fileMd5", "file_md5").orEmpty(),
+            lat = coordinates.first,
+            lng = coordinates.second,
+            fileName = firstRawString(item, "fileName", "filename", "name").orEmpty(),
+            fileType = firstRawString(item, "fileType", "file_type").orEmpty(),
+            mtime = firstRawString(item, "mtime", "createTime", "date").orEmpty()
+        )
+    }
+
+    private fun parseMapCoordinates(item: Map<String, Any>): Pair<Double, Double>? {
+        val gpsMaps = listOfNotNull(
+            item["gps"] as? Map<*, *>,
+            item["gpsInfo"] as? Map<*, *>,
+            item["gps_info"] as? Map<*, *>,
+            item["location"] as? Map<*, *>,
+            item["coordinate"] as? Map<*, *>,
+            item["coordinates"] as? Map<*, *>
+        )
+        for (gps in gpsMaps) {
+            val lat = firstDouble(gps, "lat", "latitude", "Latitude")
+            val lng = firstDouble(gps, "lng", "lon", "longitude", "Longitude")
+            if (lat != null && lng != null) return lat to lng
+        }
+
+        val lat = firstDouble(item, "lat", "latitude", "Latitude", "y")
+        val lng = firstDouble(item, "lng", "lon", "longitude", "Longitude", "x")
+        if (lat != null && lng != null) return lat to lng
+
+        for (key in listOf("lnglat", "lngLat", "latlng", "latLng", "location", "coordinate", "coordinates", "point")) {
+            parseCoordinateValue(item[key])?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseCoordinateValue(value: Any?): Pair<Double, Double>? {
+        return when (value) {
+            is List<*> -> {
+                val first = value.getOrNull(0)?.toString()?.toDoubleOrNull()
+                val second = value.getOrNull(1)?.toString()?.toDoubleOrNull()
+                if (first != null && second != null) lngLatToPair(first, second) else null
+            }
+            is String -> {
+                val parts = value.split(",", ";", " ").mapNotNull { it.trim().toDoubleOrNull() }
+                if (parts.size >= 2) lngLatToPair(parts[0], parts[1]) else null
+            }
+            else -> null
+        }
+    }
+
+    private fun lngLatToPair(first: Double, second: Double): Pair<Double, Double> {
+        return if (kotlin.math.abs(first) > 90 && kotlin.math.abs(second) <= 90) {
+            second to first
+        } else {
+            first to second
+        }
+    }
+
+    private suspend fun getMapFileInfoByIds(ids: List<Double>): Map<Double, MapPhotoItem> {
+        if (ids.isEmpty()) return emptyMap()
+        return runCatching {
+            ids.chunked(500).flatMap { chunk ->
+                val body = mapOf("ids" to chunk.map { it.toInt() })
+                container.gatewayApi.GatewayControllerPart4GetFileMD5List(body)
+            }.mapNotNull { item ->
+                val id = firstDouble(item, "id", "fileId", "file_id") ?: return@mapNotNull null
+                val md5 = firstRawString(item, "MD5", "md5", "fileMd5", "file_md5").orEmpty()
+                id to MapPhotoItem(
+                    id = id,
+                    md5 = md5,
+                    lat = 0.0,
+                    lng = 0.0,
+                    fileName = firstRawString(item, "fileName", "filename", "name").orEmpty(),
+                    fileType = firstRawString(item, "fileType", "file_type").orEmpty(),
+                    mtime = firstRawString(item, "mtime", "createTime", "date").orEmpty()
+                )
+            }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun firstDouble(map: Map<*, *>, vararg keys: String): Double? {
+        for (key in keys) {
+            val value = map[key]
+            val parsed = when (value) {
+                is Number -> value.toDouble()
+                is String -> value.toDoubleOrNull()
+                else -> null
+            }
+            if (parsed != null) return parsed
+        }
+        return null
+    }
+
+    private fun firstRawString(map: Map<*, *>, vararg keys: String): String? {
+        for (key in keys) {
+            val value = map[key]?.toString()?.trim()
+            if (!value.isNullOrBlank() && !value.equals("null", ignoreCase = true)) return value
+        }
+        return null
     }
 }
 

@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.map
 
 import android.os.Bundle
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -156,21 +157,7 @@ fun MapScreen(
                     map.setOnMarkerClickListener { marker ->
                         val cluster = marker.`object` as? MapCluster
                         if (cluster != null) {
-                            if (cluster.count <= 5) {
-                                // 少量照片：放大到可以分散显示
-                                val boundsBuilder = LatLngBounds.Builder()
-                                cluster.photos.forEach { photo ->
-                                    boundsBuilder.include(LatLng(photo.lat, photo.lng))
-                                }
-                                map.animateCamera(
-                                    CameraUpdateFactory.newLatLngBounds(
-                                        boundsBuilder.build(), 120
-                                    )
-                                )
-                            } else {
-                                // 大量照片：弹出 BottomSheet
-                                selectedCluster = cluster
-                            }
+                            selectedCluster = cluster
                         }
                         true
                     }
@@ -197,29 +184,18 @@ fun MapScreen(
         }
 
         // 当聚合数据更新时，重新绘制标记
-        LaunchedEffect(uiState.clusters) {
+        LaunchedEffect(aMap, uiState.clusters) {
             val map = aMap ?: return@LaunchedEffect
             val clusters = uiState.clusters
             if (clusters.isEmpty() && !uiState.isLoading) return@LaunchedEffect
+            Log.d("MapScreen", "draw markers clusters=${clusters.size}")
 
             // 清除旧标记
             currentMarkers.forEach { it.remove() }
             val newMarkers = mutableListOf<Marker>()
 
             for (cluster in clusters) {
-                val markerBitmap = if (cluster.count <= 3) {
-                    // 少量照片：带缩略图的 Marker
-                    val coverPhoto = cluster.photos.first()
-                    val thumbUrl = viewModel.getThumbUrl(coverPhoto.md5, coverPhoto.id)
-                    withContext(Dispatchers.IO) {
-                        MapClusterRenderer.createMarkerBitmap(
-                            context, thumbUrl, cluster.count, imageLoader
-                        )
-                    }
-                } else {
-                    // 大量照片：简易数量标记
-                    MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
-                }
+                val markerBitmap = MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
 
                 val markerOptions = MarkerOptions()
                     .position(LatLng(cluster.lat, cluster.lng))
@@ -329,6 +305,26 @@ fun MapScreen(
                 Text(
                     text = uiState.error ?: "",
                     color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        if (!uiState.isLoading && uiState.error == null && uiState.allPhotos.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "没有找到带位置信息的照片",
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
