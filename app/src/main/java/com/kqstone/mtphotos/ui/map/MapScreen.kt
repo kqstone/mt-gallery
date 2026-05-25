@@ -58,7 +58,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import coil.ImageLoader
+import coil.Coil
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
@@ -73,9 +73,11 @@ import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 @Composable
 fun MapScreen(
@@ -86,8 +88,15 @@ fun MapScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val imageLoader = remember { ImageLoader(context) }
-    val markerBitmapCache = remember { mutableMapOf<String, Bitmap>() }
+    val imageLoader = remember(context) { Coil.imageLoader(context) }
+    val markerBitmapCache = remember {
+        object : LinkedHashMap<String, Bitmap>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
+                return size > MAX_MARKER_BITMAP_CACHE_SIZE
+            }
+        }
+    }
+    val markerRenderSemaphore = remember { Semaphore(MAX_MARKER_RENDER_PARALLELISM) }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -121,8 +130,9 @@ fun MapScreen(
 
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var aMap by remember { mutableStateOf<AMap?>(null) }
-    var currentMarkers by remember { mutableStateOf<List<Marker>>(emptyList()) }
-    var lastZoomLevel by remember { mutableStateOf(MapViewModel.DEFAULT_ZOOM_LEVEL) }
+    val markersByClusterKey = remember { mutableMapOf<String, Marker>() }
+    val markerRenderKeys = remember { mutableMapOf<String, String>() }
+    val markerRenderJobs = remember { mutableMapOf<String, Job>() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
@@ -169,24 +179,32 @@ fun MapScreen(
 
                         override fun onCameraChangeFinish(pos: CameraPosition?) {
                             val cameraPosition = pos ?: return
-                            viewModel.updateCameraState(
+                            viewModel.onCameraIdle(
                                 lat = cameraPosition.target.latitude,
                                 lng = cameraPosition.target.longitude,
                                 zoom = cameraPosition.zoom,
                                 tilt = cameraPosition.tilt,
-                                bearing = cameraPosition.bearing
+                                bearing = cameraPosition.bearing,
+                                viewport = map.visibleViewport()
                             )
-                            val newZoom = cameraPosition.zoom
-                            if (abs(newZoom - lastZoomLevel) > 0.5f) {
-                                lastZoomLevel = newZoom
-                                viewModel.onZoomChanged(newZoom)
-                            }
                         }
                     })
 
                     map.setOnMarkerClickListener { marker ->
                         (marker.`object` as? MapCluster)?.let(viewModel::selectCluster)
                         true
+                    }
+
+                    mv.post {
+                        val cameraPosition = map.cameraPosition ?: return@post
+                        viewModel.onCameraIdle(
+                            lat = cameraPosition.target.latitude,
+                            lng = cameraPosition.target.longitude,
+                            zoom = cameraPosition.zoom,
+                            tilt = cameraPosition.tilt,
+                            bearing = cameraPosition.bearing,
+                            viewport = map.visibleViewport()
+                        )
                     }
                 }
             },
@@ -223,31 +241,57 @@ fun MapScreen(
         LaunchedEffect(aMap, uiState.clusters) {
             val map = aMap ?: return@LaunchedEffect
             val clusters = uiState.clusters
-            if (clusters.isEmpty() && !uiState.isLoading) return@LaunchedEffect
             Log.d("MapScreen", "draw markers clusters=${clusters.size}")
 
-            currentMarkers.forEach { it.remove() }
-            val newMarkers = mutableListOf<Marker>()
+            val visibleClusterKeys = clusters.mapTo(mutableSetOf()) { it.key }
+            val removedKeys = markersByClusterKey.keys - visibleClusterKeys
+            for (key in removedKeys) {
+                markerRenderJobs.remove(key)?.cancel()
+                markerRenderKeys.remove(key)
+                markersByClusterKey.remove(key)?.remove()
+            }
+            if (clusters.isEmpty()) return@LaunchedEffect
+
             val pendingMarkers = mutableListOf<PendingMarkerRender>()
+            val useThumbMarkers = shouldUseThumbMarkers(uiState.cameraState?.zoom, clusters.size)
 
             for (cluster in clusters) {
                 val coverPhoto = cluster.photos.firstOrNull()
                 val thumbUrl = coverPhoto?.let { viewModel.getThumbUrl(it.md5, it.id) }
-                val cacheKey = buildMarkerCacheKey(cluster, thumbUrl)
-                val cachedBitmap = markerBitmapCache[cacheKey]
-                val initialBitmap = cachedBitmap ?: MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
+                val cacheKey = if (useThumbMarkers) {
+                    buildMarkerCacheKey(cluster, thumbUrl)
+                } else {
+                    buildSimpleMarkerCacheKey(cluster.count)
+                }
+                val cachedBitmap = synchronized(markerBitmapCache) {
+                    markerBitmapCache[cacheKey]
+                }
+                val initialBitmap = cachedBitmap ?: synchronized(markerBitmapCache) {
+                    markerBitmapCache.getOrPut(buildSimpleMarkerCacheKey(cluster.count)) {
+                        MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
+                    }
+                }
 
-                val marker = map.addMarker(
+                val marker = markersByClusterKey[cluster.key] ?: map.addMarker(
                     MarkerOptions()
                         .position(LatLng(cluster.lat, cluster.lng))
                         .icon(BitmapDescriptorFactory.fromBitmap(initialBitmap))
                         .anchor(0.5f, 0.5f)
-                )
-                marker?.setObject(cluster)
+                )?.also {
+                    markersByClusterKey[cluster.key] = it
+                }
+
                 marker?.let {
-                    newMarkers.add(it)
-                    if (cachedBitmap == null && !thumbUrl.isNullOrEmpty()) {
+                    it.position = LatLng(cluster.lat, cluster.lng)
+                    it.setObject(cluster)
+                    if (markerRenderKeys[cluster.key] != cacheKey) {
+                        it.setIcon(BitmapDescriptorFactory.fromBitmap(initialBitmap))
+                        it.setAnchor(0.5f, 0.5f)
+                        markerRenderKeys[cluster.key] = cacheKey
+                    }
+                    if (useThumbMarkers && cachedBitmap == null && !thumbUrl.isNullOrEmpty()) {
                         pendingMarkers += PendingMarkerRender(
+                            clusterKey = cluster.key,
                             cacheKey = cacheKey,
                             cluster = cluster,
                             thumbUrl = thumbUrl,
@@ -257,22 +301,27 @@ fun MapScreen(
                 }
             }
 
-            currentMarkers = newMarkers
-
             pendingMarkers.forEach { pending ->
-                launch(Dispatchers.IO) {
-                    val bitmap = MapClusterRenderer.createCircularThumbMarkerBitmap(
-                        context = context,
-                        thumbUrl = pending.thumbUrl,
-                        count = pending.cluster.count,
-                        imageLoader = imageLoader
-                    )
-                    markerBitmapCache[pending.cacheKey] = bitmap
+                markerRenderJobs.remove(pending.clusterKey)?.cancel()
+                markerRenderJobs[pending.clusterKey] = launch(Dispatchers.IO) {
+                    val bitmap = markerRenderSemaphore.withPermit {
+                        MapClusterRenderer.createCircularThumbMarkerBitmap(
+                            context = context,
+                            thumbUrl = pending.thumbUrl,
+                            count = pending.cluster.count,
+                            imageLoader = imageLoader
+                        )
+                    }
+                    synchronized(markerBitmapCache) {
+                        markerBitmapCache[pending.cacheKey] = bitmap
+                    }
                     withContext(Dispatchers.Main) {
-                        if (pending.marker in currentMarkers && pending.marker.`object` == pending.cluster) {
-                            pending.marker.setIcon(BitmapDescriptorFactory.fromBitmap(bitmap))
-                            pending.marker.setAnchor(0.5f, 0.5f)
+                        val currentMarker = markersByClusterKey[pending.clusterKey]
+                        if (currentMarker == pending.marker && currentMarker.`object` == pending.cluster) {
+                            currentMarker.setIcon(BitmapDescriptorFactory.fromBitmap(bitmap))
+                            currentMarker.setAnchor(0.5f, 0.5f)
                         }
+                        markerRenderJobs.remove(pending.clusterKey)
                     }
                 }
             }
@@ -532,6 +581,7 @@ private fun ClusterPhotoGrid(
 }
 
 private data class PendingMarkerRender(
+    val clusterKey: String,
     val cacheKey: String,
     val cluster: MapCluster,
     val thumbUrl: String,
@@ -540,8 +590,40 @@ private data class PendingMarkerRender(
 
 private fun buildMarkerCacheKey(cluster: MapCluster, thumbUrl: String?): String {
     return listOf(
+        "thumb",
+        cluster.key,
         cluster.coverMd5,
         cluster.count.toString(),
         thumbUrl.orEmpty()
     ).joinToString("|")
 }
+
+private fun buildSimpleMarkerCacheKey(count: Int): String {
+    val countBucket = when {
+        count >= 1000 -> "${count / 1000}k"
+        count > 99 -> "99+"
+        else -> count.toString()
+    }
+    return "simple|$countBucket"
+}
+
+private fun shouldUseThumbMarkers(zoom: Float?, clusterCount: Int): Boolean {
+    return (zoom ?: MapViewModel.DEFAULT_ZOOM_LEVEL) >= MapViewModel.THUMB_MARKER_MIN_ZOOM &&
+        clusterCount <= MAX_THUMB_MARKERS
+}
+
+private fun AMap.visibleViewport(): MapViewport? {
+    return runCatching {
+        val bounds = projection.visibleRegion.latLngBounds
+        MapViewport(
+            south = bounds.southwest.latitude,
+            west = bounds.southwest.longitude,
+            north = bounds.northeast.latitude,
+            east = bounds.northeast.longitude
+        )
+    }.getOrNull()
+}
+
+private const val MAX_THUMB_MARKERS = 160
+private const val MAX_MARKER_RENDER_PARALLELISM = 4
+private const val MAX_MARKER_BITMAP_CACHE_SIZE = 240

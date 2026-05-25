@@ -1,6 +1,9 @@
 package com.kqstone.mtphotos.data.repository
 
 import com.kqstone.mtphotos.AppContainer
+import com.kqstone.mtphotos.data.local.db.toMapPhotoEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 
 data class TimelineMonth(
@@ -1103,45 +1106,63 @@ class GalleryRepository(private val container: AppContainer) {
      * 调用 /gateway/allFilesForMap 接口。
      */
     suspend fun getAllFilesForMap(): Result<List<MapPhotoItem>> {
-        return try {
-            val list = container.gatewayApi.GatewayControllerPart4GetAllFilesForMap()
-            val primaryParsed = list.mapNotNull(::parseMapPhotoItem)
-            val parsed = if (primaryParsed.isNotEmpty()) {
-                primaryParsed
-            } else {
-                val directList = runCatching {
-                    container.gatewayApi.GatewayControllerPart4GetFilesForMapDirect()
-                }.getOrDefault(emptyList())
-                val directParsed = directList.mapNotNull(::parseMapPhotoItem)
+        return withContext(Dispatchers.IO) {
+            try {
+                val list = container.gatewayApi.GatewayControllerPart4GetAllFilesForMap()
+                val primaryParsed = list.mapNotNull(::parseMapPhotoItem)
+                val parsed = if (primaryParsed.isNotEmpty()) {
+                    primaryParsed
+                } else {
+                    val directList = runCatching {
+                        container.gatewayApi.GatewayControllerPart4GetFilesForMapDirect()
+                    }.getOrDefault(emptyList())
+                    val directParsed = directList.mapNotNull(::parseMapPhotoItem)
+                    android.util.Log.d(
+                        "MapRepo",
+                        "allFilesForMap parsed empty; direct total=${directList.size}, parsed=${directParsed.size}"
+                    )
+                    directParsed
+                }
+                val missingInfoIds = parsed.filter { it.md5.isBlank() }.map { it.id }.distinct()
+                val infoById = if (missingInfoIds.isNotEmpty()) {
+                    getMapFileInfoByIds(missingInfoIds)
+                } else {
+                    emptyMap()
+                }
+                val photos = parsed.map { photo ->
+                    val info = infoById[photo.id]
+                    photo.copy(
+                        md5 = photo.md5.ifBlank { info?.md5.orEmpty() },
+                        fileName = photo.fileName.ifBlank { info?.fileName.orEmpty() },
+                        fileType = photo.fileType.ifBlank { info?.fileType.orEmpty() },
+                        mtime = photo.mtime.ifBlank { info?.mtime.orEmpty() }
+                    )
+                }
                 android.util.Log.d(
                     "MapRepo",
-                    "allFilesForMap parsed empty; direct total=${directList.size}, parsed=${directParsed.size}"
+                    "getAllFilesForMap: ${list.size} total, ${parsed.size} parsed, ${photos.count { it.md5.isNotBlank() }} with md5"
                 )
-                directParsed
+                cacheMapPhotos(photos)
+                Result.success(photos)
+            } catch (e: Exception) {
+                android.util.Log.e("MapRepo", "getAllFilesForMap failed", e)
+                Result.failure(e)
             }
-            val missingInfoIds = parsed.filter { it.md5.isBlank() }.map { it.id }.distinct()
-            val infoById = if (missingInfoIds.isNotEmpty()) {
-                getMapFileInfoByIds(missingInfoIds)
-            } else {
-                emptyMap()
-            }
-            val photos = parsed.map { photo ->
-                val info = infoById[photo.id]
-                photo.copy(
-                    md5 = photo.md5.ifBlank { info?.md5.orEmpty() },
-                    fileName = photo.fileName.ifBlank { info?.fileName.orEmpty() },
-                    fileType = photo.fileType.ifBlank { info?.fileType.orEmpty() },
-                    mtime = photo.mtime.ifBlank { info?.mtime.orEmpty() }
-                )
-            }
-            android.util.Log.d(
-                "MapRepo",
-                "getAllFilesForMap: ${list.size} total, ${parsed.size} parsed, ${photos.count { it.md5.isNotBlank() }} with md5"
-            )
-            Result.success(photos)
-        } catch (e: Exception) {
-            android.util.Log.e("MapRepo", "getAllFilesForMap failed", e)
-            Result.failure(e)
+        }
+    }
+
+    suspend fun getCachedMapPhotos(): List<MapPhotoItem> = withContext(Dispatchers.IO) {
+        runCatching {
+            container.database.mapPhotoDao().getAll().map { it.toMapPhotoItem() }
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun cacheMapPhotos(photos: List<MapPhotoItem>) {
+        runCatching {
+            val updatedAt = System.currentTimeMillis()
+            container.database.mapPhotoDao().replaceAll(photos.map { it.toMapPhotoEntity(updatedAt) })
+        }.onFailure {
+            android.util.Log.w("MapRepo", "cacheMapPhotos failed", it)
         }
     }
 

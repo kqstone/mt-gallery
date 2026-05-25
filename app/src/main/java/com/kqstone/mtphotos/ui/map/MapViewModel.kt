@@ -10,11 +10,17 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MapPhotoItem
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toUnifiedPhotoItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.floor
 
 data class MapCluster(
+    val key: String,
     val lat: Double,
     val lng: Double,
     val photos: List<MapPhotoItem>,
@@ -42,6 +48,13 @@ data class MapCameraState(
     val bearing: Float
 )
 
+data class MapViewport(
+    val south: Double,
+    val west: Double,
+    val north: Double,
+    val east: Double
+)
+
 class MapViewModel(
     private val galleryRepository: GalleryRepository,
     private val syncRepository: SyncRepository? = null
@@ -50,38 +63,77 @@ class MapViewModel(
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
 
+    private var loadJob: Job? = null
+    private var cameraIdleJob: Job? = null
+    private var currentZoomLevel = DEFAULT_ZOOM_LEVEL
+    private var currentViewport: MapViewport? = null
+    private val clusterCache = object : LinkedHashMap<Int, List<MapCluster>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, List<MapCluster>>): Boolean {
+            return size > MAX_CLUSTER_CACHE_BUCKETS
+        }
+    }
+
     init {
         loadMapPhotos()
     }
 
     fun loadMapPhotos() {
+        loadJob?.cancel()
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
+            val cachedPhotos = galleryRepository.getCachedMapPhotos()
+            if (cachedPhotos.isNotEmpty()) {
+                publishPhotos(cachedPhotos, isLoading = false)
+            }
+
             val result = galleryRepository.getAllFilesForMap()
             result.onSuccess { photos ->
-                val clusters = clusterPhotos(photos, DEFAULT_ZOOM_LEVEL)
-                Log.d("MapViewModel", "loadMapPhotos photos=${photos.size}, clusters=${clusters.size}")
-                _uiState.value = MapUiState(
-                    isLoading = false,
-                    allPhotos = photos,
-                    clusters = clusters
-                )
+                publishPhotos(photos, isLoading = false)
+                Log.d("MapViewModel", "loadMapPhotos photos=${photos.size}, clusters=${_uiState.value.clusters.size}")
             }.onFailure { error ->
                 Log.e("MapViewModel", "loadMapPhotos failed", error)
-                _uiState.value = MapUiState(
+                val current = _uiState.value
+                _uiState.value = current.copy(
                     isLoading = false,
-                    error = error.message ?: "加载失败"
+                    error = if (current.allPhotos.isEmpty()) error.message ?: "加载失败" else null
                 )
             }
         }
     }
 
     fun onZoomChanged(zoomLevel: Float) {
+        onCameraIdle(
+            lat = _uiState.value.cameraState?.lat ?: 35.0,
+            lng = _uiState.value.cameraState?.lng ?: 105.0,
+            zoom = zoomLevel,
+            tilt = _uiState.value.cameraState?.tilt ?: 0f,
+            bearing = _uiState.value.cameraState?.bearing ?: 0f,
+            viewport = currentViewport
+        )
+    }
+
+    fun onCameraIdle(
+        lat: Double,
+        lng: Double,
+        zoom: Float,
+        tilt: Float,
+        bearing: Float,
+        viewport: MapViewport?
+    ) {
+        updateCameraState(lat, lng, zoom, tilt, bearing)
+        currentZoomLevel = zoom
+        currentViewport = viewport
+
         val photos = _uiState.value.allPhotos
         if (photos.isEmpty()) return
-        _uiState.value = _uiState.value.copy(
-            clusters = clusterPhotos(photos, zoomLevel)
-        )
+
+        cameraIdleJob?.cancel()
+        cameraIdleJob = viewModelScope.launch {
+            delay(CAMERA_IDLE_DEBOUNCE_MS)
+            _uiState.value = _uiState.value.copy(
+                clusters = clustersFor(photos, currentZoomLevel, currentViewport)
+            )
+        }
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
@@ -126,7 +178,7 @@ class MapViewModel(
         viewModelScope.launch {
             val resolvedPhotos = resolveClusterPhotos(cluster.photos)
             val currentState = _uiState.value
-            if (currentState.selectedCluster == cluster) {
+            if (currentState.selectedCluster?.key == cluster.key) {
                 _uiState.value = currentState.copy(
                     selectedClusterPhotos = resolvedPhotos,
                     isResolvingSelectedCluster = false
@@ -138,49 +190,136 @@ class MapViewModel(
     private suspend fun resolveClusterPhotos(photos: List<MapPhotoItem>): List<UnifiedPhotoItem> {
         if (photos.isEmpty()) return emptyList()
 
-        val entitiesByCloudId = syncRepository
-            ?.findMediaEntitiesByIds(photos.map { it.id })
-            ?.associateBy { it.cloudId }
-            .orEmpty()
+        val entitiesByCloudId = withContext(Dispatchers.IO) {
+            syncRepository
+                ?.findMediaEntitiesByIds(photos.map { it.id })
+                ?.associateBy { it.cloudId }
+                .orEmpty()
+        }
 
-        return photos.map { photo ->
-            entitiesByCloudId[photo.id]?.toUnifiedPhotoItem() ?: photo.toUnifiedPhotoItem()
+        return withContext(Dispatchers.Default) {
+            photos.map { photo ->
+                entitiesByCloudId[photo.id]?.toUnifiedPhotoItem() ?: photo.toUnifiedPhotoItem()
+            }
         }
     }
 
-    private fun clusterPhotos(photos: List<MapPhotoItem>, zoomLevel: Float): List<MapCluster> {
+    private suspend fun publishPhotos(photos: List<MapPhotoItem>, isLoading: Boolean) {
+        synchronized(clusterCache) {
+            clusterCache.clear()
+        }
+        val clusters = clustersFor(photos, currentZoomLevel, currentViewport)
+        _uiState.value = _uiState.value.copy(
+            isLoading = isLoading,
+            allPhotos = photos,
+            clusters = clusters,
+            error = null
+        )
+    }
+
+    private suspend fun clustersFor(
+        photos: List<MapPhotoItem>,
+        zoomLevel: Float,
+        viewport: MapViewport?
+    ): List<MapCluster> = withContext(Dispatchers.Default) {
+        if (photos.isEmpty()) return@withContext emptyList()
+
+        val zoomBucket = zoomBucketFor(zoomLevel)
+        val cachedClusters = synchronized(clusterCache) {
+            clusterCache[zoomBucket]
+        }
+        val fullClusters = cachedClusters ?: clusterPhotos(photos, zoomBucket).also { computed ->
+            synchronized(clusterCache) {
+                clusterCache[zoomBucket] = computed
+            }
+        }
+        filterClustersForViewport(fullClusters, viewport)
+    }
+
+    private fun clusterPhotos(photos: List<MapPhotoItem>, zoomBucket: Int): List<MapCluster> {
         if (photos.isEmpty()) return emptyList()
 
-        val gridSize = when {
-            zoomLevel >= 18 -> 0.0005
-            zoomLevel >= 16 -> 0.002
-            zoomLevel >= 14 -> 0.008
-            zoomLevel >= 12 -> 0.03
-            zoomLevel >= 10 -> 0.1
-            zoomLevel >= 8 -> 0.4
-            zoomLevel >= 6 -> 1.5
-            zoomLevel >= 4 -> 5.0
-            else -> 15.0
-        }
-
+        val gridSize = gridSizeFor(zoomBucket)
         val grid = mutableMapOf<Pair<Int, Int>, MutableList<MapPhotoItem>>()
         for (photo in photos) {
-            val gridX = (photo.lng / gridSize).toInt()
-            val gridY = (photo.lat / gridSize).toInt()
+            val gridX = floor(photo.lng / gridSize).toInt()
+            val gridY = floor(photo.lat / gridSize).toInt()
             val key = gridX to gridY
             grid.getOrPut(key) { mutableListOf() }.add(photo)
         }
 
-        return grid.values.map { group ->
+        return grid.map { (cell, group) ->
             val centerLat = group.sumOf { it.lat } / group.size
             val centerLng = group.sumOf { it.lng } / group.size
             MapCluster(
+                key = "$zoomBucket:${cell.first}:${cell.second}",
                 lat = centerLat,
                 lng = centerLng,
                 photos = group,
                 coverMd5 = group.first().md5
             )
         }
+    }
+
+    private fun filterClustersForViewport(
+        clusters: List<MapCluster>,
+        viewport: MapViewport?
+    ): List<MapCluster> {
+        val bounds = viewport ?: return clusters
+        val latPadding = (bounds.north - bounds.south).coerceAtLeast(0.05) * VIEWPORT_PADDING_RATIO
+        val lngSpan = if (bounds.east >= bounds.west) {
+            bounds.east - bounds.west
+        } else {
+            360.0 - bounds.west + bounds.east
+        }.coerceAtLeast(0.05)
+        val lngPadding = lngSpan * VIEWPORT_PADDING_RATIO
+        val south = (bounds.south - latPadding).coerceAtLeast(-90.0)
+        val north = (bounds.north + latPadding).coerceAtMost(90.0)
+        val west = normalizeLng(bounds.west - lngPadding)
+        val east = normalizeLng(bounds.east + lngPadding)
+        return clusters.filter { cluster ->
+            cluster.lat in south..north && lngInRange(cluster.lng, west, east)
+        }
+    }
+
+    private fun zoomBucketFor(zoomLevel: Float): Int {
+        return when {
+            zoomLevel >= 18f -> 18
+            zoomLevel >= 16f -> 16
+            zoomLevel >= 14f -> 14
+            zoomLevel >= 12f -> 12
+            zoomLevel >= 10f -> 10
+            zoomLevel >= 8f -> 8
+            zoomLevel >= 6f -> 6
+            zoomLevel >= 4f -> 4
+            else -> 2
+        }
+    }
+
+    private fun gridSizeFor(zoomBucket: Int): Double {
+        return when {
+            zoomBucket >= 18 -> 0.0005
+            zoomBucket >= 16 -> 0.002
+            zoomBucket >= 14 -> 0.008
+            zoomBucket >= 12 -> 0.03
+            zoomBucket >= 10 -> 0.1
+            zoomBucket >= 8 -> 0.4
+            zoomBucket >= 6 -> 1.5
+            zoomBucket >= 4 -> 5.0
+            else -> 15.0
+        }
+    }
+
+    private fun normalizeLng(lng: Double): Double {
+        var normalized = lng
+        while (normalized < -180.0) normalized += 360.0
+        while (normalized > 180.0) normalized -= 360.0
+        return normalized
+    }
+
+    private fun lngInRange(lng: Double, west: Double, east: Double): Boolean {
+        val normalized = normalizeLng(lng)
+        return if (east >= west) normalized in west..east else normalized >= west || normalized <= east
     }
 
     class Factory(
@@ -195,6 +334,10 @@ class MapViewModel(
 
     companion object {
         const val DEFAULT_ZOOM_LEVEL = 5f
+        const val THUMB_MARKER_MIN_ZOOM = 12f
+        private const val CAMERA_IDLE_DEBOUNCE_MS = 180L
+        private const val MAX_CLUSTER_CACHE_BUCKETS = 8
+        private const val VIEWPORT_PADDING_RATIO = 0.35
     }
 }
 
