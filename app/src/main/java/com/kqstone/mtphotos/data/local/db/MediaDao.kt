@@ -175,6 +175,7 @@ interface MediaDao {
     @Query("""
         SELECT * FROM media 
         WHERE backupStatus = 'COMPLETED' 
+        AND cloudId IS NOT NULL
         AND localUri IS NOT NULL 
         AND isStorageOptimized = 0 
         ORDER BY fileSize DESC
@@ -259,7 +260,17 @@ interface MediaDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE media SET isStorageOptimized = 1, localUri = NULL, localPath = NULL, updatedAt = :now WHERE id = :id")
+    @Query("""
+        UPDATE media
+        SET syncStatus = 'CLOUD_ONLY',
+            isStorageOptimized = 1,
+            localUri = NULL,
+            localPath = NULL,
+            localMediaStoreId = NULL,
+            updatedAt = :now
+        WHERE id = :id
+        AND cloudId IS NOT NULL
+    """)
     suspend fun markAsStorageOptimized(id: Long, now: Long = System.currentTimeMillis())
 
     @Query("UPDATE media SET thumbCachePath = :path, updatedAt = :now WHERE id = :id")
@@ -279,10 +290,10 @@ interface MediaDao {
     @Query("SELECT COUNT(*) FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') AND md5 != ''")
     suspend fun getPendingBackupCount(): Int
 
-    @Query("SELECT COUNT(*) FROM media WHERE backupStatus = 'COMPLETED' AND localUri IS NOT NULL AND isStorageOptimized = 0")
+    @Query("SELECT COUNT(*) FROM media WHERE backupStatus = 'COMPLETED' AND cloudId IS NOT NULL AND localUri IS NOT NULL AND isStorageOptimized = 0")
     suspend fun getOptimizableCount(): Int
 
-    @Query("SELECT COALESCE(SUM(fileSize), 0) FROM media WHERE backupStatus = 'COMPLETED' AND localUri IS NOT NULL AND isStorageOptimized = 0")
+    @Query("SELECT COALESCE(SUM(fileSize), 0) FROM media WHERE backupStatus = 'COMPLETED' AND cloudId IS NOT NULL AND localUri IS NOT NULL AND isStorageOptimized = 0")
     suspend fun getOptimizableSize(): Long
 
     @Query("SELECT COUNT(*) FROM media WHERE backupStatus = 'COMPLETED'")
