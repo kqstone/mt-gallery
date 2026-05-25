@@ -10,6 +10,7 @@ import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
@@ -496,7 +497,7 @@ class GalleryViewModel(
 
     private fun buildMonthGroups(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
         return photos
-            .sortedByDescending { it.mtime }
+            .sortedForTimeline()
             .groupBy { it.mtime.take(7) }
             .toSortedMap(compareByDescending { it })
             .map { (yearMonth, monthPhotos) ->
@@ -530,7 +531,7 @@ class GalleryViewModel(
 
     private fun buildDayGroups(photos: List<UnifiedPhotoItem>): List<DayGroup> {
         return photos
-            .sortedByDescending { it.mtime }
+            .sortedForTimeline()
             .groupBy { extractDate(it.mtime) }
             .toSortedMap(compareByDescending { it })
             .map { (date, dayPhotos) ->

@@ -55,19 +55,19 @@ interface MediaDao {
     // ===== 查询全部 =====
 
     /** 获取所有媒体（按拍摄时间降序），返回 Flow 以实时观察变化 */
-    @Query("SELECT * FROM media ORDER BY mtime DESC")
+    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     fun getAllMediaFlow(): Flow<List<MediaEntity>>
 
-    @Query("SELECT * FROM media ORDER BY mtime DESC")
+    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getAllMedia(): List<MediaEntity>
 
-    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getAllCloudMedia(): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
         WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)
-        ORDER BY mtime DESC
+        ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getAllVisibleMediaByFolders(folderPaths: List<String>): List<MediaEntity>
 
@@ -101,14 +101,14 @@ interface MediaDao {
     suspend fun getTimelineMonthsByVisibleFolders(folderPaths: List<String>): List<TimelineMonthCount>
 
     /** 获取指定月份的所有媒体 */
-    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getMediaByMonth(yearMonth: String): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
         WHERE mtime LIKE :yearMonth || '%'
         AND cloudId IS NOT NULL
-        ORDER BY mtime DESC
+        ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getCloudMediaByMonth(yearMonth: String): List<MediaEntity>
 
@@ -116,7 +116,7 @@ interface MediaDao {
         SELECT * FROM media
         WHERE mtime LIKE :yearMonth || '%'
         AND (cloudId IS NOT NULL OR localFolderPath IN (:folderPaths))
-        ORDER BY mtime DESC
+        ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getMediaByMonthVisibleFolders(
         yearMonth: String,
@@ -124,7 +124,7 @@ interface MediaDao {
     ): List<MediaEntity>
 
     /** 获取指定月份的所有媒体（Flow） */
-    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     fun getMediaByMonthFlow(yearMonth: String): Flow<List<MediaEntity>>
 
     // ===== 按 MD5 查找（去重匹配） =====
@@ -148,14 +148,14 @@ interface MediaDao {
 
     // ===== 按同步状态过滤 =====
 
-    @Query("SELECT * FROM media WHERE syncStatus = :status ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE syncStatus = :status ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getMediaBySyncStatus(status: SyncStatus): List<MediaEntity>
 
-    @Query("SELECT * FROM media WHERE syncStatus = :status ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE syncStatus = :status ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     fun getMediaBySyncStatusFlow(status: SyncStatus): Flow<List<MediaEntity>>
 
     /** 获取所有仅本地的文件（待备份） */
-    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') AND md5 != '' ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE syncStatus = 'LOCAL_ONLY' AND backupStatus IN ('NOT_STARTED', 'FAILED') AND md5 != '' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getPendingBackupMedia(): List<MediaEntity>
 
     @Query("""
@@ -164,7 +164,7 @@ interface MediaDao {
         AND backupStatus IN ('NOT_STARTED', 'FAILED')
         AND md5 != ''
         AND localFolderPath IN (:folderPaths)
-        ORDER BY mtime DESC
+        ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getPendingBackupMediaByFolders(folderPaths: List<String>): List<MediaEntity>
 
@@ -307,7 +307,7 @@ interface MediaDao {
     @Query("SELECT DISTINCT localFolderPath FROM media WHERE localFolderPath IS NOT NULL ORDER BY localFolderPath")
     suspend fun getAllLocalFolders(): List<String>
 
-    @Query("SELECT * FROM media WHERE localFolderPath = :folderPath ORDER BY mtime DESC")
+    @Query("SELECT * FROM media WHERE localFolderPath = :folderPath ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getMediaByFolder(folderPath: String): List<MediaEntity>
 
     // ===== 孤立记录清理 =====

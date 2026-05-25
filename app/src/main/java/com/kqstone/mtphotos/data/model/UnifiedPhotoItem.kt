@@ -65,12 +65,16 @@ data class UnifiedPhotoItem(
         get() = cloudId ?: dbId.toDouble()
 
     /**
-     * 用于 LazyColumn/Grid 的唯一 key。
-     * 使用 dbId（Room 自增 ID）确保绝对不会重复，
-     * 辅以 md5 或 cloudId 以增加稳定性。
+     * 用于 LazyColumn/Grid 的唯一 key。优先使用持久 ID，
+     * 避免列表位置变化时触发不必要的 item 重建。
      */
     val uniqueKey: String
-        get() = "db_${dbId}_${md5.ifEmpty { cloudId?.toString() ?: "local" }}"
+        get() = when {
+            cloudId != null -> "cloud_$cloudId"
+            dbId > 0 -> "db_$dbId"
+            md5.isNotEmpty() -> "md5_$md5"
+            else -> "raw_${fileName}_${mtime}_${fileType}"
+        }
 
     /**
      * 是否为视频

@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.ui.util.formatDayHeaderDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,7 +73,7 @@ fun buildPhotoTimelineLayout(photos: List<UnifiedPhotoItem>): PhotoTimelineLayou
 
     val hasCompleteDateInfo = normalizedPhotos.all { hasTimelineDate(it.mtime) }
     if (!hasCompleteDateInfo) {
-        val sortedPhotos = normalizedPhotos.sortedByDescending { it.mtime }
+        val sortedPhotos = normalizedPhotos.sortedForTimeline()
         return PhotoTimelineLayout(
             months = listOf(
                 MonthGroup(
@@ -89,7 +90,7 @@ fun buildPhotoTimelineLayout(photos: List<UnifiedPhotoItem>): PhotoTimelineLayou
     }
 
     val months = normalizedPhotos
-        .sortedByDescending { it.mtime }
+        .sortedForTimeline()
         .groupBy { it.mtime.take(7) }
         .toSortedMap(compareByDescending { it })
         .map { (yearMonth, monthPhotos) ->
@@ -143,7 +144,6 @@ fun TimelinePhotoGrid(
     val gridItems by remember(months, showMonthHeaders, showDayHeaders, leadingContent) {
         derivedStateOf {
             val items = mutableListOf<GridItem>()
-            var photoOrdinal = 0
             if (leadingContent != null) {
                 items.add(GridItem(type = "leading", key = "leading"))
             }
@@ -176,7 +176,7 @@ fun TimelinePhotoGrid(
                             items.add(
                                 GridItem(
                                     type = "photo",
-                                    key = "photo_${photo.uniqueKey}_${photoOrdinal++}",
+                                    key = "photo_${photo.uniqueKey}",
                                     photo = photo,
                                     parentMonthTitle = month.displayTitle.takeIf { it.isNotBlank() }
                                 )
@@ -188,7 +188,7 @@ fun TimelinePhotoGrid(
                         items.add(
                             GridItem(
                                 type = "photo",
-                                key = "photo_${photo.uniqueKey}_${photoOrdinal++}",
+                                key = "photo_${photo.uniqueKey}",
                                 photo = photo,
                                 parentMonthTitle = month.displayTitle.takeIf {
                                     showMonthHeaders && it.isNotBlank()
