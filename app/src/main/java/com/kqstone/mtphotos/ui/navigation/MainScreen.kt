@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -52,10 +53,11 @@ private data class TabItem(
 private val tabs = listOf(
     TabItem("photos", "照片", Icons.Default.PhotoLibrary),
     TabItem("folders", "图集", Icons.Default.Folder),
+    TabItem("map", "足迹", Icons.Default.Map),
     TabItem("discovery", "发现", Icons.Default.Explore)
 )
 
-private val topLevelRoutes = setOf("photos", "folders", "discovery")
+private val topLevelRoutes = setOf("photos", "folders", "map", "discovery")
 
 @Composable
 fun MainScreen(
@@ -178,9 +180,6 @@ fun MainScreen(
                     onLocationClick = { city ->
                         innerNavController.navigate("location/${Uri.encode(city)}")
                     },
-                    onMapClick = {
-                        innerNavController.navigate("map")
-                    },
                     onSettingsClick = onNavigateToSettings
                 )
             }
@@ -294,7 +293,6 @@ fun MainScreen(
                 )
                 MapScreen(
                     viewModel = mapViewModel,
-                    onBack = { innerNavController.popBackStack() },
                     onPhotoClick = { photo, list ->
                         val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(list, index)

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -82,7 +83,6 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MapScreen(
     viewModel: MapViewModel,
-    onBack: () -> Unit,
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -345,13 +345,7 @@ fun MapScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
-                    )
-                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "足迹地图",
                     style = MaterialTheme.typography.titleMedium,
