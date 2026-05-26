@@ -232,7 +232,8 @@ fun GalleryScreen(
                         getThumbUrl = viewModel::getThumbUrl,
                         onPhotoClick = onPhotoClick,
                         onColumnCountChange = { viewModel.updateColumnCount(it) },
-                        onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) }
+                        onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) },
+                        stateKey = "gallery:${uiState.isSearchMode}:${uiState.searchQuery}"
                     )
                 }
             }

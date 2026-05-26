@@ -16,8 +16,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.LinkedHashMap
 
 data class CategoryFileListUiState(
+    val pageKey: String? = null,
     val photos: List<UnifiedPhotoItem> = emptyList(),
     val locationDistricts: List<LocationItem> = emptyList(),
     val selectedDistrict: String? = null,
@@ -33,7 +35,17 @@ class CategoryFileListViewModel(
 
     private val _uiState = MutableStateFlow(CategoryFileListUiState())
     val uiState: StateFlow<CategoryFileListUiState> = _uiState
+
     private var localVideoThumbJob: Job? = null
+    private var loadJob: Job? = null
+    private var loadingKey: String? = null
+    private var activeCacheKey: String? = null
+    private val locationDistrictCache = mutableMapOf<String, List<LocationItem>>()
+    private val pageCache = object : LinkedHashMap<String, CategoryFileListUiState>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CategoryFileListUiState>?): Boolean {
+            return size > 24
+        }
+    }
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -41,88 +53,167 @@ class CategoryFileListViewModel(
         onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
     )
 
-    fun loadPeopleFiles(peopleId: String) {
-        loadFiles { galleryRepository.getPeopleFiles(peopleId) }
+    fun loadPeopleFiles(peopleId: String, force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("people", peopleId), force = force) {
+            galleryRepository.getPeopleFiles(peopleId)
+        }
     }
 
-    fun loadSceneFiles(id: String, cid: String?) {
-        loadFiles { galleryRepository.getClassifyFileList(id, cid) }
+    fun loadSceneFiles(id: String, cid: String?, force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("scene", id, cid), force = force) {
+            galleryRepository.getClassifyFileList(id, cid)
+        }
     }
 
-    fun loadAlbumFiles(albumId: Double) {
-        loadFiles { galleryRepository.getAlbumFiles(albumId) }
+    fun loadAlbumFiles(albumId: Double, force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("album", albumId.toInt().toString()), force = force) {
+            galleryRepository.getAlbumFiles(albumId)
+        }
     }
 
-    fun loadFavoritesFiles() {
-        loadAlbumFiles(1.0)
+    fun loadFavoritesFiles(force: Boolean = false) {
+        loadAlbumFiles(1.0, force = force)
     }
 
-    fun loadRecentFiles() {
-        loadFiles { galleryRepository.getRecentFiles() }
+    fun loadRecentFiles(force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("recent", ""), force = force) { galleryRepository.getRecentFiles() }
     }
 
-    fun loadVideoFiles() {
-        loadFiles { galleryRepository.getVideoFiles() }
+    fun loadVideoFiles(force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("videos", ""), force = force) { galleryRepository.getVideoFiles() }
     }
 
-    fun loadTrashFiles() {
-        loadFiles { galleryRepository.getTrashFiles() }
+    fun loadTrashFiles(force: Boolean = false) {
+        loadFiles(cacheKey = pageKey("trash", ""), force = force) { galleryRepository.getTrashFiles() }
     }
 
     fun loadLocationFiles(city: String) {
         loadLocationFiles(city, district = null)
     }
 
-    fun loadLocationFiles(city: String, district: String?) {
+    fun loadLocationFiles(city: String, district: String?, force: Boolean = false) {
+        val cacheKey = pageKey("location", city, district)
+        if (restoreCached(cacheKey, force)) return
+        if (!force && loadJob?.isActive == true && loadingKey == cacheKey) return
+
+        loadJob?.cancel()
         localVideoThumbJob?.cancel()
-        _uiState.value = _uiState.value.copy(
+        activatePage(cacheKey)
+        loadingKey = cacheKey
+        val cachedDistricts = locationDistrictCache[city].orEmpty()
+        _uiState.value = CategoryFileListUiState(
+            pageKey = cacheKey,
             isLoading = true,
-            error = null,
-            selectedDistrict = district
+            locationDistricts = cachedDistricts,
+            selectedDistrict = district,
+            columnCount = _uiState.value.columnCount
         )
-        viewModelScope.launch {
+
+        loadJob = viewModelScope.launch {
             val filesResult = galleryRepository.getFilesInCity(city, district)
-            val districts = _uiState.value.locationDistricts.takeIf { it.isNotEmpty() }
+            val districts = locationDistrictCache[city]
                 ?: galleryRepository.getAddressCountByDistrict(city).getOrDefault(emptyList())
+                    .also { locationDistrictCache[city] = it }
             filesResult.fold(
                 onSuccess = { photos ->
                     val unified = syncRepository?.hydrateCloudPhotos(photos)
                         ?: photos.map { it.toCloudOnlyUnifiedPhotoItem() }
-                    _uiState.value = CategoryFileListUiState(
+                    val newState = CategoryFileListUiState(
+                        pageKey = cacheKey,
                         photos = unified,
                         locationDistricts = districts,
-                        selectedDistrict = district
+                        selectedDistrict = district,
+                        columnCount = _uiState.value.columnCount
                     )
-                    warmLocalVideoThumbnails(unified)
+                    cacheAndShow(cacheKey, newState)
+                    if (activeCacheKey == cacheKey) warmLocalVideoThumbnails(unified)
                 },
                 onFailure = { e ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = e.message ?: "鍔犺浇澶辫触",
-                        locationDistricts = districts,
-                        selectedDistrict = district
-                    )
+                    if (activeCacheKey == cacheKey) {
+                        _uiState.value = _uiState.value.copy(
+                            pageKey = cacheKey,
+                            isLoading = false,
+                            error = e.message ?: "加载失败",
+                            locationDistricts = districts,
+                            selectedDistrict = district
+                        )
+                    }
                 }
             )
+            if (loadingKey == cacheKey) loadingKey = null
         }
     }
 
-    private fun loadFiles(loader: suspend () -> Result<List<PhotoItem>>) {
+    private fun loadFiles(
+        cacheKey: String,
+        force: Boolean,
+        loader: suspend () -> Result<List<PhotoItem>>
+    ) {
+        if (restoreCached(cacheKey, force)) return
+        if (!force && loadJob?.isActive == true && loadingKey == cacheKey) return
+
+        loadJob?.cancel()
         localVideoThumbJob?.cancel()
-        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        viewModelScope.launch {
+        activatePage(cacheKey)
+        loadingKey = cacheKey
+        _uiState.value = CategoryFileListUiState(
+            pageKey = cacheKey,
+            isLoading = true,
+            columnCount = _uiState.value.columnCount
+        )
+
+        loadJob = viewModelScope.launch {
             loader().fold(
                 onSuccess = { photos ->
                     val unified = syncRepository?.hydrateCloudPhotos(photos)
                         ?: photos.map { it.toCloudOnlyUnifiedPhotoItem() }
-                    _uiState.value = CategoryFileListUiState(photos = unified)
-                    warmLocalVideoThumbnails(unified)
+                    val newState = CategoryFileListUiState(
+                        pageKey = cacheKey,
+                        photos = unified,
+                        columnCount = _uiState.value.columnCount
+                    )
+                    cacheAndShow(cacheKey, newState)
+                    if (activeCacheKey == cacheKey) warmLocalVideoThumbnails(unified)
                 },
                 onFailure = { e ->
-                    _uiState.value = CategoryFileListUiState(error = e.message ?: "加载失败")
+                    if (activeCacheKey == cacheKey) {
+                        _uiState.value = _uiState.value.copy(
+                            pageKey = cacheKey,
+                            isLoading = false,
+                            error = e.message ?: "加载失败"
+                        )
+                    }
                 }
             )
+            if (loadingKey == cacheKey) loadingKey = null
         }
+    }
+
+    private fun restoreCached(cacheKey: String, force: Boolean): Boolean {
+        activatePage(cacheKey)
+        if (force) return false
+        val cached = pageCache[cacheKey] ?: return false
+        _uiState.value = cached.copy(isLoading = false, error = null)
+        return true
+    }
+
+    private fun cacheAndShow(cacheKey: String, state: CategoryFileListUiState) {
+        val cacheable = state.copy(isLoading = false, error = null)
+        pageCache[cacheKey] = cacheable
+        if (activeCacheKey == cacheKey) {
+            _uiState.value = cacheable
+        }
+    }
+
+    private fun updateActiveCache(state: CategoryFileListUiState) {
+        activeCacheKey?.let { pageCache[it] = state.copy(isLoading = false, error = null) }
+    }
+
+    private fun activatePage(cacheKey: String) {
+        if (activeCacheKey != cacheKey) {
+            selectionManager.clearSelection()
+        }
+        activeCacheKey = cacheKey
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
@@ -159,10 +250,12 @@ class CategoryFileListViewModel(
                 if (photo.dbId == dbId) photo.copy(thumbCachePath = path) else photo
             }
         )
+        updateActiveCache(_uiState.value)
     }
 
     fun updateColumnCount(count: Int) {
         _uiState.value = _uiState.value.copy(columnCount = count.coerceIn(2, 6))
+        updateActiveCache(_uiState.value)
     }
 
     fun selectAll() {
@@ -174,6 +267,7 @@ class CategoryFileListViewModel(
         selectionManager.deleteSelected {
             val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
             _uiState.value = _uiState.value.copy(photos = remaining)
+            updateActiveCache(_uiState.value)
         }
     }
 
@@ -184,6 +278,19 @@ class CategoryFileListViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return CategoryFileListViewModel(galleryRepository, syncRepository) as T
+        }
+    }
+
+    companion object {
+        fun pageKey(loadType: String, loadParam: String, loadParam2: String? = null): String {
+            return when (loadType) {
+                "album" -> "album:${loadParam.toDoubleOrNull()?.toInt() ?: 0}"
+                "favorites" -> "album:1"
+                "recent" -> "recent:"
+                "videos" -> "videos:"
+                "trash" -> "trash:"
+                else -> "$loadType:$loadParam:${loadParam2.orEmpty()}"
+            }
         }
     }
 }

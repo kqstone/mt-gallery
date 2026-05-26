@@ -54,8 +54,9 @@ fun FolderDetailScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isCurrentFolder = uiState.folderId == folderId
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
-    val isSelectionMode = selectedIds.isNotEmpty()
+    val isSelectionMode = isCurrentFolder && selectedIds.isNotEmpty()
     val timelineLayout = remember(uiState.photos) {
         buildPhotoTimelineLayout(uiState.photos)
     }
@@ -87,7 +88,7 @@ fun FolderDetailScreen(
         }
 
         when {
-            uiState.isLoading -> {
+            !isCurrentFolder || uiState.isLoading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -101,7 +102,7 @@ fun FolderDetailScreen(
                         )
                         Text(
                             text = "点击重试",
-                            modifier = Modifier.clickable { viewModel.loadFolder(folderId) },
+                            modifier = Modifier.clickable { viewModel.loadFolder(folderId, force = true) },
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -127,6 +128,7 @@ fun FolderDetailScreen(
                     onColumnCountChange = viewModel::updateColumnCount,
                     showMonthHeaders = timelineLayout.showMonthHeaders,
                     showDayHeaders = timelineLayout.showDayHeaders,
+                    stateKey = "folder:$folderId",
                     modifier = Modifier.fillMaxSize(),
                     leadingContent = if (uiState.subfolders.isNotEmpty()) {
                         {

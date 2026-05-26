@@ -19,8 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
@@ -130,6 +131,7 @@ fun TimelinePhotoGrid(
     showMonthHeaders: Boolean = true,
     showDayHeaders: Boolean = true,
     onMonthPlaceholderClick: ((MonthGroup) -> Unit)? = null,
+    stateKey: String? = null,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
     data class GridItem(
@@ -202,7 +204,9 @@ fun TimelinePhotoGrid(
         }
     }
 
-    val gridState = rememberLazyGridState()
+    val gridState = rememberSaveable(stateKey ?: "timeline", saver = LazyGridState.Saver) {
+        LazyGridState()
+    }
     val coroutineScope = rememberCoroutineScope()
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var isPinching by remember { mutableStateOf(false) }

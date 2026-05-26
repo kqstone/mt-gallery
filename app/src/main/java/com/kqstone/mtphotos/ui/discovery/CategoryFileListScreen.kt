@@ -46,8 +46,17 @@ fun CategoryFileListScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val targetDistrict = remember(loadParam) { mutableStateOf<String?>(null) }
+    val expectedPageKey = remember(loadType, loadParam, loadParam2, targetDistrict.value) {
+        CategoryFileListViewModel.pageKey(
+            loadType = loadType,
+            loadParam = loadParam,
+            loadParam2 = if (loadType == "location") targetDistrict.value else loadParam2
+        )
+    }
+    val isCurrentPage = uiState.pageKey == expectedPageKey
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
-    val isSelectionMode = selectedIds.isNotEmpty()
+    val isSelectionMode = isCurrentPage && selectedIds.isNotEmpty()
     val timelineLayout = remember(uiState.photos) {
         buildPhotoTimelineLayout(uiState.photos)
     }
@@ -62,7 +71,10 @@ fun CategoryFileListScreen(
         when (loadType) {
             "people" -> viewModel.loadPeopleFiles(loadParam)
             "scene" -> viewModel.loadSceneFiles(loadParam, loadParam2)
-            "location" -> viewModel.loadLocationFiles(loadParam)
+            "location" -> {
+                targetDistrict.value = null
+                viewModel.loadLocationFiles(loadParam)
+            }
             "album" -> viewModel.loadAlbumFiles(loadParam.toDoubleOrNull() ?: 0.0)
             "favorites" -> viewModel.loadFavoritesFiles()
             "recent" -> viewModel.loadRecentFiles()
@@ -86,7 +98,7 @@ fun CategoryFileListScreen(
             )
         }
 
-        if (loadType == "location" && uiState.locationDistricts.isNotEmpty()) {
+        if (isCurrentPage && loadType == "location" && uiState.locationDistricts.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -96,13 +108,19 @@ fun CategoryFileListScreen(
             ) {
                 FilterChip(
                     selected = uiState.selectedDistrict == null,
-                    onClick = { viewModel.loadLocationFiles(loadParam, null) },
+                    onClick = {
+                        targetDistrict.value = null
+                        viewModel.loadLocationFiles(loadParam, null)
+                    },
                     label = { Text("全部") }
                 )
                 uiState.locationDistricts.forEach { district ->
                     FilterChip(
                         selected = uiState.selectedDistrict == district.city,
-                        onClick = { viewModel.loadLocationFiles(loadParam, district.city) },
+                        onClick = {
+                            targetDistrict.value = district.city
+                            viewModel.loadLocationFiles(loadParam, district.city)
+                        },
                         label = { Text("${district.city} ${district.count}") }
                     )
                 }
@@ -110,7 +128,7 @@ fun CategoryFileListScreen(
         }
 
         when {
-            uiState.isLoading -> {
+            !isCurrentPage || uiState.isLoading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -126,14 +144,14 @@ fun CategoryFileListScreen(
                             text = "点击重试",
                             modifier = Modifier.clickable {
                                 when (loadType) {
-                                    "people" -> viewModel.loadPeopleFiles(loadParam)
-                                    "scene" -> viewModel.loadSceneFiles(loadParam, loadParam2)
-                                    "location" -> viewModel.loadLocationFiles(loadParam, uiState.selectedDistrict)
-                                    "album" -> viewModel.loadAlbumFiles(loadParam.toDoubleOrNull() ?: 0.0)
-                                    "favorites" -> viewModel.loadFavoritesFiles()
-                                    "recent" -> viewModel.loadRecentFiles()
-                                    "videos" -> viewModel.loadVideoFiles()
-                                    "trash" -> viewModel.loadTrashFiles()
+                                    "people" -> viewModel.loadPeopleFiles(loadParam, force = true)
+                                    "scene" -> viewModel.loadSceneFiles(loadParam, loadParam2, force = true)
+                                    "location" -> viewModel.loadLocationFiles(loadParam, uiState.selectedDistrict, force = true)
+                                    "album" -> viewModel.loadAlbumFiles(loadParam.toDoubleOrNull() ?: 0.0, force = true)
+                                    "favorites" -> viewModel.loadFavoritesFiles(force = true)
+                                    "recent" -> viewModel.loadRecentFiles(force = true)
+                                    "videos" -> viewModel.loadVideoFiles(force = true)
+                                    "trash" -> viewModel.loadTrashFiles(force = true)
                                 }
                             },
                             color = MaterialTheme.colorScheme.primary
@@ -161,6 +179,7 @@ fun CategoryFileListScreen(
                     onColumnCountChange = viewModel::updateColumnCount,
                     showMonthHeaders = timelineLayout.showMonthHeaders,
                     showDayHeaders = timelineLayout.showDayHeaders,
+                    stateKey = expectedPageKey,
                     modifier = Modifier.fillMaxSize()
                 )
             }

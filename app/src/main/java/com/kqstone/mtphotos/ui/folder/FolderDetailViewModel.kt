@@ -15,8 +15,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.LinkedHashMap
 
 data class FolderDetailUiState(
+    val folderId: String? = null,
     val folderName: String = "",
     val subfolders: List<FolderItem> = emptyList(),
     val photos: List<UnifiedPhotoItem> = emptyList(),
@@ -32,7 +34,16 @@ class FolderDetailViewModel(
 
     private val _uiState = MutableStateFlow(FolderDetailUiState())
     val uiState: StateFlow<FolderDetailUiState> = _uiState
+
     private var localVideoThumbJob: Job? = null
+    private var loadJob: Job? = null
+    private var loadingFolderId: String? = null
+    private var activeFolderId: String? = null
+    private val folderCache = object : LinkedHashMap<String, FolderDetailUiState>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FolderDetailUiState>?): Boolean {
+            return size > 16
+        }
+    }
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -40,10 +51,21 @@ class FolderDetailViewModel(
         onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
     )
 
-    fun loadFolder(folderId: String) {
+    fun loadFolder(folderId: String, force: Boolean = false) {
+        if (restoreCached(folderId, force)) return
+        if (!force && loadJob?.isActive == true && loadingFolderId == folderId) return
+
+        loadJob?.cancel()
         localVideoThumbJob?.cancel()
-        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        viewModelScope.launch {
+        activateFolder(folderId)
+        loadingFolderId = folderId
+        _uiState.value = FolderDetailUiState(
+            folderId = folderId,
+            isLoading = true,
+            columnCount = _uiState.value.columnCount
+        )
+
+        loadJob = viewModelScope.launch {
             val detailResult = galleryRepository.getFolderDetail(folderId)
             val filesResult = galleryRepository.getFolderFiles(folderId)
 
@@ -52,18 +74,55 @@ class FolderDetailViewModel(
                     val cloudPhotos = filesResult.getOrNull() ?: emptyList()
                     val photos = syncRepository?.hydrateCloudPhotos(cloudPhotos)
                         ?: cloudPhotos.map { it.toCloudOnlyUnifiedPhotoItem() }
-                    _uiState.value = FolderDetailUiState(
+                    val newState = FolderDetailUiState(
+                        folderId = folderId,
                         folderName = detail.name,
                         subfolders = detail.subfolders,
-                        photos = photos
+                        photos = photos,
+                        columnCount = _uiState.value.columnCount
                     )
-                    warmLocalVideoThumbnails(photos)
+                    cacheAndShow(folderId, newState)
+                    if (activeFolderId == folderId) warmLocalVideoThumbnails(photos)
                 },
                 onFailure = { e ->
-                    _uiState.value = FolderDetailUiState(error = e.message ?: "加载失败")
+                    if (activeFolderId == folderId) {
+                        _uiState.value = _uiState.value.copy(
+                            folderId = folderId,
+                            isLoading = false,
+                            error = e.message ?: "加载失败"
+                        )
+                    }
                 }
             )
+            if (loadingFolderId == folderId) loadingFolderId = null
         }
+    }
+
+    private fun restoreCached(folderId: String, force: Boolean): Boolean {
+        activateFolder(folderId)
+        if (force) return false
+        val cached = folderCache[folderId] ?: return false
+        _uiState.value = cached.copy(isLoading = false, error = null)
+        return true
+    }
+
+    private fun cacheAndShow(folderId: String, state: FolderDetailUiState) {
+        val cacheable = state.copy(isLoading = false, error = null)
+        folderCache[folderId] = cacheable
+        if (activeFolderId == folderId) {
+            _uiState.value = cacheable
+        }
+    }
+
+    private fun updateActiveCache(state: FolderDetailUiState) {
+        activeFolderId?.let { folderCache[it] = state.copy(isLoading = false, error = null) }
+    }
+
+    private fun activateFolder(folderId: String) {
+        if (activeFolderId != folderId) {
+            selectionManager.clearSelection()
+        }
+        activeFolderId = folderId
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
@@ -104,10 +163,12 @@ class FolderDetailViewModel(
                 if (photo.dbId == dbId) photo.copy(thumbCachePath = path) else photo
             }
         )
+        updateActiveCache(_uiState.value)
     }
 
     fun updateColumnCount(count: Int) {
         _uiState.value = _uiState.value.copy(columnCount = count.coerceIn(2, 6))
+        updateActiveCache(_uiState.value)
     }
 
     fun selectAll() {
@@ -119,6 +180,7 @@ class FolderDetailViewModel(
         selectionManager.deleteSelected {
             val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
             _uiState.value = _uiState.value.copy(photos = remaining)
+            updateActiveCache(_uiState.value)
         }
     }
 
