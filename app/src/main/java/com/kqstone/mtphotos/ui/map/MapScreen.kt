@@ -5,13 +5,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,16 +18,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -49,7 +42,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -73,6 +65,7 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -83,6 +76,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MapScreen(
     viewModel: MapViewModel,
+    isActive: Boolean = true,
+    onSettingsClick: () -> Unit = {},
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -134,7 +129,34 @@ fun MapScreen(
     val markerRenderKeys = remember { mutableMapOf<String, String>() }
     val markerRenderJobs = remember { mutableMapOf<String, Job>() }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    LaunchedEffect(isActive, mapView) {
+        val view = mapView ?: return@LaunchedEffect
+        if (isActive) {
+            view.visibility = View.VISIBLE
+            view.onResume()
+        } else {
+            viewModel.selectCluster(null)
+            view.visibility = View.INVISIBLE
+            view.onPause()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        SimpleTitleHeader(
+            title = "足迹",
+            onSettingsClick = onSettingsClick
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
         AndroidView(
             factory = { ctx ->
                 com.amap.api.maps.MapsInitializer.updatePrivacyShow(ctx, true, true)
@@ -208,13 +230,16 @@ fun MapScreen(
                     }
                 }
             },
+            update = { view ->
+                view.visibility = if (isActive) View.VISIBLE else View.INVISIBLE
+            },
             modifier = Modifier.fillMaxSize()
         )
 
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 when (event) {
-                    Lifecycle.Event.ON_RESUME -> mapView?.onResume()
+                    Lifecycle.Event.ON_RESUME -> if (isActive) mapView?.onResume()
                     Lifecycle.Event.ON_PAUSE -> mapView?.onPause()
                     Lifecycle.Event.ON_DESTROY -> mapView?.onDestroy()
                     else -> Unit
@@ -223,7 +248,11 @@ fun MapScreen(
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose {
                 lifecycleOwner.lifecycle.removeObserver(observer)
+                mapView?.visibility = View.INVISIBLE
+                mapView?.onPause()
                 mapView?.onDestroy()
+                mapView = null
+                aMap = null
             }
         }
 
@@ -327,6 +356,7 @@ fun MapScreen(
             }
         }
 
+        /*
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -363,6 +393,8 @@ fun MapScreen(
                 }
             }
         }
+
+        */
 
         if (uiState.isLoading) {
             Box(
@@ -421,12 +453,7 @@ fun MapScreen(
             }
         }
 
-        AnimatedVisibility(
-            visible = selectedCluster != null,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
+        if (isActive && selectedCluster != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -439,46 +466,43 @@ fun MapScreen(
             )
         }
 
-        AnimatedVisibility(
-            visible = selectedCluster != null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            selectedCluster?.let { cluster ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
-                        )
-                ) {
-                    Column {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(top = 12.dp, bottom = 8.dp)
-                                .size(width = 32.dp, height = 4.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                    shape = CircleShape
-                                )
-                        )
-                        ClusterPhotoGrid(
-                            cluster = cluster,
-                            photos = uiState.selectedClusterPhotos,
-                            isLoading = uiState.isResolvingSelectedCluster,
-                            thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
-                            onDismiss = { viewModel.selectCluster(null) },
-                            onPhotoClick = onPhotoClick
-                        )
-                    }
+        if (isActive) selectedCluster?.let { cluster ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    )
+            ) {
+                Column {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 12.dp, bottom = 8.dp)
+                            .size(width = 32.dp, height = 4.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                shape = CircleShape
+                            )
+                    )
+                    ClusterPhotoGrid(
+                        cluster = cluster,
+                        photos = uiState.selectedClusterPhotos,
+                        isLoading = uiState.isResolvingSelectedCluster,
+                        thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
+                        onDismiss = { viewModel.selectCluster(null) },
+                        onPhotoClick = onPhotoClick
+                    )
                 }
             }
         }
     }
 }
+
+}
+
 
 @Composable
 private fun ClusterPhotoGrid(

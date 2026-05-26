@@ -1,6 +1,10 @@
 package com.kqstone.mtphotos.ui.navigation
 
 import android.net.Uri
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -87,6 +91,7 @@ fun MainScreen(
         factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
@@ -138,7 +143,14 @@ fun MainScreen(
         NavHost(
             navController = innerNavController,
             startDestination = "photos",
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None }
         ) {
             composable("photos") {
                 GalleryScreen(
@@ -293,6 +305,8 @@ fun MainScreen(
                 )
                 MapScreen(
                     viewModel = mapViewModel,
+                    isActive = currentRoute == "map",
+                    onSettingsClick = onNavigateToSettings,
                     onPhotoClick = { photo, list ->
                         val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(list, index)
