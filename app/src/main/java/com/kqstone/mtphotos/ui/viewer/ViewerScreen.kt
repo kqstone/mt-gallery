@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
@@ -340,8 +341,23 @@ fun ViewerScreen(
         )
     }
 
-    // Elegant Delete Confirmation Dialog
     if (showDeleteDialog) {
+        DeleteConfirmDialog(
+            selectedCount = 1,
+            onConfirm = {
+                showDeleteDialog = false
+                if (PermissionHelper.requestManageStoragePermission(context)) {
+                    viewModel.deleteCurrentPhoto(onSuccess = {
+                        stopAndGoBack()
+                    })
+                }
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    // Elegant Delete Confirmation Dialog
+    if (false && showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = {

@@ -63,7 +63,7 @@ fun SelectionTopBar(
 }
 
 @Composable
-fun DeleteConfirmDialog(
+private fun LegacyDeleteConfirmDialog(
     selectedCount: Int,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -72,6 +72,29 @@ fun DeleteConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text("确认删除") },
         text = { Text("确定要删除选中的 $selectedCount 张照片吗？\n照片将移入服务端回收站。") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("删除", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteConfirmDialog(
+    selectedCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("确认删除") },
+        text = { Text("照片将删除至服务端回收站") },
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text("删除", color = MaterialTheme.colorScheme.error)

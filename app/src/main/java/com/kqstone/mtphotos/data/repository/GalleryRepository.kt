@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.data.repository
 
 import com.kqstone.mtphotos.AppContainer
 import com.kqstone.mtphotos.data.local.db.toMapPhotoEntity
+import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
@@ -581,21 +582,14 @@ class GalleryRepository(private val container: AppContainer) {
 
             // 查找 Room 中的实体（按 cloudId 和 dbId 查询，覆盖所有同步状态）
             val entities = syncRepo.findMediaEntitiesByIds(ids)
+            syncRepo.ensureLocalDeleteAllowed(entities)
+            syncRepo.enqueueCloudDeleteTasks(entities)
             syncRepo.deleteLocalMediaFiles(entities)
 
             // 仅将有 cloudId 的文件发送到云端 API 删除
-            val cloudIds = entities.mapNotNull { it.cloudId }.filter { it > 0 }
-            if (cloudIds.isNotEmpty()) {
-                val body: Map<String, Any> = mapOf("fileIds" to cloudIds.map { it.toInt() })
-                val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-                val code = response["code"] as? String
-                if (code != null) {
-                    return Result.failure(Exception(code))
-                }
-            }
-
             // 清理本地文件和 Room 记录
             syncRepo.deleteMediaRecords(entities)
+            BackupScheduler.triggerCloudDeleteWork(container.prefsManager.context)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

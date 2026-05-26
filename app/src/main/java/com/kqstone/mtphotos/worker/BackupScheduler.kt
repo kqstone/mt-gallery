@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.worker
 
 import android.content.Context
 import android.util.Log
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -15,8 +16,11 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "BackupScheduler"
 private const val PERIODIC_BACKUP_WORK = "periodic_backup"
 private const val PERIODIC_SYNC_WORK = "periodic_sync"
+private const val PERIODIC_CLOUD_DELETE_WORK = "periodic_cloud_delete"
 private const val ONE_TIME_SYNC_WORK = "one_time_sync"
 private const val ONE_TIME_BACKUP_WORK = "one_time_backup"
+private const val ONE_TIME_CLOUD_DELETE_WORK = "one_time_cloud_delete"
+private const val DELAYED_CLOUD_DELETE_WORK = "delayed_cloud_delete"
 private const val DEFAULT_SYNC_INTERVAL_MINUTES = 60L
 
 /**
@@ -127,6 +131,65 @@ object BackupScheduler {
         Log.d(TAG, "Triggered immediate backup")
     }
 
+    // ===== Cloud delete work =====
+
+    fun triggerCloudDeleteWork(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = OneTimeWorkRequestBuilder<CloudDeleteWorker>()
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            ONE_TIME_CLOUD_DELETE_WORK,
+            ExistingWorkPolicy.KEEP,
+            workRequest
+        )
+        Log.d(TAG, "Triggered cloud delete work")
+    }
+
+    fun scheduleCloudDeleteRetry(context: Context, delayMillis: Long) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val delay = delayMillis.coerceAtLeast(0L)
+        val workRequest = OneTimeWorkRequestBuilder<CloudDeleteWorker>()
+            .setConstraints(constraints)
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            DELAYED_CLOUD_DELETE_WORK,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+        Log.d(TAG, "Scheduled cloud delete retry in ${delay}ms")
+    }
+
+    fun schedulePeriodicCloudDelete(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val workRequest = PeriodicWorkRequestBuilder<CloudDeleteWorker>(
+            6, TimeUnit.HOURS
+        )
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            PERIODIC_CLOUD_DELETE_WORK,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            workRequest
+        )
+        Log.d(TAG, "Scheduled periodic cloud delete")
+    }
+
     // ===== 组合调度 =====
 
     /**
@@ -138,6 +201,7 @@ object BackupScheduler {
     fun scheduleAll(context: Context, wifiOnly: Boolean = true, syncIntervalMinutes: Long = DEFAULT_SYNC_INTERVAL_MINUTES) {
         schedulePeriodicSync(context, syncIntervalMinutes)
         schedulePeriodicBackup(context, wifiOnly)
+        schedulePeriodicCloudDelete(context)
         Log.d(TAG, "Scheduled all work (wifiOnly=$wifiOnly, syncInterval=${syncIntervalMinutes}min)")
     }
 
@@ -158,8 +222,11 @@ object BackupScheduler {
         val wm = WorkManager.getInstance(context)
         wm.cancelUniqueWork(PERIODIC_SYNC_WORK)
         wm.cancelUniqueWork(PERIODIC_BACKUP_WORK)
+        wm.cancelUniqueWork(PERIODIC_CLOUD_DELETE_WORK)
         wm.cancelUniqueWork(ONE_TIME_SYNC_WORK)
         wm.cancelUniqueWork(ONE_TIME_BACKUP_WORK)
+        wm.cancelUniqueWork(ONE_TIME_CLOUD_DELETE_WORK)
+        wm.cancelUniqueWork(DELAYED_CLOUD_DELETE_WORK)
         Log.d(TAG, "Cancelled all work")
     }
 }
