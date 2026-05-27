@@ -1,6 +1,5 @@
 package com.kqstone.mtphotos.ui.folder
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,16 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -28,8 +26,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,16 +38,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kqstone.mtphotos.data.repository.AlbumItem
-import com.kqstone.mtphotos.data.repository.FolderItem
+import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
-import com.kqstone.mtphotos.ui.util.ThumbnailImage
-import com.kqstone.mtphotos.ui.util.bounceClick
+import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,16 +56,21 @@ fun FolderScreen(
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lazyListState = rememberLazyListState()
+    val scrollState = rememberScrollAlpha(
+        firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },
+        firstVisibleItemScrollOffset = { lazyListState.firstVisibleItemScrollOffset }
+    )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        SimpleTitleHeader(
-            title = "图集",
-            onSettingsClick = onSettingsClick
-        )
-
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
             uiState.isLoading && uiState.albums.isEmpty() && uiState.folders.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight, bottom = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator()
                 }
             }
@@ -83,8 +81,9 @@ fun FolderScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     LazyColumn(
+                        state = lazyListState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 20.dp)
+                        contentPadding = PaddingValues(top = scrollState.topBarHeight, bottom = 80.dp)
                     ) {
                         if (uiState.albums.isNotEmpty()) {
                             item {
@@ -95,12 +94,14 @@ fun FolderScreen(
                                         items = uiState.albums,
                                         key = { it.id }
                                     ) { album ->
-                                        CollectionCoverCard(
+                                        CoverCard(
                                             name = album.name,
-                                            count = album.fileCount,
+                                            subtitle = "${album.fileCount} 项",
                                             thumbUrl = album.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Collections,
-                                            onClick = { onAlbumClick(album.id, album.name) }
+                                            fallbackGradient = AlbumGradient,
+                                            onClick = { onAlbumClick(album.id, album.name) },
+                                            thumbKey = album.coverMd5
                                         )
                                     }
                                 }
@@ -116,12 +117,14 @@ fun FolderScreen(
                                         items = uiState.folders,
                                         key = { it.id }
                                     ) { folder ->
-                                        CollectionCoverCard(
+                                        CoverCard(
                                             name = folder.name,
-                                            count = folder.fileCount,
+                                            subtitle = "${folder.fileCount} 项",
                                             thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Folder,
-                                            onClick = { onFolderClick(folder.id) }
+                                            fallbackGradient = FolderGradient,
+                                            onClick = { onFolderClick(folder.id) },
+                                            thumbKey = folder.coverMd5
                                         )
                                     }
                                 }
@@ -149,6 +152,13 @@ fun FolderScreen(
                 }
             }
         }
+
+        SimpleTitleHeader(
+            title = "图集",
+            onSettingsClick = onSettingsClick,
+            scrollAlpha = scrollState.scrollAlpha,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
@@ -171,78 +181,9 @@ private fun CollectionRowSection(
     }
 }
 
-@Composable
-private fun CollectionCoverCard(
-    name: String,
-    count: Int,
-    thumbUrl: String?,
-    fallbackIcon: ImageVector,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .width(140.dp)
-            .bounceClick(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            ) {
-                if (thumbUrl != null) {
-                    ThumbnailImage(
-                        url = thumbUrl,
-                        contentDescription = name,
-                        modifier = Modifier.fillMaxSize(),
-                        key = thumbUrl
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = fallbackIcon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
-            }
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "$count 项",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
+// Gradient presets for collection cover cards
+private val AlbumGradient = listOf(Color(0xFFFDA085), Color(0xFFF6D365))
+private val FolderGradient = listOf(Color(0xFF38EF7D), Color(0xFF11998E))
 
 @Composable
 private fun CategorySection(

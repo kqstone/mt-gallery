@@ -141,20 +141,14 @@ fun MapScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        SimpleTitleHeader(
-            title = "足迹",
-            onSettingsClick = onSettingsClick
-        )
-
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
+                .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
         AndroidView(
@@ -498,9 +492,13 @@ fun MapScreen(
                 }
             }
         }
+        SimpleTitleHeader(
+            title = "足迹",
+            onSettingsClick = onSettingsClick,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
-
 }
 
 

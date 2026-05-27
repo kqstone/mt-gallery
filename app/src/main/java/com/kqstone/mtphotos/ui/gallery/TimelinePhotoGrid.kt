@@ -132,7 +132,14 @@ fun TimelinePhotoGrid(
     showDayHeaders: Boolean = true,
     onMonthPlaceholderClick: ((MonthGroup) -> Unit)? = null,
     stateKey: String? = null,
-    leadingContent: (@Composable () -> Unit)? = null
+    leadingContent: (@Composable () -> Unit)? = null,
+    gridState: LazyGridState = androidx.compose.runtime.saveable.rememberSaveable(
+        stateKey ?: "timeline",
+        saver = LazyGridState.Saver
+    ) {
+        LazyGridState()
+    },
+    contentPadding: PaddingValues = PaddingValues(1.dp)
 ) {
     data class GridItem(
         val type: String,
@@ -204,9 +211,6 @@ fun TimelinePhotoGrid(
         }
     }
 
-    val gridState = rememberSaveable(stateKey ?: "timeline", saver = LazyGridState.Saver) {
-        LazyGridState()
-    }
     val coroutineScope = rememberCoroutineScope()
     var initialPinchDistance by remember { mutableFloatStateOf(0f) }
     var isPinching by remember { mutableStateOf(false) }
@@ -323,7 +327,7 @@ fun TimelinePhotoGrid(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(columnCount),
-            contentPadding = PaddingValues(1.dp),
+            contentPadding = contentPadding,
             horizontalArrangement = Arrangement.spacedBy(1.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp),
             state = gridState,
@@ -433,7 +437,12 @@ fun TimelinePhotoGrid(
                         gridItems.getOrNull(targetIndex)?.parentMonthTitle
                     }
                 },
-                modifier = Modifier.align(Alignment.CenterEnd)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(
+                        top = contentPadding.calculateTopPadding(),
+                        bottom = contentPadding.calculateBottomPadding()
+                    )
             )
         }
     }

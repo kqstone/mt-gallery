@@ -9,9 +9,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -43,6 +47,8 @@ import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
+import com.kqstone.mtphotos.ui.util.bounceClick
+import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,29 +78,33 @@ fun FolderDetailScreen(
         viewModel.loadFolder(folderId)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (isSelectionMode) {
-            SelectionTopBar(
-                selectedCount = selectedIds.size,
-                onSelectAll = { viewModel.selectAll() },
-                onDelete = { showDeleteDialog.value = true },
-                onClearSelection = { viewModel.selectionManager.clearSelection() }
-            )
-        } else {
-            BackTitleTopBar(
-                title = uiState.folderName.ifEmpty { "文件夹" },
-                onBack = onBack
-            )
-        }
+    val gridState = rememberLazyGridState()
+    val scrollState = rememberScrollAlpha(
+        firstVisibleItemIndex = { gridState.firstVisibleItemIndex },
+        firstVisibleItemScrollOffset = { gridState.firstVisibleItemScrollOffset }
+    )
 
+    val navigationBarsHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
             !isCurrentFolder || uiState.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator()
                 }
             }
             uiState.error != null -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = uiState.error!!,
@@ -109,7 +119,12 @@ fun FolderDetailScreen(
                 }
             }
             uiState.photos.isEmpty() && uiState.subfolders.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         text = "文件夹为空",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -130,6 +145,8 @@ fun FolderDetailScreen(
                     showDayHeaders = timelineLayout.showDayHeaders,
                     stateKey = "folder:$folderId",
                     modifier = Modifier.fillMaxSize(),
+                    gridState = gridState,
+                    contentPadding = PaddingValues(top = scrollState.topBarHeight, bottom = navigationBarsHeight + 16.dp, start = 1.dp, end = 1.dp),
                     leadingContent = if (uiState.subfolders.isNotEmpty()) {
                         {
                             SubfolderSection(
@@ -141,6 +158,28 @@ fun FolderDetailScreen(
                     } else {
                         null
                     }
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+        ) {
+            if (isSelectionMode) {
+                SelectionTopBar(
+                    selectedCount = selectedIds.size,
+                    onSelectAll = { viewModel.selectAll() },
+                    onDelete = { showDeleteDialog.value = true },
+                    onClearSelection = { viewModel.selectionManager.clearSelection() },
+                    scrollAlpha = scrollState.scrollAlpha
+                )
+            } else {
+                BackTitleTopBar(
+                    title = uiState.folderName.ifEmpty { "文件夹" },
+                    onBack = onBack,
+                    scrollAlpha = scrollState.scrollAlpha
                 )
             }
         }
@@ -199,7 +238,7 @@ private fun SubfolderCard(
     Card(
         modifier = Modifier
             .width(120.dp)
-            .clickable(onClick = onClick),
+            .bounceClick(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column {

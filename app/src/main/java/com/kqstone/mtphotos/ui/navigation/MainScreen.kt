@@ -24,6 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -47,6 +50,11 @@ import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.map.MapScreen
 import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 
 private data class TabItem(
     val route: String,
@@ -63,6 +71,9 @@ private val tabs = listOf(
 
 private val topLevelRoutes = setOf("photos", "folders", "map", "discovery")
 
+private val BottomNavigationBarHeight = 56.dp
+private val BottomNavigationBlurRadius = 24.dp
+
 @Composable
 fun MainScreen(
     container: AppContainer,
@@ -77,6 +88,7 @@ fun MainScreen(
     val currentRoute = currentDestination?.route
 
     val showBottomBar = currentRoute in topLevelRoutes
+    val hazeState = rememberHazeState()
 
     val folderViewModel: FolderViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = FolderViewModel.Factory(container.galleryRepository)
@@ -90,15 +102,38 @@ fun MainScreen(
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
+                val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                val naviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+                val fallbackNaviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+
                 NavigationBar(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        .height(BottomNavigationBarHeight)
+                        .hazeEffect(
+                            state = hazeState,
+                            style = HazeStyle(
+                                backgroundColor = MaterialTheme.colorScheme.surface,
+                                tints = listOf(HazeTint(naviColor)),
+                                blurRadius = BottomNavigationBlurRadius,
+                                noiseFactor = 0f,
+                                fallbackTint = HazeTint(fallbackNaviColor)
+                            )
+                        )
+                        .drawBehind {
+                            drawLine(
+                                color = outlineColor,
+                                start = Offset(0f, 0f),
+                                end = Offset(size.width, 0f),
+                                strokeWidth = 1f
+                            )
+                        },
+                    containerColor = Color.Transparent,
                     tonalElevation = 0.dp
                 ) {
                     tabs.forEach { tab ->
@@ -139,14 +174,15 @@ fun MainScreen(
                 }
             }
         }
-    ) { innerPadding ->
+    ) { _ -> // innerPadding intentionally ignored: content extends behind the translucent navbar
         NavHost(
             navController = innerNavController,
             startDestination = "photos",
             modifier = Modifier
-                .padding(innerPadding)
+                .padding(bottom = 0.dp)
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                .hazeSource(state = hazeState),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },

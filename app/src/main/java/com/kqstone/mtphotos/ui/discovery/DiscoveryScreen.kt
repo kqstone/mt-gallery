@@ -1,22 +1,15 @@
 package com.kqstone.mtphotos.ui.discovery
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
 import com.kqstone.mtphotos.ui.util.bounceClick
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,43 +19,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
+import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Map
+import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,21 +59,31 @@ fun DiscoveryScreen(
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lazyListState = rememberLazyListState()
+    val scrollState = rememberScrollAlpha(
+        firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },
+        firstVisibleItemScrollOffset = { lazyListState.firstVisibleItemScrollOffset }
+    )
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        SimpleTitleHeader(
-            title = "发现",
-            onSettingsClick = onSettingsClick
-        )
-
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
             uiState.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight, bottom = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator()
                 }
             }
             uiState.error != null && uiState.people.isEmpty() && uiState.scenes.isEmpty() && uiState.locations.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight, bottom = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = uiState.error!!,
@@ -110,9 +105,10 @@ fun DiscoveryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize()
+                        state = lazyListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(top = scrollState.topBarHeight, bottom = 80.dp)
                     ) {
-
                         if (uiState.people.isNotEmpty()) {
                             item {
                                 PeopleSection(
@@ -168,6 +164,13 @@ fun DiscoveryScreen(
                 }
             }
         }
+
+        SimpleTitleHeader(
+            title = "发现",
+            onSettingsClick = onSettingsClick,
+            scrollAlpha = scrollState.scrollAlpha,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 
@@ -180,18 +183,18 @@ private fun PeopleSection(
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
             text = "人物",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = people,
                 key = { it.id }
             ) { person ->
-                DiscoveryCard(
+                PersonCircleItem(
                     name = person.name,
                     count = person.count,
                     thumbUrl = portraitUrlProvider(person),
@@ -212,25 +215,25 @@ private fun SceneSection(
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
             text = "场景",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = scenes,
                 key = { it.id }
             ) { scene ->
-                DiscoveryCard(
+                CoverCard(
                     name = scene.name,
-                    count = scene.count,
+                    subtitle = "${scene.count} 张",
                     thumbUrl = if (scene.coverMd5.isNotEmpty()) {
                         thumbUrlProvider(scene.coverMd5, scene.coverFileId)
                     } else null,
                     onClick = { onItemClick(scene) },
-                    key = scene.coverMd5
+                    thumbKey = scene.coverMd5
                 )
             }
         }
@@ -246,21 +249,25 @@ private fun LocationSection(
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
             text = "地点",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = locations,
                 key = { it.city }
             ) { location ->
-                LocationCard(
-                    location = location,
+                CoverCard(
+                    name = location.city,
+                    subtitle = "${location.count} 张",
+                    thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider),
                     onClick = { onItemClick(location) },
-                    thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider)
+                    fallbackIcon = Icons.Default.Place,
+                    fallbackGradient = LocationGradient,
+                    thumbKey = location.coverMd5
                 )
             }
         }
@@ -268,143 +275,75 @@ private fun LocationSection(
 }
 
 @Composable
-private fun DiscoveryCard(
+private fun PersonCircleItem(
     name: String,
     count: Int,
     thumbUrl: String?,
     onClick: () -> Unit,
     key: String? = null
 ) {
-    Card(
+    Column(
         modifier = Modifier
-            .width(140.dp)
+            .width(90.dp)
             .bounceClick(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            ) {
-                if (thumbUrl != null) {
-                    ThumbnailImage(
-                        url = thumbUrl,
-                        contentDescription = name,
-                        modifier = Modifier.fillMaxSize(),
-                        key = key
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
-                                    )
-                                )
-                            )
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PhotoLibrary,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(36.dp)
+        Box(
+            modifier = Modifier
+                .size(76.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
                         )
-                    }
-                }
-            }
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "$count 张",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocationCard(
-    location: LocationItem,
-    onClick: () -> Unit,
-    thumbUrl: String?
-) {
-    Card(
-        modifier = Modifier
-            .width(120.dp)
-            .bounceClick(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(Color(0xFF8E9DFB), Color(0xFFEDACF7))
-                        ),
-                        shape = CircleShape
                     ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (thumbUrl != null) {
-                    ThumbnailImage(
-                        url = thumbUrl,
-                        contentDescription = location.city,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                        key = location.coverMd5
-                    )
-                } else {
+                    shape = CircleShape
+                )
+                .border(
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    shape = CircleShape
+                )
+        ) {
+            if (thumbUrl != null) {
+                ThumbnailImage(
+                    url = thumbUrl,
+                    contentDescription = name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    key = key
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Place,
-                        contentDescription = "位置",
-                        tint = Color.White,
-                        modifier = Modifier.size(30.dp)
+                        imageVector = Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = location.city,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${location.count} 张",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        Text(
+            text = "$count 张",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
 }
 
-
+// Gradient preset for location cards
+private val LocationGradient = listOf(Color(0xFF8E9DFB), Color(0xFFEDACF7))

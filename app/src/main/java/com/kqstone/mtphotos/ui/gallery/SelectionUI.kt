@@ -23,9 +23,13 @@ fun SelectionTopBar(
     onSelectAll: () -> Unit,
     onDelete: () -> Unit,
     onClearSelection: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollAlpha: Float = 1f
 ) {
-    AppTopBarContainer(modifier = modifier) {
+    AppTopBarContainer(
+        modifier = modifier,
+        scrollAlpha = scrollAlpha
+    ) {
         IconButton(
             onClick = onClearSelection,
             modifier = Modifier.size(32.dp)

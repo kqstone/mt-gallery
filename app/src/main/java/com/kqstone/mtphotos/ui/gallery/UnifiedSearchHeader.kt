@@ -66,13 +66,15 @@ fun UnifiedSearchHeader(
     onPersonFilterChange: (PersonItem?) -> Unit,
     onLocationFilterChange: (LocationItem?) -> Unit,
     onSuggestionClick: (String) -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    scrollAlpha: Float = 1f
 ) {
     LaunchedEffect(isPanelActive) {
         if (isPanelActive) onPanelActiveChange(true)
     }
 
     AppTopBarContainer(
+        scrollAlpha = scrollAlpha,
         expandedContent = if (isPanelActive) {
             {
                 Column(

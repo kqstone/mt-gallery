@@ -1,15 +1,23 @@
 package com.kqstone.mtphotos.ui.discovery
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,6 +41,7 @@ import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,58 +92,35 @@ fun CategoryFileListScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (isSelectionMode) {
-            SelectionTopBar(
-                selectedCount = selectedIds.size,
-                onSelectAll = { viewModel.selectAll() },
-                onDelete = { showDeleteDialog.value = true },
-                onClearSelection = { viewModel.selectionManager.clearSelection() }
-            )
-        } else {
-            BackTitleTopBar(
-                title = title,
-                onBack = onBack
-            )
-        }
+    val gridState = rememberLazyGridState()
+    val scrollState = rememberScrollAlpha(
+        firstVisibleItemIndex = { gridState.firstVisibleItemIndex },
+        firstVisibleItemScrollOffset = { gridState.firstVisibleItemScrollOffset }
+    )
 
-        if (isCurrentPage && loadType == "location" && uiState.locationDistricts.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = uiState.selectedDistrict == null,
-                    onClick = {
-                        targetDistrict.value = null
-                        viewModel.loadLocationFiles(loadParam, null)
-                    },
-                    label = { Text("全部") }
-                )
-                uiState.locationDistricts.forEach { district ->
-                    FilterChip(
-                        selected = uiState.selectedDistrict == district.city,
-                        onClick = {
-                            targetDistrict.value = district.city
-                            viewModel.loadLocationFiles(loadParam, district.city)
-                        },
-                        label = { Text("${district.city} ${district.count}") }
-                    )
-                }
-            }
-        }
+    val navigationBarsHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    val hasDistricts = isCurrentPage && loadType == "location" && uiState.locationDistricts.isNotEmpty()
+
+    Box(modifier = Modifier.fillMaxSize()) {
         when {
             !isCurrentPage || uiState.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator()
                 }
             }
             uiState.error != null -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = uiState.error!!,
@@ -160,7 +146,12 @@ fun CategoryFileListScreen(
                 }
             }
             uiState.photos.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = scrollState.topBarHeight),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         text = "暂无照片",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -180,7 +171,67 @@ fun CategoryFileListScreen(
                     showMonthHeaders = timelineLayout.showMonthHeaders,
                     showDayHeaders = timelineLayout.showDayHeaders,
                     stateKey = expectedPageKey,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    gridState = gridState,
+                    contentPadding = PaddingValues(
+                        top = if (hasDistricts) scrollState.topBarHeight + 48.dp else scrollState.topBarHeight,
+                        bottom = navigationBarsHeight + 16.dp,
+                        start = 1.dp,
+                        end = 1.dp
+                    )
+                )
+            }
+        }
+
+        if (hasDistricts) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = scrollState.topBarHeight)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f * scrollState.scrollAlpha))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = uiState.selectedDistrict == null,
+                    onClick = {
+                        targetDistrict.value = null
+                        viewModel.loadLocationFiles(loadParam, null)
+                    },
+                    label = { Text("全部") }
+                )
+                uiState.locationDistricts.forEach { district ->
+                    FilterChip(
+                        selected = uiState.selectedDistrict == district.city,
+                        onClick = {
+                            targetDistrict.value = district.city
+                            viewModel.loadLocationFiles(loadParam, district.city)
+                        },
+                        label = { Text("${district.city} ${district.count}") }
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+        ) {
+            if (isSelectionMode) {
+                SelectionTopBar(
+                    selectedCount = selectedIds.size,
+                    onSelectAll = { viewModel.selectAll() },
+                    onDelete = { showDeleteDialog.value = true },
+                    onClearSelection = { viewModel.selectionManager.clearSelection() },
+                    scrollAlpha = scrollState.scrollAlpha
+                )
+            } else {
+                BackTitleTopBar(
+                    title = title,
+                    onBack = onBack,
+                    scrollAlpha = scrollState.scrollAlpha
                 )
             }
         }
