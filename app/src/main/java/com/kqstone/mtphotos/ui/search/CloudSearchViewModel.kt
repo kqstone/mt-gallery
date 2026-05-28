@@ -88,6 +88,10 @@ class CloudSearchViewModel(
         }
     }
 
+    fun getPortraitUrl(personId: String, cover: Double): String {
+        return galleryRepository.getPortraitUrl(personId, cover)
+    }
+
     private fun PersonItem.hasSearchDisplayName(): Boolean {
         val normalized = name.trim()
         return normalized.isNotEmpty() &&

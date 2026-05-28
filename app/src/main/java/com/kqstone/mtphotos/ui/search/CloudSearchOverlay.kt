@@ -2,6 +2,8 @@ package com.kqstone.mtphotos.ui.search
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,11 +38,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,13 +62,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
@@ -177,6 +194,9 @@ fun CloudSearchOverlay(
                         locations = uiState.locations,
                         isLoadingFilters = uiState.isLoadingFilters,
                         isClipAvailable = uiState.isClipAvailable,
+                        portraitUrlProvider = { person ->
+                            viewModel.getPortraitUrl(person.id, person.coverFileId)
+                        },
                         onSearchTypeChange = viewModel::updateSearchType,
                         onPersonFilterChange = viewModel::updatePersonFilter,
                         onLocationFilterChange = viewModel::updateLocationFilter,
@@ -362,6 +382,7 @@ private fun SearchFilterContent(
     locations: List<LocationItem>,
     isLoadingFilters: Boolean,
     isClipAvailable: Boolean,
+    portraitUrlProvider: (PersonItem) -> String,
     onSearchTypeChange: (SearchType) -> Unit,
     onPersonFilterChange: (PersonItem?) -> Unit,
     onLocationFilterChange: (LocationItem?) -> Unit,
@@ -373,67 +394,154 @@ private fun SearchFilterContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SearchChip("综合", searchType == SearchType.AUTO) {
-                onSearchTypeChange(SearchType.AUTO)
-            }
-            SearchChip("文件名", searchType == SearchType.FILE_NAME) {
-                onSearchTypeChange(SearchType.FILE_NAME)
-            }
-            SearchChip("文本识别", searchType == SearchType.OCR_TEXT) {
-                onSearchTypeChange(SearchType.OCR_TEXT)
-            }
-            SearchChip("识图", searchType == SearchType.VISUAL_TEXT, enabled = isClipAvailable) {
-                onSearchTypeChange(SearchType.VISUAL_TEXT)
+        // 搜索类型 Card
+        SectionContainer {
+            Column {
+                FilterSectionTitle("搜索类型", icon = Icons.Default.Tune)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    SearchChip(
+                        text = "综合",
+                        selected = searchType == SearchType.AUTO,
+                        leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp)) }
+                    ) {
+                        onSearchTypeChange(SearchType.AUTO)
+                    }
+                    SearchChip(
+                        text = "文件名",
+                        selected = searchType == SearchType.FILE_NAME,
+                        leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(14.dp)) }
+                    ) {
+                        onSearchTypeChange(SearchType.FILE_NAME)
+                    }
+                    SearchChip(
+                        text = "文本识别",
+                        selected = searchType == SearchType.OCR_TEXT,
+                        leadingIcon = { Icon(Icons.Default.Translate, null, modifier = Modifier.size(14.dp)) }
+                    ) {
+                        onSearchTypeChange(SearchType.OCR_TEXT)
+                    }
+                    SearchChip(
+                        text = "识图",
+                        selected = searchType == SearchType.VISUAL_TEXT,
+                        enabled = isClipAvailable,
+                        leadingIcon = { Icon(Icons.Default.Image, null, modifier = Modifier.size(14.dp)) }
+                    ) {
+                        onSearchTypeChange(SearchType.VISUAL_TEXT)
+                    }
+                }
             }
         }
 
         if (suggestions.isNotEmpty()) {
-            FilterSectionTitle("建议")
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                suggestions.forEach { tip ->
-                    SearchChip(tip.label, false) { onSuggestionClick(tip.value) }
+            SectionContainer {
+                Column {
+                    FilterSectionTitle("建议", icon = Icons.Default.Star)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        suggestions.forEach { tip ->
+                            SearchChip(
+                                text = tip.label,
+                                selected = false,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            ) {
+                                onSuggestionClick(tip.value)
+                            }
+                        }
+                    }
                 }
             }
         }
 
         if (people.isNotEmpty()) {
-            FilterSectionTitle("人物")
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SearchChip("不限", filters.personId.isNullOrBlank()) {
-                    onPersonFilterChange(null)
-                }
-                people.forEach { person ->
-                    SearchChip(person.name, filters.personId == person.id) {
-                        onPersonFilterChange(person)
+            SectionContainer {
+                Column {
+                    FilterSectionTitle("人物", icon = Icons.Default.Person)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        SearchChip(
+                            text = "不限",
+                            selected = filters.personId.isNullOrBlank(),
+                            leadingIcon = { Icon(Icons.Default.Person, null, modifier = Modifier.size(14.dp)) }
+                        ) {
+                            onPersonFilterChange(null)
+                        }
+                        people.forEach { person ->
+                            val isSelected = filters.personId == person.id
+                            SearchChip(
+                                text = person.name,
+                                selected = isSelected,
+                                leadingIcon = {
+                                    PersonChipAvatar(
+                                        url = if (person.coverFileId > 0) portraitUrlProvider(person) else null,
+                                        name = person.name
+                                    )
+                                }
+                            ) {
+                                onPersonFilterChange(person)
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (locations.isNotEmpty()) {
-            FilterSectionTitle("地点")
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SearchChip("不限", filters.location.isNullOrBlank()) {
-                    onLocationFilterChange(null)
-                }
-                locations.forEach { location ->
-                    SearchChip(location.city, filters.location == location.city) {
-                        onLocationFilterChange(location)
+            SectionContainer {
+                Column {
+                    FilterSectionTitle("地点", icon = Icons.Default.Place)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        SearchChip(
+                            text = "不限",
+                            selected = filters.location.isNullOrBlank(),
+                            leadingIcon = { Icon(Icons.Default.Place, null, modifier = Modifier.size(14.dp)) }
+                        ) {
+                            onLocationFilterChange(null)
+                        }
+                        locations.forEach { location ->
+                            val isSelected = filters.location == location.city
+                            SearchChip(
+                                text = location.city,
+                                selected = isSelected,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Place,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (isSelected) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                        }
+                                    )
+                                }
+                            ) {
+                                onLocationFilterChange(location)
+                            }
+                        }
                     }
                 }
             }
@@ -443,17 +551,19 @@ private fun SearchFilterContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "正在加载筛选项",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "正在加载筛选项...",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -462,13 +572,45 @@ private fun SearchFilterContent(
 }
 
 @Composable
-private fun FilterSectionTitle(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
-    )
+private fun FilterSectionTitle(
+    title: String,
+    icon: ImageVector? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Vertical accent bar
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(12.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.primary,
+                    shape = RoundedCornerShape(2.dp)
+                )
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @Composable
@@ -476,25 +618,117 @@ private fun SearchChip(
     text: String,
     selected: Boolean,
     enabled: Boolean = true,
+    leadingIcon: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    AssistChip(
-        onClick = onClick,
-        enabled = enabled,
-        label = { Text(text) },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            labelColor = if (selected) {
-                MaterialTheme.colorScheme.onSecondaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-        )
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        },
+        label = "bgColor"
     )
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+            selected -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        label = "contentColor"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+            selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+        },
+        label = "borderColor"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.02f else 1f,
+        label = "scale"
+    )
+
+    Row(
+        modifier = Modifier
+            .scale(scale)
+            .background(backgroundColor, shape = CircleShape)
+            .border(
+                width = 1.dp,
+                color = borderColor,
+                shape = CircleShape
+            )
+            .clickable(
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (leadingIcon != null) {
+            leadingIcon()
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            ),
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SectionContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 2.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun PersonChipAvatar(
+    url: String?,
+    name: String
+) {
+    if (!url.isNullOrEmpty()) {
+        AsyncImage(
+            model = coil.request.ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .size(64)
+                .crossfade(true)
+                .build(),
+            contentDescription = name,
+            modifier = Modifier
+                .size(16.dp)
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        Icon(
+            imageVector = Icons.Default.Person,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp)
+        )
+    }
 }
