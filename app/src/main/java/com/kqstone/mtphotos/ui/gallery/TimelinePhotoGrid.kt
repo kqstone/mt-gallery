@@ -42,6 +42,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -223,31 +224,43 @@ fun TimelinePhotoGrid(
     }
     val currentGridItems by rememberUpdatedState(gridItems)
 
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val contentPaddingLeftPx = with(density) {
+        contentPadding.calculateLeftPadding(layoutDirection).toPx()
+    }
+
+    fun gridItemAtPointer(pointerOffset: Offset): GridItem? {
+        val layoutInfo = gridState.layoutInfo
+        val itemOffset = Offset(
+            x = pointerOffset.x - contentPaddingLeftPx,
+            y = pointerOffset.y + layoutInfo.viewportStartOffset
+        )
+        val itemInfo = layoutInfo.visibleItemsInfo.find { itemInfo ->
+            itemOffset.x >= itemInfo.offset.x &&
+                itemOffset.x < itemInfo.offset.x + itemInfo.size.width &&
+                itemOffset.y >= itemInfo.offset.y &&
+                itemOffset.y < itemInfo.offset.y + itemInfo.size.height
+        } ?: return null
+        return currentGridItems.getOrNull(itemInfo.index)
+    }
+
     fun updateDragSelection(pointerOffset: Offset) {
-        val currentItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-            val x = pointerOffset.x.toInt()
-            val y = pointerOffset.y.toInt()
-            x in itemInfo.offset.x..(itemInfo.offset.x + itemInfo.size.width) &&
-                y in itemInfo.offset.y..(itemInfo.offset.y + itemInfo.size.height)
-        }
-        if (currentItem != null) {
-            val gridItem = currentGridItems.getOrNull(currentItem.index)
-            if (gridItem?.type == "photo") {
-                val currentPhoto = gridItem.photo ?: return
-                val startPhoto = dragStartPhoto ?: return
-                val startIndex = allPhotos.indexOf(startPhoto)
-                val currentIndex = allPhotos.indexOf(currentPhoto)
-                if (startIndex != -1 && currentIndex != -1) {
-                    val min = minOf(startIndex, currentIndex)
-                    val max = maxOf(startIndex, currentIndex)
-                    val dragRangeIds = allPhotos.subList(min, max + 1).map { it.id }.toSet()
-                    selectionManager.setSelectedIds(initialSelection + dragRangeIds)
-                }
+        val gridItem = gridItemAtPointer(pointerOffset)
+        if (gridItem?.type == "photo") {
+            val currentPhoto = gridItem.photo ?: return
+            val startPhoto = dragStartPhoto ?: return
+            val startIndex = allPhotos.indexOf(startPhoto)
+            val currentIndex = allPhotos.indexOf(currentPhoto)
+            if (startIndex != -1 && currentIndex != -1) {
+                val min = minOf(startIndex, currentIndex)
+                val max = maxOf(startIndex, currentIndex)
+                val dragRangeIds = allPhotos.subList(min, max + 1).map { it.id }.toSet()
+                selectionManager.setSelectedIds(initialSelection + dragRangeIds)
             }
         }
     }
 
-    val density = LocalDensity.current
     LaunchedEffect(currentDragPosition) {
         val pos = currentDragPosition
         if (pos != null) {
@@ -333,26 +346,18 @@ fun TimelinePhotoGrid(
             state = gridState,
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(columnCount, months) {
+                .pointerInput(columnCount, months, contentPaddingLeftPx) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = { offset ->
-                            val startItem = gridState.layoutInfo.visibleItemsInfo.find { itemInfo ->
-                                val x = offset.x.toInt()
-                                val y = offset.y.toInt()
-                                x in itemInfo.offset.x..(itemInfo.offset.x + itemInfo.size.width) &&
-                                    y in itemInfo.offset.y..(itemInfo.offset.y + itemInfo.size.height)
-                            }
-                            if (startItem != null) {
-                                val gridItem = currentGridItems.getOrNull(startItem.index)
-                                if (gridItem?.type == "photo") {
-                                    val photo = gridItem.photo ?: return@detectDragGesturesAfterLongPress
-                                    dragStartPhoto = photo
-                                    val currentSelected = selectionManager.selectedPhotoIds.value
-                                    if (photo.id !in currentSelected) {
-                                        selectionManager.toggleSelection(photo.id)
-                                    }
-                                    initialSelection = selectionManager.selectedPhotoIds.value
+                            val gridItem = gridItemAtPointer(offset)
+                            if (gridItem?.type == "photo") {
+                                val photo = gridItem.photo ?: return@detectDragGesturesAfterLongPress
+                                dragStartPhoto = photo
+                                val currentSelected = selectionManager.selectedPhotoIds.value
+                                if (photo.id !in currentSelected) {
+                                    selectionManager.toggleSelection(photo.id)
                                 }
+                                initialSelection = selectionManager.selectedPhotoIds.value
                             }
                         },
                         onDrag = { change, _ ->
