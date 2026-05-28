@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,7 +56,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.Coil
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
-import com.amap.api.maps.MapView
+import com.amap.api.maps.TextureMapView
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.CameraPosition
 import com.amap.api.maps.model.LatLng
@@ -123,7 +125,7 @@ fun MapScreen(
 
     val selectedCluster = uiState.selectedCluster
 
-    var mapView by remember { mutableStateOf<MapView?>(null) }
+    var mapView by remember { mutableStateOf<TextureMapView?>(null) }
     var aMap by remember { mutableStateOf<AMap?>(null) }
     val markersByClusterKey = remember { mutableMapOf<String, Marker>() }
     val markerRenderKeys = remember { mutableMapOf<String, String>() }
@@ -156,7 +158,7 @@ fun MapScreen(
                 com.amap.api.maps.MapsInitializer.updatePrivacyShow(ctx, true, true)
                 com.amap.api.maps.MapsInitializer.updatePrivacyAgree(ctx, true)
 
-                MapView(ctx).also { mv ->
+                TextureMapView(ctx).also { mv ->
                     mv.onCreate(Bundle())
                     mapView = mv
                     val map = mv.map
@@ -255,9 +257,10 @@ fun MapScreen(
             if (hasLocationPermission) {
                 val myLocationStyle = MyLocationStyle()
                 myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_SHOW)
+                myLocationStyle.showMyLocation(false) // 隐藏蓝点和范围，但保留定位功能
                 map.setMyLocationStyle(myLocationStyle)
                 map.isMyLocationEnabled = true
-                map.uiSettings.isMyLocationButtonEnabled = true
+                map.uiSettings.isMyLocationButtonEnabled = false
             }
         }
 
@@ -492,6 +495,34 @@ fun MapScreen(
                 }
             }
         }
+
+        if (isActive && hasLocationPermission) {
+            FloatingActionButton(
+                onClick = {
+                    aMap?.myLocation?.let { loc ->
+                        aMap?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                LatLng(loc.latitude, loc.longitude),
+                                15f
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 80.dp)
+                    .size(44.dp),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                contentColor = MaterialTheme.colorScheme.primary,
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MyLocation,
+                    contentDescription = "定位"
+                )
+            }
+        }
+
         SimpleTitleHeader(
             title = "足迹",
             onSettingsClick = onSettingsClick,
