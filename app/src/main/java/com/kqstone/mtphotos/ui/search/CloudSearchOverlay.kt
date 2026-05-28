@@ -88,6 +88,7 @@ import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.LocalHazeState
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -100,6 +101,13 @@ fun CloudSearchOverlay(
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
+
+    val hazeState = LocalHazeState.current
+    val contentModifier = if (hazeState != null) {
+        Modifier.hazeSource(state = hazeState)
+    } else {
+        Modifier
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -159,7 +167,11 @@ fun CloudSearchOverlay(
                 )
             }
 
-            Box(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .then(contentModifier)
+            ) {
                 val hasResults = uiState.resultMonths.isNotEmpty()
                 val shouldShowResults = uiState.isActive || uiState.isSearching || uiState.error != null || hasResults
                 if (shouldShowResults) {

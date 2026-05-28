@@ -172,8 +172,7 @@ fun MainScreen(
                         .padding(bottom = 0.dp)
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
-                        .graphicsLayer { alpha = 0.99f }
-                        .hazeSource(state = hazeState),
+                        .graphicsLayer { alpha = 0.99f },
                     enterTransition = { EnterTransition.None },
                     exitTransition = { ExitTransition.None },
                     popEnterTransition = { EnterTransition.None },

@@ -48,6 +48,8 @@ import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
+import com.kqstone.mtphotos.ui.util.LocalHazeState
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +64,13 @@ fun DiscoveryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
+
+    val hazeState = LocalHazeState.current
+    val contentModifier = if (hazeState != null) {
+        Modifier.hazeSource(state = hazeState)
+    } else {
+        Modifier
+    }
     val scrollState = rememberScrollAlpha(
         firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { lazyListState.firstVisibleItemScrollOffset }
@@ -104,7 +113,7 @@ fun DiscoveryScreen(
                 PullToRefreshBox(
                     isRefreshing = uiState.isRefreshing,
                     onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().then(contentModifier)
                 ) {
                     LazyColumn(
                         state = lazyListState,
