@@ -24,6 +24,13 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/**
+ * Global CompositionLocal to share the [HazeState] from the host screen
+ * down to deep UI components (like search bars) without explicit threading.
+ */
+val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
 
 // ──────────────────────────────────────────────────────────
 //  Haze Frosted-Glass Blur

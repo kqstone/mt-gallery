@@ -33,6 +33,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
+import androidx.compose.ui.draw.clip
+import com.kqstone.mtphotos.ui.util.LocalHazeState
+import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 
 @Composable
 fun SearchEntryTopBar(
@@ -49,18 +52,24 @@ fun SearchEntryTopBar(
         modifier = modifier,
         scrollAlpha = scrollAlpha
     ) {
+        val hazeState = LocalHazeState.current
+        val searchBgModifier = if (hazeState != null) {
+            Modifier.frostedGlassEffect(
+                state = hazeState,
+                showTopDivider = false,
+                tintAlpha = 0.25f
+            )
+        } else {
+            Modifier.background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+        }
+
         Row(
             modifier = Modifier
                 .weight(1f)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    shape = CircleShape
-                )
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                    shape = CircleShape
-                )
+                .clip(CircleShape)
+                .then(searchBgModifier)
                 .clickable(onClick = onSearchClick)
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically

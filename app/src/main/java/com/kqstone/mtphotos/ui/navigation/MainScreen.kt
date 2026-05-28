@@ -56,6 +56,8 @@ import com.kqstone.mtphotos.ui.search.CloudSearchOverlay
 import com.kqstone.mtphotos.ui.search.CloudSearchViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
+import com.kqstone.mtphotos.ui.util.LocalHazeState
+import androidx.compose.runtime.CompositionLocalProvider
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -110,251 +112,253 @@ fun MainScreen(
     )
     var isSearchOverlayVisible by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                if (showBottomBar) {
-                    NavigationBar(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(BottomNavigationBarHeight)
-                            .frostedGlassEffect(state = hazeState),
-                        containerColor = Color.Transparent,
-                        tonalElevation = 0.dp
-                    ) {
-                        tabs.forEach { tab ->
-                            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    innerNavController.navigate(tab.route) {
-                                        popUpTo(innerNavController.graph.findStartDestination().id) {
-                                            saveState = true
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                bottomBar = {
+                    if (showBottomBar) {
+                        NavigationBar(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(BottomNavigationBarHeight)
+                                .frostedGlassEffect(state = hazeState),
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp
+                        ) {
+                            tabs.forEach { tab ->
+                                val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = {
+                                        innerNavController.navigate(tab.route) {
+                                            popUpTo(innerNavController.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = true
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = tab.label,
-                                        modifier = Modifier.size(20.dp)
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = tab.icon,
+                                            contentDescription = tab.label,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = tab.label,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        indicatorColor = Color.Transparent,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                     )
-                                },
-                                label = {
-                                    Text(
-                                        text = tab.label,
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    indicatorColor = Color.Transparent,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
-                            )
+                            }
                         }
                     }
                 }
+            ) { _ -> // innerPadding intentionally ignored: content extends behind the translucent navbar
+                NavHost(
+                    navController = innerNavController,
+                    startDestination = "photos",
+                    modifier = Modifier
+                        .padding(bottom = 0.dp)
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .graphicsLayer { alpha = 0.99f }
+                        .hazeSource(state = hazeState),
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None }
+                ) {
+                composable("photos") {
+                    GalleryScreen(
+                        viewModel = galleryViewModel,
+                        onPhotoClick = { photo, allPhotos ->
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onSettingsClick = onNavigateToSettings,
+                        onAboutClick = onNavigateToAbout
+                    )
+                }
+
+                composable("folders") {
+                    FolderScreen(
+                        viewModel = folderViewModel,
+                        onAlbumClick = { albumId, title ->
+                            innerNavController.navigate("album/$albumId/${Uri.encode(title)}")
+                        },
+                        onFolderClick = { folderId ->
+                            innerNavController.navigate("folder/$folderId")
+                        },
+                        onCategoryClick = { type ->
+                            innerNavController.navigate("collectionCategory/$type")
+                        },
+                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onSettingsClick = onNavigateToSettings,
+                        onAboutClick = onNavigateToAbout
+                    )
+                }
+
+                composable("discovery") {
+                    DiscoveryScreen(
+                        viewModel = discoveryViewModel,
+                        onPersonClick = { peopleId ->
+                            innerNavController.navigate("people/$peopleId")
+                        },
+                        onSceneClick = { id, cid ->
+                            innerNavController.navigate("scene/$id?cid=$cid")
+                        },
+                        onLocationClick = { city ->
+                            innerNavController.navigate("location/${Uri.encode(city)}")
+                        },
+                        onOpenSearch = { isSearchOverlayVisible = true },
+                        onSettingsClick = onNavigateToSettings,
+                        onAboutClick = onNavigateToAbout
+                    )
+                }
+
+                composable("folder/{folderId}") { backStackEntry ->
+                    val folderId = backStackEntry.arguments?.getString("folderId") ?: return@composable
+                    FolderDetailScreen(
+                        folderId = folderId,
+                        viewModel = folderDetailViewModel,
+                        onFolderClick = { subFolderId ->
+                            innerNavController.navigate("folder/$subFolderId")
+                        },
+                        onPhotoClick = { photo ->
+                            val allPhotos = folderDetailViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("album/{albumId}/{title}") { backStackEntry ->
+                    val albumId = backStackEntry.arguments?.getString("albumId") ?: return@composable
+                    val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode) ?: "相册"
+                    CategoryFileListScreen(
+                        viewModel = categoryFileListViewModel,
+                        loadType = "album",
+                        loadParam = albumId,
+                        title = title,
+                        onPhotoClick = { photo ->
+                            val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("collectionCategory/{type}") { backStackEntry ->
+                    val type = backStackEntry.arguments?.getString("type") ?: return@composable
+                    CategoryFileListScreen(
+                        viewModel = categoryFileListViewModel,
+                        loadType = type,
+                        loadParam = "",
+                        title = collectionCategoryTitle(type),
+                        onPhotoClick = { photo ->
+                            val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("people/{peopleId}") { backStackEntry ->
+                    val peopleId = backStackEntry.arguments?.getString("peopleId") ?: return@composable
+                    CategoryFileListScreen(
+                        viewModel = categoryFileListViewModel,
+                        loadType = "people",
+                        loadParam = peopleId,
+                        title = "人物照片",
+                        onPhotoClick = { photo ->
+                            val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("scene/{id}?cid={cid}") { backStackEntry ->
+                    val id = backStackEntry.arguments?.getString("id") ?: return@composable
+                    val cid = backStackEntry.arguments?.getString("cid")
+                    CategoryFileListScreen(
+                        viewModel = categoryFileListViewModel,
+                        loadType = "scene",
+                        loadParam = id,
+                        loadParam2 = cid,
+                        title = "场景照片",
+                        onPhotoClick = { photo ->
+                            val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("location/{city}") { backStackEntry ->
+                    val city = backStackEntry.arguments?.getString("city")?.let(Uri::decode) ?: return@composable
+                    CategoryFileListScreen(
+                        viewModel = categoryFileListViewModel,
+                        loadType = "location",
+                        loadParam = city,
+                        title = city,
+                        onPhotoClick = { photo ->
+                            val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("map") {
+                    val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                        factory = MapViewModel.Factory(
+                            galleryRepository = container.galleryRepository,
+                            syncRepository = container.syncRepository
+                        )
+                    )
+                    MapScreen(
+                        viewModel = mapViewModel,
+                        isActive = currentRoute == "map",
+                        onSettingsClick = onNavigateToSettings,
+                        onAboutClick = onNavigateToAbout,
+                        onPhotoClick = { photo, list ->
+                            val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(list, index)
+                        }
+                    )
+                }
+                }
             }
-        ) { _ -> // innerPadding intentionally ignored: content extends behind the translucent navbar
-            NavHost(
-                navController = innerNavController,
-                startDestination = "photos",
-                modifier = Modifier
-                    .padding(bottom = 0.dp)
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .graphicsLayer { alpha = 0.99f }
-                    .hazeSource(state = hazeState),
-                enterTransition = { EnterTransition.None },
-                exitTransition = { ExitTransition.None },
-                popEnterTransition = { EnterTransition.None },
-                popExitTransition = { ExitTransition.None }
-            ) {
-            composable("photos") {
-                GalleryScreen(
-                    viewModel = galleryViewModel,
+
+            if (isSearchOverlayVisible) {
+                CloudSearchOverlay(
+                    viewModel = cloudSearchViewModel,
                     onPhotoClick = { photo, allPhotos ->
                         val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(allPhotos, index)
                     },
-                    onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings,
-                    onAboutClick = onNavigateToAbout
+                    onClose = { isSearchOverlayVisible = false }
                 )
             }
-
-            composable("folders") {
-                FolderScreen(
-                    viewModel = folderViewModel,
-                    onAlbumClick = { albumId, title ->
-                        innerNavController.navigate("album/$albumId/${Uri.encode(title)}")
-                    },
-                    onFolderClick = { folderId ->
-                        innerNavController.navigate("folder/$folderId")
-                    },
-                    onCategoryClick = { type ->
-                        innerNavController.navigate("collectionCategory/$type")
-                    },
-                    onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings,
-                    onAboutClick = onNavigateToAbout
-                )
-            }
-
-            composable("discovery") {
-                DiscoveryScreen(
-                    viewModel = discoveryViewModel,
-                    onPersonClick = { peopleId ->
-                        innerNavController.navigate("people/$peopleId")
-                    },
-                    onSceneClick = { id, cid ->
-                        innerNavController.navigate("scene/$id?cid=$cid")
-                    },
-                    onLocationClick = { city ->
-                        innerNavController.navigate("location/${Uri.encode(city)}")
-                    },
-                    onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings,
-                    onAboutClick = onNavigateToAbout
-                )
-            }
-
-            composable("folder/{folderId}") { backStackEntry ->
-                val folderId = backStackEntry.arguments?.getString("folderId") ?: return@composable
-                FolderDetailScreen(
-                    folderId = folderId,
-                    viewModel = folderDetailViewModel,
-                    onFolderClick = { subFolderId ->
-                        innerNavController.navigate("folder/$subFolderId")
-                    },
-                    onPhotoClick = { photo ->
-                        val allPhotos = folderDetailViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("album/{albumId}/{title}") { backStackEntry ->
-                val albumId = backStackEntry.arguments?.getString("albumId") ?: return@composable
-                val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode) ?: "相册"
-                CategoryFileListScreen(
-                    viewModel = categoryFileListViewModel,
-                    loadType = "album",
-                    loadParam = albumId,
-                    title = title,
-                    onPhotoClick = { photo ->
-                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("collectionCategory/{type}") { backStackEntry ->
-                val type = backStackEntry.arguments?.getString("type") ?: return@composable
-                CategoryFileListScreen(
-                    viewModel = categoryFileListViewModel,
-                    loadType = type,
-                    loadParam = "",
-                    title = collectionCategoryTitle(type),
-                    onPhotoClick = { photo ->
-                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("people/{peopleId}") { backStackEntry ->
-                val peopleId = backStackEntry.arguments?.getString("peopleId") ?: return@composable
-                CategoryFileListScreen(
-                    viewModel = categoryFileListViewModel,
-                    loadType = "people",
-                    loadParam = peopleId,
-                    title = "人物照片",
-                    onPhotoClick = { photo ->
-                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("scene/{id}?cid={cid}") { backStackEntry ->
-                val id = backStackEntry.arguments?.getString("id") ?: return@composable
-                val cid = backStackEntry.arguments?.getString("cid")
-                CategoryFileListScreen(
-                    viewModel = categoryFileListViewModel,
-                    loadType = "scene",
-                    loadParam = id,
-                    loadParam2 = cid,
-                    title = "场景照片",
-                    onPhotoClick = { photo ->
-                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("location/{city}") { backStackEntry ->
-                val city = backStackEntry.arguments?.getString("city")?.let(Uri::decode) ?: return@composable
-                CategoryFileListScreen(
-                    viewModel = categoryFileListViewModel,
-                    loadType = "location",
-                    loadParam = city,
-                    title = city,
-                    onPhotoClick = { photo ->
-                        val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
-                        val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(allPhotos, index)
-                    },
-                    onBack = { innerNavController.popBackStack() }
-                )
-            }
-
-            composable("map") {
-                val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-                    factory = MapViewModel.Factory(
-                        galleryRepository = container.galleryRepository,
-                        syncRepository = container.syncRepository
-                    )
-                )
-                MapScreen(
-                    viewModel = mapViewModel,
-                    isActive = currentRoute == "map",
-                    onSettingsClick = onNavigateToSettings,
-                    onAboutClick = onNavigateToAbout,
-                    onPhotoClick = { photo, list ->
-                        val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                        onNavigateToViewer(list, index)
-                    }
-                )
-            }
-            }
-        }
-
-        if (isSearchOverlayVisible) {
-            CloudSearchOverlay(
-                viewModel = cloudSearchViewModel,
-                onPhotoClick = { photo, allPhotos ->
-                    val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
-                    onNavigateToViewer(allPhotos, index)
-                },
-                onClose = { isSearchOverlayVisible = false }
-            )
         }
     }
 }

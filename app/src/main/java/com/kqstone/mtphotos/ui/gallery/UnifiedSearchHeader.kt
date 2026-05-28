@@ -44,6 +44,9 @@ import com.kqstone.mtphotos.data.repository.SearchFilters
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
+import androidx.compose.ui.draw.clip
+import com.kqstone.mtphotos.ui.util.LocalHazeState
+import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 
 @Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -151,18 +154,24 @@ fun UnifiedSearchHeader(
             null
         }
     ) {
+        val hazeState = LocalHazeState.current
+        val searchBgModifier = if (hazeState != null) {
+            Modifier.frostedGlassEffect(
+                state = hazeState,
+                showTopDivider = false,
+                tintAlpha = 0.25f
+            )
+        } else {
+            Modifier.background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            )
+        }
+
         Row(
             modifier = Modifier
                 .weight(1f)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    shape = CircleShape
-                )
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                    shape = CircleShape
-                )
+                .clip(CircleShape)
+                .then(searchBgModifier)
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

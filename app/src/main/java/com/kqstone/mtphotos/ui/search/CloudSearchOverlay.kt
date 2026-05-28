@@ -86,6 +86,8 @@ import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.LocalHazeState
+import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -285,18 +287,24 @@ private fun CloudSearchTopBar(
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
+        val hazeState = LocalHazeState.current
+        val searchBgModifier = if (hazeState != null) {
+            Modifier.frostedGlassEffect(
+                state = hazeState,
+                showTopDivider = false,
+                tintAlpha = 0.25f
+            )
+        } else {
+            Modifier.background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+            )
+        }
+
         Row(
             modifier = Modifier
                 .weight(1f)
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    shape = CircleShape
-                )
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                    shape = CircleShape
-                )
+                .clip(CircleShape)
+                .then(searchBgModifier)
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
