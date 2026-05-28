@@ -228,6 +228,7 @@ fun MainScreen(
                     onCategoryClick = { type ->
                         innerNavController.navigate("collectionCategory/$type")
                     },
+                    onOpenSearch = { isSearchOverlayVisible = true },
                     onSettingsClick = onNavigateToSettings
                 )
             }
@@ -244,6 +245,7 @@ fun MainScreen(
                     onLocationClick = { city ->
                         innerNavController.navigate("location/${Uri.encode(city)}")
                     },
+                    onOpenSearch = { isSearchOverlayVisible = true },
                     onSettingsClick = onNavigateToSettings
                 )
             }

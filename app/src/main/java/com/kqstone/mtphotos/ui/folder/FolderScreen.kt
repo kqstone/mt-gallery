@@ -42,8 +42,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
-import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +53,7 @@ fun FolderScreen(
     onAlbumClick: (Double, String) -> Unit,
     onFolderClick: (String) -> Unit,
     onCategoryClick: (String) -> Unit,
+    onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -153,8 +154,8 @@ fun FolderScreen(
             }
         }
 
-        SimpleTitleHeader(
-            title = "图集",
+        SearchEntryTopBar(
+            onSearchClick = onOpenSearch,
             onSettingsClick = onSettingsClick,
             scrollAlpha = scrollState.scrollAlpha,
             modifier = Modifier.align(Alignment.TopCenter)

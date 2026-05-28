@@ -44,8 +44,8 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
+import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
-import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
@@ -56,6 +56,7 @@ fun DiscoveryScreen(
     onPersonClick: (String) -> Unit,
     onSceneClick: (String, String?) -> Unit,
     onLocationClick: (String) -> Unit,
+    onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -165,8 +166,8 @@ fun DiscoveryScreen(
             }
         }
 
-        SimpleTitleHeader(
-            title = "发现",
+        SearchEntryTopBar(
+            onSearchClick = onOpenSearch,
             onSettingsClick = onSettingsClick,
             scrollAlpha = scrollState.scrollAlpha,
             modifier = Modifier.align(Alignment.TopCenter)
