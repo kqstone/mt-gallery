@@ -24,6 +24,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
@@ -31,6 +32,52 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * down to deep UI components (like search bars) without explicit threading.
  */
 val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
+
+// ──────────────────────────────────────────────────────────
+//  Reusable Haze Modifier Extensions
+// ──────────────────────────────────────────────────────────
+
+/**
+ * Marks this composable as a Haze blur **source** (the content that will
+ * be blurred behind glass-effect consumers).
+ *
+ * Reads [LocalHazeState]; if no state is provided the modifier is a no-op.
+ * Use this on top-level content containers (e.g. `PullToRefreshBox`,
+ * scrollable `Column` / `LazyColumn`) inside each screen.
+ */
+@Composable
+fun Modifier.hazeContentSource(): Modifier {
+    val hazeState = LocalHazeState.current ?: return this
+    return this.hazeSource(state = hazeState)
+}
+
+/**
+ * Applies a frosted-glass background suitable for **search bars**.
+ *
+ * Reads [LocalHazeState]; when available, delegates to [frostedGlassEffect]
+ * with search-bar-tuned defaults (`showTopDivider = false`, `tintAlpha = 0.25f`).
+ * Falls back to a semi-transparent [surfaceVariant] background when Haze is
+ * not available.
+ *
+ * @param fallbackAlphaOverride  Alpha for the non-blur fallback background.
+ */
+@Composable
+fun Modifier.frostedGlassSearchBar(
+    fallbackAlphaOverride: Float = 0.4f
+): Modifier {
+    val hazeState = LocalHazeState.current
+    return if (hazeState != null) {
+        this.frostedGlassEffect(
+            state = hazeState,
+            showTopDivider = false,
+            tintAlpha = 0.25f
+        )
+    } else {
+        val fallbackColor = MaterialTheme.colorScheme.surfaceVariant
+            .copy(alpha = fallbackAlphaOverride)
+        this.background(color = fallbackColor)
+    }
+}
 
 // ──────────────────────────────────────────────────────────
 //  Haze Frosted-Glass Blur

@@ -86,9 +86,8 @@ import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
-import com.kqstone.mtphotos.ui.util.LocalHazeState
-import com.kqstone.mtphotos.ui.util.frostedGlassEffect
-import dev.chrisbanes.haze.hazeSource
+import com.kqstone.mtphotos.ui.util.hazeContentSource
+import com.kqstone.mtphotos.ui.util.frostedGlassSearchBar
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -102,12 +101,6 @@ fun CloudSearchOverlay(
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
 
-    val hazeState = LocalHazeState.current
-    val contentModifier = if (hazeState != null) {
-        Modifier.hazeSource(state = hazeState)
-    } else {
-        Modifier
-    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -170,7 +163,7 @@ fun CloudSearchOverlay(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .then(contentModifier)
+                    .hazeContentSource()
             ) {
                 val hasResults = uiState.resultMonths.isNotEmpty()
                 val shouldShowResults = uiState.isActive || uiState.isSearching || uiState.error != null || hasResults
@@ -299,24 +292,11 @@ private fun CloudSearchTopBar(
             )
         }
         Spacer(modifier = Modifier.width(10.dp))
-        val hazeState = LocalHazeState.current
-        val searchBgModifier = if (hazeState != null) {
-            Modifier.frostedGlassEffect(
-                state = hazeState,
-                showTopDivider = false,
-                tintAlpha = 0.25f
-            )
-        } else {
-            Modifier.background(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
-            )
-        }
-
         Row(
             modifier = Modifier
                 .weight(1f)
                 .clip(CircleShape)
-                .then(searchBgModifier)
+                .frostedGlassSearchBar(fallbackAlphaOverride = 0.65f)
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

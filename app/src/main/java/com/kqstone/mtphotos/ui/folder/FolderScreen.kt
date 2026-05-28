@@ -45,8 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
-import com.kqstone.mtphotos.ui.util.LocalHazeState
-import dev.chrisbanes.haze.hazeSource
+import com.kqstone.mtphotos.ui.util.hazeContentSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,12 +61,6 @@ fun FolderScreen(
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
 
-    val hazeState = LocalHazeState.current
-    val contentModifier = if (hazeState != null) {
-        Modifier.hazeSource(state = hazeState)
-    } else {
-        Modifier
-    }
     val scrollState = rememberScrollAlpha(
         firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { lazyListState.firstVisibleItemScrollOffset }
@@ -89,7 +82,7 @@ fun FolderScreen(
                 PullToRefreshBox(
                     isRefreshing = uiState.isRefreshing,
                     onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize().then(contentModifier)
+                    modifier = Modifier.fillMaxSize().hazeContentSource()
                 ) {
                     LazyColumn(
                         state = lazyListState,

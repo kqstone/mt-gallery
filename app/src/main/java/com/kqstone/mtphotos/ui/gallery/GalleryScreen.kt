@@ -37,8 +37,7 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
-import com.kqstone.mtphotos.ui.util.LocalHazeState
-import dev.chrisbanes.haze.hazeSource
+import com.kqstone.mtphotos.ui.util.hazeContentSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,13 +51,6 @@ fun GalleryScreen(
     val uiState by viewModel.uiState.collectAsState()
     val gallerySelectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = gallerySelectedIds.isNotEmpty()
-
-    val hazeState = LocalHazeState.current
-    val contentModifier = if (hazeState != null) {
-        Modifier.hazeSource(state = hazeState)
-    } else {
-        Modifier
-    }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.selectionManager.clearSelection()
@@ -123,7 +115,7 @@ fun GalleryScreen(
                     PullToRefreshBox(
                         isRefreshing = uiState.isRefreshing,
                         onRefresh = { viewModel.refresh() },
-                        modifier = Modifier.fillMaxSize().then(contentModifier)
+                        modifier = Modifier.fillMaxSize().hazeContentSource()
                     ) {
                         TimelinePhotoGrid(
                             months = uiState.months,
