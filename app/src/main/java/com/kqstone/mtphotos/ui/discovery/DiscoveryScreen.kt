@@ -57,7 +57,8 @@ fun DiscoveryScreen(
     onSceneClick: (String, String?) -> Unit,
     onLocationClick: (String) -> Unit,
     onOpenSearch: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onAboutClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -169,6 +170,7 @@ fun DiscoveryScreen(
         SearchEntryTopBar(
             onSearchClick = onOpenSearch,
             onSettingsClick = onSettingsClick,
+            onAboutClick = onAboutClick,
             scrollAlpha = scrollState.scrollAlpha,
             modifier = Modifier.align(Alignment.TopCenter)
         )

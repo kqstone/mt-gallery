@@ -54,7 +54,8 @@ fun FolderScreen(
     onFolderClick: (String) -> Unit,
     onCategoryClick: (String) -> Unit,
     onOpenSearch: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onAboutClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -157,6 +158,7 @@ fun FolderScreen(
         SearchEntryTopBar(
             onSearchClick = onOpenSearch,
             onSettingsClick = onSettingsClick,
+            onAboutClick = onAboutClick,
             scrollAlpha = scrollState.scrollAlpha,
             modifier = Modifier.align(Alignment.TopCenter)
         )

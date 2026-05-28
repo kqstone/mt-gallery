@@ -21,6 +21,8 @@ import com.kqstone.mtphotos.ui.settings.BackupSettingsScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsViewModel
 import com.kqstone.mtphotos.ui.settings.SettingsScreen
 import com.kqstone.mtphotos.ui.settings.SettingsViewModel
+import com.kqstone.mtphotos.ui.settings.AboutScreen
+import com.kqstone.mtphotos.ui.settings.AboutViewModel
 import com.kqstone.mtphotos.ui.util.AppPermissionGate
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
@@ -176,6 +178,9 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 },
                 onNavigateToSettings = {
                     navController.navigate("backup_settings")
+                },
+                onNavigateToAbout = {
+                    navController.navigate("about")
                 }
             )
         }
@@ -209,6 +214,16 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 onServerConnection = {
                     navController.navigate("server_connection")
                 }
+            )
+        }
+
+        composable("about") {
+            val aboutViewModel: AboutViewModel = viewModel(
+                factory = AboutViewModel.Factory()
+            )
+            AboutScreen(
+                viewModel = aboutViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
     }

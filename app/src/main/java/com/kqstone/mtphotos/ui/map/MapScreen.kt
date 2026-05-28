@@ -80,6 +80,7 @@ fun MapScreen(
     viewModel: MapViewModel,
     isActive: Boolean = true,
     onSettingsClick: () -> Unit = {},
+    onAboutClick: () -> Unit = {},
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -526,6 +527,7 @@ fun MapScreen(
         SimpleTitleHeader(
             title = "足迹",
             onSettingsClick = onSettingsClick,
+            onAboutClick = onAboutClick,
             modifier = Modifier.align(Alignment.TopCenter)
         )
     }

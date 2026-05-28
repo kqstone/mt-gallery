@@ -88,7 +88,8 @@ fun MainScreen(
     galleryViewModel: GalleryViewModel,
     viewerViewModel: ViewerViewModel,
     onNavigateToViewer: (List<UnifiedPhotoItem>, Int) -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToAbout: () -> Unit
 ) {
     val innerNavController = rememberNavController()
     val navBackStackEntry by innerNavController.currentBackStackEntryAsState()
@@ -212,7 +213,8 @@ fun MainScreen(
                         onNavigateToViewer(allPhotos, index)
                     },
                     onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings
+                    onSettingsClick = onNavigateToSettings,
+                    onAboutClick = onNavigateToAbout
                 )
             }
 
@@ -229,7 +231,8 @@ fun MainScreen(
                         innerNavController.navigate("collectionCategory/$type")
                     },
                     onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings
+                    onSettingsClick = onNavigateToSettings,
+                    onAboutClick = onNavigateToAbout
                 )
             }
 
@@ -246,7 +249,8 @@ fun MainScreen(
                         innerNavController.navigate("location/${Uri.encode(city)}")
                     },
                     onOpenSearch = { isSearchOverlayVisible = true },
-                    onSettingsClick = onNavigateToSettings
+                    onSettingsClick = onNavigateToSettings,
+                    onAboutClick = onNavigateToAbout
                 )
             }
 
@@ -361,6 +365,7 @@ fun MainScreen(
                     viewModel = mapViewModel,
                     isActive = currentRoute == "map",
                     onSettingsClick = onNavigateToSettings,
+                    onAboutClick = onNavigateToAbout,
                     onPhotoClick = { photo, list ->
                         val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(list, index)

@@ -44,7 +44,8 @@ fun GalleryScreen(
     viewModel: GalleryViewModel,
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit,
     onOpenSearch: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onAboutClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val gallerySelectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
@@ -180,6 +181,7 @@ fun GalleryScreen(
                 SearchEntryTopBar(
                     onSearchClick = onOpenSearch,
                     onSettingsClick = onSettingsClick,
+                    onAboutClick = onAboutClick,
                     scrollAlpha = scrollState.scrollAlpha
                 )
             }
