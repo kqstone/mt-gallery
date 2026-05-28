@@ -75,6 +75,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
+import com.kqstone.mtphotos.ui.util.hazeContentSource
+
 @Composable
 fun MapScreen(
     viewModel: MapViewModel,
@@ -148,6 +150,7 @@ fun MapScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .hazeContentSource()
     ) {
         Box(
             modifier = Modifier
