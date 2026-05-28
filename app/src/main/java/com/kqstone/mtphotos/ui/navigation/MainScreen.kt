@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -50,6 +51,7 @@ import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.map.MapScreen
 import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -124,7 +126,9 @@ fun MainScreen(
                                 noiseFactor = 0f,
                                 fallbackTint = HazeTint(fallbackNaviColor)
                             )
-                        )
+                        ) {
+                            inputScale = HazeInputScale.Fixed(0.5f)
+                        }
                         .drawBehind {
                             drawLine(
                                 color = outlineColor,
@@ -182,6 +186,7 @@ fun MainScreen(
                 .padding(bottom = 0.dp)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
+                .graphicsLayer { alpha = 0.99f }
                 .hazeSource(state = hazeState),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
