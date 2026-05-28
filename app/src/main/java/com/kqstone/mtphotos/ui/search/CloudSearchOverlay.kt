@@ -297,7 +297,7 @@ private fun CloudSearchTopBar(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     shape = CircleShape
                 )
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -337,25 +337,25 @@ private fun CloudSearchTopBar(
             )
             if (isSearching) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp
                 )
             } else if (query.isNotEmpty()) {
                 IconButton(
                     onClick = onClear,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = "清空搜索",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
             IconButton(
                 onClick = onToggleFilters,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Icon(
                     imageVector = if (isFilterPanelVisible) {
@@ -365,7 +365,7 @@ private fun CloudSearchTopBar(
                     },
                     contentDescription = "筛选面板",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -407,11 +407,19 @@ private fun SearchFilterContent(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     SearchChip(
-                        text = "综合",
-                        selected = searchType == SearchType.AUTO,
-                        leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp)) }
+                        text = "识图",
+                        selected = searchType == SearchType.VISUAL_TEXT,
+                        enabled = isClipAvailable,
+                        leadingIcon = { Icon(Icons.Default.Image, null, modifier = Modifier.size(14.dp)) }
                     ) {
-                        onSearchTypeChange(SearchType.AUTO)
+                        onSearchTypeChange(SearchType.VISUAL_TEXT)
+                    }
+                    SearchChip(
+                        text = "OCR",
+                        selected = searchType == SearchType.OCR_TEXT,
+                        leadingIcon = { Icon(Icons.Default.Translate, null, modifier = Modifier.size(14.dp)) }
+                    ) {
+                        onSearchTypeChange(SearchType.OCR_TEXT)
                     }
                     SearchChip(
                         text = "文件名",
@@ -421,19 +429,11 @@ private fun SearchFilterContent(
                         onSearchTypeChange(SearchType.FILE_NAME)
                     }
                     SearchChip(
-                        text = "文本识别",
-                        selected = searchType == SearchType.OCR_TEXT,
-                        leadingIcon = { Icon(Icons.Default.Translate, null, modifier = Modifier.size(14.dp)) }
+                        text = "综合",
+                        selected = searchType == SearchType.AUTO,
+                        leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp)) }
                     ) {
-                        onSearchTypeChange(SearchType.OCR_TEXT)
-                    }
-                    SearchChip(
-                        text = "识图",
-                        selected = searchType == SearchType.VISUAL_TEXT,
-                        enabled = isClipAvailable,
-                        leadingIcon = { Icon(Icons.Default.Image, null, modifier = Modifier.size(14.dp)) }
-                    ) {
-                        onSearchTypeChange(SearchType.VISUAL_TEXT)
+                        onSearchTypeChange(SearchType.AUTO)
                     }
                 }
             }

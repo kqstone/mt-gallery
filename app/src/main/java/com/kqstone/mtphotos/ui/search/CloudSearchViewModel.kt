@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
 
 data class CloudSearchUiState(
     val query: String = "",
-    val searchType: SearchType = SearchType.AUTO,
+    val searchType: SearchType = SearchType.VISUAL_TEXT,
     val filters: SearchFilters = SearchFilters(),
     val suggestions: List<SearchTipItem> = emptyList(),
     val people: List<PersonItem> = emptyList(),
@@ -149,7 +149,7 @@ class CloudSearchViewModel(
         selectionManager.clearSelection()
         _uiState.value = _uiState.value.copy(
             query = "",
-            searchType = SearchType.AUTO,
+            searchType = SearchType.VISUAL_TEXT,
             filters = SearchFilters(),
             suggestions = emptyList(),
             isActive = false,
