@@ -29,12 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
@@ -42,20 +42,16 @@ import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 @Composable
 fun GalleryScreen(
     viewModel: GalleryViewModel,
-    onPhotoClick: (UnifiedPhotoItem) -> Unit,
+    onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit,
+    onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
-    val isSelectionMode = selectedIds.isNotEmpty()
+    val gallerySelectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
+    val isSelectionMode = gallerySelectedIds.isNotEmpty()
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.selectionManager.clearSelection()
-    }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var isSearchPanelActive by remember { mutableStateOf(false) }
-    BackHandler(enabled = !isSelectionMode && isSearchPanelActive) {
-        isSearchPanelActive = false
     }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -102,11 +98,7 @@ fun GalleryScreen(
                         Text(
                             text = "点击重试",
                             modifier = Modifier.clickable {
-                                if (uiState.isSearchMode) {
-                                    viewModel.executeSearch()
-                                } else {
-                                    viewModel.loadTimeline()
-                                }
+                                viewModel.loadTimeline()
                             },
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -126,14 +118,14 @@ fun GalleryScreen(
                         TimelinePhotoGrid(
                             months = uiState.months,
                             columnCount = uiState.columnCount,
-                            selectedPhotoIds = selectedIds,
+                            selectedPhotoIds = gallerySelectedIds,
                             isSelectionMode = isSelectionMode,
                             selectionManager = viewModel.selectionManager,
                             getThumbUrl = viewModel::getThumbUrl,
-                            onPhotoClick = onPhotoClick,
+                            onPhotoClick = { photo -> onPhotoClick(photo, viewModel.getAllLoadedPhotos()) },
                             onColumnCountChange = { viewModel.updateColumnCount(it) },
                             onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) },
-                            stateKey = "gallery:${uiState.isSearchMode}:${uiState.searchQuery}",
+                            stateKey = "gallery:timeline",
                             gridState = gridState,
                             contentPadding = PaddingValues(
                                 top = if (hasSyncProgress) scrollState.topBarHeight + 40.dp else scrollState.topBarHeight,
@@ -178,45 +170,15 @@ fun GalleryScreen(
         ) {
             if (isSelectionMode) {
                 SelectionTopBar(
-                    selectedCount = selectedIds.size,
-                    onSelectAll = { viewModel.selectAll() },
+                    selectedCount = gallerySelectedIds.size,
+                    onSelectAll = viewModel::selectAll,
                     onDelete = { showDeleteDialog = true },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )
             } else {
-                UnifiedSearchHeader(
-                    query = uiState.searchQuery,
-                    searchType = uiState.searchType,
-                    searchFilters = uiState.searchFilters,
-                    suggestions = uiState.searchSuggestions,
-                    people = uiState.searchPeople,
-                    locations = uiState.searchLocations,
-                    isSearching = uiState.isSearching,
-                    isClipAvailable = uiState.isClipAvailable,
-                    isPanelActive = isSearchPanelActive,
-                    onPanelActiveChange = { active ->
-                        isSearchPanelActive = active
-                        if (active) viewModel.loadSearchFilterCandidates()
-                    },
-                    onQueryChange = viewModel::updateSearchQuery,
-                    onSearch = {
-                        keyboardController?.hide()
-                        isSearchPanelActive = false
-                        viewModel.executeSearch()
-                    },
-                    onClear = {
-                        isSearchPanelActive = false
-                        viewModel.clearSearch()
-                    },
-                    onSearchTypeChange = viewModel::updateSearchType,
-                    onPersonFilterChange = viewModel::updatePersonFilter,
-                    onLocationFilterChange = viewModel::updateLocationFilter,
-                    onSuggestionClick = {
-                        keyboardController?.hide()
-                        isSearchPanelActive = false
-                        viewModel.applySuggestion(it)
-                    },
+                SearchEntryTopBar(
+                    onSearchClick = onOpenSearch,
                     onSettingsClick = onSettingsClick,
                     scrollAlpha = scrollState.scrollAlpha
                 )
@@ -226,7 +188,7 @@ fun GalleryScreen(
 
     if (showDeleteDialog) {
         DeleteConfirmDialog(
-            selectedCount = selectedIds.size,
+            selectedCount = gallerySelectedIds.size,
             onConfirm = {
                 showDeleteDialog = false
                 if (PermissionHelper.requestManageStoragePermission(context)) {

@@ -3,6 +3,7 @@ package com.kqstone.mtphotos.ui.navigation
 import android.net.Uri
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -50,6 +54,8 @@ import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.map.MapScreen
 import com.kqstone.mtphotos.ui.map.MapViewModel
+import com.kqstone.mtphotos.ui.search.CloudSearchOverlay
+import com.kqstone.mtphotos.ui.search.CloudSearchViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeStyle
@@ -104,103 +110,108 @@ fun MainScreen(
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
     )
+    val cloudSearchViewModel: CloudSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = CloudSearchViewModel.Factory(container.galleryRepository, container.syncRepository)
+    )
+    var isSearchOverlayVisible by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            if (showBottomBar) {
-                val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                val naviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
-                val fallbackNaviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                if (showBottomBar) {
+                    val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    val naviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
+                    val fallbackNaviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
 
-                NavigationBar(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(BottomNavigationBarHeight)
-                        .hazeEffect(
-                            state = hazeState,
-                            style = HazeStyle(
-                                backgroundColor = MaterialTheme.colorScheme.surface,
-                                tints = listOf(HazeTint(naviColor)),
-                                blurRadius = BottomNavigationBlurRadius,
-                                noiseFactor = 0f,
-                                fallbackTint = HazeTint(fallbackNaviColor)
-                            )
-                        ) {
-                            inputScale = HazeInputScale.Fixed(0.5f)
-                        }
-                        .drawBehind {
-                            drawLine(
-                                color = outlineColor,
-                                start = Offset(0f, 0f),
-                                end = Offset(size.width, 0f),
-                                strokeWidth = 1f
-                            )
-                        },
-                    containerColor = Color.Transparent,
-                    tonalElevation = 0.dp
-                ) {
-                    tabs.forEach { tab ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                innerNavController.navigate(tab.route) {
-                                    popUpTo(innerNavController.graph.findStartDestination().id) {
-                                        saveState = true
+                    NavigationBar(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(BottomNavigationBarHeight)
+                            .hazeEffect(
+                                state = hazeState,
+                                style = HazeStyle(
+                                    backgroundColor = MaterialTheme.colorScheme.surface,
+                                    tints = listOf(HazeTint(naviColor)),
+                                    blurRadius = BottomNavigationBlurRadius,
+                                    noiseFactor = 0f,
+                                    fallbackTint = HazeTint(fallbackNaviColor)
+                                )
+                            ) {
+                                inputScale = HazeInputScale.Fixed(0.5f)
+                            }
+                            .drawBehind {
+                                drawLine(
+                                    color = outlineColor,
+                                    start = Offset(0f, 0f),
+                                    end = Offset(size.width, 0f),
+                                    strokeWidth = 1f
+                                )
+                            },
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        tabs.forEach { tab ->
+                            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    innerNavController.navigate(tab.route) {
+                                        popUpTo(innerNavController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tab.label,
-                                    modifier = Modifier.size(20.dp)
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tab.label,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = tab.label,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = Color.Transparent,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
-                            },
-                            label = {
-                                Text(
-                                    text = tab.label,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = Color.Transparent,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
-                        )
+                        }
                     }
                 }
             }
-        }
-    ) { _ -> // innerPadding intentionally ignored: content extends behind the translucent navbar
-        NavHost(
-            navController = innerNavController,
-            startDestination = "photos",
-            modifier = Modifier
-                .padding(bottom = 0.dp)
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .graphicsLayer { alpha = 0.99f }
-                .hazeSource(state = hazeState),
-            enterTransition = { EnterTransition.None },
-            exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
-            popExitTransition = { ExitTransition.None }
-        ) {
+        ) { _ -> // innerPadding intentionally ignored: content extends behind the translucent navbar
+            NavHost(
+                navController = innerNavController,
+                startDestination = "photos",
+                modifier = Modifier
+                    .padding(bottom = 0.dp)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .graphicsLayer { alpha = 0.99f }
+                    .hazeSource(state = hazeState),
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None }
+            ) {
             composable("photos") {
                 GalleryScreen(
                     viewModel = galleryViewModel,
-                    onPhotoClick = { photo ->
-                        val allPhotos = galleryViewModel.getAllLoadedPhotos()
+                    onPhotoClick = { photo, allPhotos ->
                         val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                         onNavigateToViewer(allPhotos, index)
                     },
+                    onOpenSearch = { isSearchOverlayVisible = true },
                     onSettingsClick = onNavigateToSettings
                 )
             }
@@ -354,6 +365,18 @@ fun MainScreen(
                     }
                 )
             }
+            }
+        }
+
+        if (isSearchOverlayVisible) {
+            CloudSearchOverlay(
+                viewModel = cloudSearchViewModel,
+                onPhotoClick = { photo, allPhotos ->
+                    val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                    onNavigateToViewer(allPhotos, index)
+                },
+                onClose = { isSearchOverlayVisible = false }
+            )
         }
     }
 }

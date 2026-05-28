@@ -12,13 +12,7 @@ import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
-import com.kqstone.mtphotos.data.repository.LocationItem
-import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
-import com.kqstone.mtphotos.data.repository.SearchFilters
-import com.kqstone.mtphotos.data.repository.SearchRequest
-import com.kqstone.mtphotos.data.repository.SearchTipItem
-import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.TimelineMonth
 import com.kqstone.mtphotos.data.repository.TimelineSnapshot
@@ -27,7 +21,6 @@ import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -59,17 +52,7 @@ data class GalleryUiState(
     val columnCount: Int = 4,
     val isHybridMode: Boolean = false,
     val isSyncing: Boolean = false,
-    val syncProgressText: String? = null,
-    val searchQuery: String = "",
-    val searchType: SearchType = SearchType.AUTO,
-    val searchFilters: SearchFilters = SearchFilters(),
-    val searchSuggestions: List<SearchTipItem> = emptyList(),
-    val searchPeople: List<PersonItem> = emptyList(),
-    val searchLocations: List<LocationItem> = emptyList(),
-    val isLoadingSearchFilters: Boolean = false,
-    val isSearchMode: Boolean = false,
-    val isSearching: Boolean = false,
-    val isClipAvailable: Boolean = true
+    val syncProgressText: String? = null
 )
 
 class GalleryViewModel(
@@ -81,7 +64,6 @@ class GalleryViewModel(
     private val _uiState = MutableStateFlow(GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState
 
-    private var searchTipsJob: Job? = null
     private var localVideoThumbJob: Job? = null
     private var initialSyncJob: Job? = null
     private val monthLoadJobs = mutableMapOf<String, Job>()
@@ -89,7 +71,6 @@ class GalleryViewModel(
     private var currentLocalFolders: Set<String>? = null
     private var lastFolderSelectionKey: String? = null
     private var skipNextResumeRefresh = false
-    private var filterCandidatesLoaded = false
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -98,16 +79,7 @@ class GalleryViewModel(
     )
 
     init {
-        refreshClipAvailability()
         loadTimeline()
-    }
-
-    private fun refreshClipAvailability() {
-        viewModelScope.launch {
-            galleryRepository.isClipSearchAvailable().onSuccess { enabled ->
-                _uiState.value = _uiState.value.copy(isClipAvailable = enabled)
-            }
-        }
     }
 
     private fun getFolderSelectionState(): BackupFolderSelection {
@@ -129,9 +101,7 @@ class GalleryViewModel(
     fun loadTimeline() {
         _uiState.value = _uiState.value.copy(
             isLoading = true,
-            error = null,
-            isSearchMode = false,
-            isSearching = false
+            error = null
         )
         viewModelScope.launch {
             if (syncRepository != null) {
@@ -349,7 +319,6 @@ class GalleryViewModel(
     }
 
     fun loadTimelineMonth(yearMonth: String) {
-        if (_uiState.value.isSearchMode) return
         val group = _uiState.value.months.firstOrNull { it.yearMonth == yearMonth } ?: return
         if (group.isLoaded || group.isLoading) return
         val month = timelineMonthsByYearMonth[yearMonth] ?: return
@@ -405,11 +374,6 @@ class GalleryViewModel(
     fun refresh() {
         _uiState.value = _uiState.value.copy(isRefreshing = true)
         viewModelScope.launch {
-            if (_uiState.value.isSearchMode) {
-                performSearch(isRefresh = true)
-                return@launch
-            }
-
             if (_uiState.value.isHybridMode && syncRepository != null) {
                 try {
                     val folderSelection = getFolderSelectionState()
@@ -451,7 +415,6 @@ class GalleryViewModel(
     }
 
     fun quickRefresh() {
-        if (_uiState.value.isSearchMode) return
         if (syncRepository == null || !_uiState.value.isHybridMode) return
         if (_uiState.value.isSyncing || _uiState.value.isRefreshing) return
 
@@ -570,19 +533,6 @@ class GalleryViewModel(
         }
     }
 
-    private fun buildOrderedSearchGroup(photos: List<UnifiedPhotoItem>): List<MonthGroup> {
-        if (photos.isEmpty()) return emptyList()
-        return listOf(
-            MonthGroup(
-                yearMonth = "search",
-                displayTitle = "搜索结果",
-                totalCount = photos.size,
-                days = listOf(DayGroup("搜索结果", photos)),
-                isLoaded = true
-            )
-        )
-    }
-
     private fun PhotoItem.toUnifiedPhotoItem(): UnifiedPhotoItem {
         return toCloudOnlyUnifiedPhotoItem()
     }
@@ -620,14 +570,22 @@ class GalleryViewModel(
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
         selectionManager.deleteSelected {
-            val updatedMonths = _uiState.value.months.map { month ->
-                val updatedDays = month.days.map { day ->
-                    day.copy(photos = day.photos.filter { it.id !in selectedIds })
-                }.filter { it.photos.isNotEmpty() }
-                month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
-            }.filter { it.days.isNotEmpty() || !it.isLoaded || it.totalCount > 0 }
-            _uiState.value = _uiState.value.copy(months = updatedMonths)
+            _uiState.value = _uiState.value.copy(
+                months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+            )
         }
+    }
+
+    private fun removeSelectedPhotos(
+        groups: List<MonthGroup>,
+        selectedIds: Set<Double>
+    ): List<MonthGroup> {
+        return groups.map { month ->
+            val updatedDays = month.days.map { day ->
+                day.copy(photos = day.photos.filter { it.id !in selectedIds })
+            }.filter { it.photos.isNotEmpty() }
+            month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
+        }.filter { it.days.isNotEmpty() || !it.isLoaded || it.totalCount > 0 }
     }
 
     fun updateColumnCount(newCount: Int) {
@@ -680,7 +638,15 @@ class GalleryViewModel(
             .toMap()
         if (byDbId.isEmpty()) return
 
-        val updatedMonths = _uiState.value.months.map { month ->
+        val updatedMonths = updateThumbCachePaths(_uiState.value.months, byDbId)
+        _uiState.value = _uiState.value.copy(months = updatedMonths)
+    }
+
+    private fun updateThumbCachePaths(
+        groups: List<MonthGroup>,
+        byDbId: Map<Long, String>
+    ): List<MonthGroup> {
+        return groups.map { month ->
             month.copy(
                 days = month.days.map { day ->
                     day.copy(
@@ -692,163 +658,6 @@ class GalleryViewModel(
                 }
             )
         }
-        _uiState.value = _uiState.value.copy(months = updatedMonths)
-    }
-
-    fun loadSearchFilterCandidates() {
-        if (filterCandidatesLoaded || _uiState.value.isLoadingSearchFilters) return
-        _uiState.value = _uiState.value.copy(isLoadingSearchFilters = true)
-        viewModelScope.launch {
-            val peopleResult = galleryRepository.getPeopleList()
-            val locationsResult = galleryRepository.getAddressCountByCity()
-            filterCandidatesLoaded = peopleResult.isSuccess || locationsResult.isSuccess
-            _uiState.value = _uiState.value.copy(
-                searchPeople = peopleResult.getOrDefault(emptyList())
-                    .filter { it.hasSearchDisplayName() }
-                    .take(12),
-                searchLocations = locationsResult.getOrDefault(emptyList()).take(12),
-                isLoadingSearchFilters = false
-            )
-        }
-    }
-
-    private fun PersonItem.hasSearchDisplayName(): Boolean {
-        val normalized = name.trim()
-        return normalized.isNotEmpty() &&
-            normalized != "未知" &&
-            normalized != "未命名" &&
-            !normalized.equals("unknown", ignoreCase = true) &&
-            !normalized.equals("unnamed", ignoreCase = true)
-    }
-
-    fun updateSearchQuery(query: String) {
-        _uiState.value = _uiState.value.copy(searchQuery = query)
-        searchTipsJob?.cancel()
-        searchTipsJob = viewModelScope.launch {
-            val trimmed = query.trim()
-            if (trimmed.isBlank()) {
-                _uiState.value = _uiState.value.copy(searchSuggestions = emptyList())
-                return@launch
-            }
-            delay(300)
-            galleryRepository.getSearchTips(trimmed).onSuccess { tips ->
-                if (_uiState.value.searchQuery.trim() == trimmed) {
-                    _uiState.value = _uiState.value.copy(searchSuggestions = tips.take(6))
-                }
-            }
-        }
-    }
-
-    fun applySuggestion(suggestion: String) {
-        searchTipsJob?.cancel()
-        _uiState.value = _uiState.value.copy(searchQuery = suggestion, searchSuggestions = emptyList())
-        executeSearch()
-    }
-
-    fun updateSearchType(type: SearchType) {
-        _uiState.value = _uiState.value.copy(searchType = type)
-    }
-
-    fun updatePersonFilter(person: PersonItem?) {
-        _uiState.value = _uiState.value.copy(
-            searchFilters = _uiState.value.searchFilters.copy(
-                personId = person?.id,
-                personName = person?.name
-            )
-        )
-    }
-
-    fun updateLocationFilter(location: LocationItem?) {
-        _uiState.value = _uiState.value.copy(
-            searchFilters = _uiState.value.searchFilters.copy(location = location?.city)
-        )
-    }
-
-    fun clearSearch() {
-        searchTipsJob?.cancel()
-        _uiState.value = _uiState.value.copy(
-            searchQuery = "",
-            searchType = SearchType.AUTO,
-            searchFilters = SearchFilters(),
-            searchSuggestions = emptyList(),
-            isSearchMode = false,
-            isSearching = false,
-            error = null
-        )
-        loadTimeline()
-    }
-
-    fun executeSearch() {
-        searchTipsJob?.cancel()
-        viewModelScope.launch {
-            performSearch(isRefresh = false)
-        }
-    }
-
-    private suspend fun performSearch(isRefresh: Boolean) {
-        val state = _uiState.value
-        val query = state.searchQuery.trim()
-        val filters = state.searchFilters
-        val hasFilters = !filters.personId.isNullOrBlank() ||
-            !filters.personName.isNullOrBlank() ||
-            !filters.location.isNullOrBlank()
-
-        if (query.isBlank() && !hasFilters) {
-            _uiState.value = _uiState.value.copy(
-                isRefreshing = false,
-                isSearchMode = false,
-                isSearching = false,
-                searchSuggestions = emptyList()
-            )
-            loadTimeline()
-            return
-        }
-
-        if (state.searchType == SearchType.VISUAL_TEXT && !state.isClipAvailable) {
-            _uiState.value = _uiState.value.copy(
-                isRefreshing = false,
-                isSearching = false,
-                error = "当前服务端未启用文搜图"
-            )
-            return
-        }
-
-        _uiState.value = _uiState.value.copy(
-            isSearchMode = true,
-            isSearching = !isRefresh,
-            isRefreshing = isRefresh,
-            isLoading = false,
-            error = null,
-            searchSuggestions = emptyList()
-        )
-
-        galleryRepository.searchMedia(
-            SearchRequest(query = query, type = state.searchType, filters = filters)
-        ).fold(
-            onSuccess = { photos ->
-                val unifiedPhotos = syncRepository?.hydrateCloudPhotos(photos)
-                    ?: photos.map { it.toUnifiedPhotoItem() }
-                val monthGroups = if (state.searchType == SearchType.VISUAL_TEXT) {
-                    buildOrderedSearchGroup(unifiedPhotos)
-                } else {
-                    buildMonthGroups(unifiedPhotos)
-                }
-                _uiState.value = _uiState.value.copy(
-                    months = monthGroups,
-                    isSearchMode = true,
-                    isSearching = false,
-                    isRefreshing = false,
-                    error = if (photos.isEmpty()) "未找到匹配的云端媒体" else null
-                )
-            },
-            onFailure = { e ->
-                _uiState.value = _uiState.value.copy(
-                    isSearching = false,
-                    isRefreshing = false,
-                    error = e.message ?: "搜索失败"
-                )
-            }
-        )
     }
 
     private fun formatYearMonth(ym: String): String {
