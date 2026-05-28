@@ -28,8 +28,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,10 +55,7 @@ import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.search.CloudSearchOverlay
 import com.kqstone.mtphotos.ui.search.CloudSearchViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
-import dev.chrisbanes.haze.HazeInputScale
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
+import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -80,7 +75,6 @@ private val tabs = listOf(
 private val topLevelRoutes = setOf("photos", "folders", "map", "discovery")
 
 private val BottomNavigationBarHeight = 56.dp
-private val BottomNavigationBlurRadius = 24.dp
 
 @Composable
 fun MainScreen(
@@ -121,34 +115,11 @@ fun MainScreen(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 if (showBottomBar) {
-                    val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                    val naviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f)
-                    val fallbackNaviColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-
                     NavigationBar(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(BottomNavigationBarHeight)
-                            .hazeEffect(
-                                state = hazeState,
-                                style = HazeStyle(
-                                    backgroundColor = MaterialTheme.colorScheme.surface,
-                                    tints = listOf(HazeTint(naviColor)),
-                                    blurRadius = BottomNavigationBlurRadius,
-                                    noiseFactor = 0f,
-                                    fallbackTint = HazeTint(fallbackNaviColor)
-                                )
-                            ) {
-                                inputScale = HazeInputScale.Fixed(0.5f)
-                            }
-                            .drawBehind {
-                                drawLine(
-                                    color = outlineColor,
-                                    start = Offset(0f, 0f),
-                                    end = Offset(size.width, 0f),
-                                    strokeWidth = 1f
-                                )
-                            },
+                            .frostedGlassEffect(state = hazeState),
                         containerColor = Color.Transparent,
                         tonalElevation = 0.dp
                     ) {

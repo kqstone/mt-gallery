@@ -1,9 +1,7 @@
 package com.kqstone.mtphotos.ui.util
 
 import androidx.compose.foundation.background
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,48 +10,30 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import androidx.compose.foundation.isSystemInDarkTheme
 import java.time.LocalDate
-
-internal fun Context.findActivity(): Activity? {
-    var context = this
-    while (context is ContextWrapper) {
-        if (context is Activity) return context
-        context = context.baseContext
-    }
-    return null
-}
 
 @Composable
 fun AppTopBarContainer(
@@ -62,33 +42,12 @@ fun AppTopBarContainer(
     expandedContent: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
-    val view = LocalView.current
-    val darkTheme = isSystemInDarkTheme()
-    
-    if (!view.isInEditMode) {
-        val isLightStatusBars = if (scrollAlpha > 0.05f) false else !darkTheme
-        SideEffect {
-            val window = view.context.findActivity()?.window
-            if (window != null) {
-                val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = isLightStatusBars
-            }
-        }
-    }
+    StatusBarStyleEffect(darkOverlay = scrollAlpha > 0.05f)
 
-    val shadowColor = Color.Black
-    val shadowBrush = remember(scrollAlpha, shadowColor) {
-        Brush.verticalGradient(
-            colors = listOf(
-                shadowColor.copy(alpha = 0.76f * scrollAlpha),
-                shadowColor.copy(alpha = 0f)
-            )
-        )
-    }
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(shadowBrush)
+            .gradientShadowCached(alpha = scrollAlpha)
             .statusBarsPadding()
     ) {
         Row(
