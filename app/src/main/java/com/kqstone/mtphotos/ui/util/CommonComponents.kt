@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,9 +36,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.compose.foundation.isSystemInDarkTheme
 import java.time.LocalDate
+
+internal fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
 
 @Composable
 fun AppTopBarContainer(
@@ -46,11 +62,25 @@ fun AppTopBarContainer(
     expandedContent: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
+    val view = LocalView.current
+    val darkTheme = isSystemInDarkTheme()
+    
+    if (!view.isInEditMode) {
+        val isLightStatusBars = if (scrollAlpha > 0.05f) false else !darkTheme
+        SideEffect {
+            val window = view.context.findActivity()?.window
+            if (window != null) {
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = isLightStatusBars
+            }
+        }
+    }
+
     val shadowColor = Color.Black
     val shadowBrush = remember(scrollAlpha, shadowColor) {
         Brush.verticalGradient(
             colors = listOf(
-                shadowColor.copy(alpha = 0.5f * scrollAlpha),
+                shadowColor.copy(alpha = 0.76f * scrollAlpha),
                 shadowColor.copy(alpha = 0f)
             )
         )
