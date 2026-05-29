@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -42,6 +43,9 @@ import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.frostedGlassEffect
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -100,10 +104,13 @@ fun ViewerScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    val hazeState = remember { HazeState() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .hazeSource(state = hazeState)
     ) {
         HorizontalPager(
             state = pagerState,
@@ -337,6 +344,7 @@ fun ViewerScreen(
         DetailsBottomSheet(
             photo = currentPhoto,
             uiState = uiState,
+            hazeState = hazeState,
             onDismiss = { showBottomSheet = false }
         )
     }
@@ -534,6 +542,7 @@ private fun ZoomableImage(
 fun DetailsBottomSheet(
     photo: UnifiedPhotoItem,
     uiState: ViewerUiState,
+    hazeState: HazeState,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -542,47 +551,39 @@ fun DetailsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
+        containerColor = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         scrimColor = Color.Black.copy(alpha = 0.45f)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(BottomSheetDefaults.ExpandedShape)
+                .frostedGlassEffect(state = hazeState, showTopDivider = false, tintAlpha = 0.75f)
                 .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            Text(
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                BottomSheetDefaults.DragHandle()
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                Text(
                 text = "详情",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             )
 
             // Date and time
             val friendlyDate = remember(photo.mtime) { formatFriendlyDate(photo.mtime) }
-            if (friendlyDate.isNotEmpty()) {
-                InfoSectionHeader(title = "拍摄时间")
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = friendlyDate,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
 
             // Specs Section
             InfoSectionHeader(title = "文件信息")
@@ -605,9 +606,12 @@ fun DetailsBottomSheet(
             } ?: photo.localUri.orEmpty()
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 12.dp)
             ) {
+                if (friendlyDate.isNotEmpty()) {
+                    InfoRowItem(label = "拍摄时间", value = friendlyDate)
+                }
                 InfoRowItem(label = "文件名", value = photo.fileName)
                 if (formattedSize.isNotEmpty()) {
                     InfoRowItem(label = "大小", value = formattedSize)
@@ -690,7 +694,7 @@ fun DetailsBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                        .padding(bottom = 12.dp)
                 ) {
                     exifCards.forEach { (label, valStr) ->
                         ExifCardItem(label = label, value = valStr)
@@ -765,6 +769,7 @@ fun DetailsBottomSheet(
                     }
                 }
             }
+        }
         }
     }
 }
