@@ -87,7 +87,6 @@ import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.hazeContentSource
-import com.kqstone.mtphotos.ui.util.frostedGlassSearchBar
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -295,8 +294,12 @@ private fun CloudSearchTopBar(
         Row(
             modifier = Modifier
                 .weight(1f)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = CircleShape
+                )
                 .clip(CircleShape)
-                .frostedGlassSearchBar(fallbackAlphaOverride = 0.65f)
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
