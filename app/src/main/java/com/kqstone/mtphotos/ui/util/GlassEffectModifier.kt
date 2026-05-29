@@ -69,8 +69,7 @@ fun Modifier.frostedGlassSearchBar(
     return if (hazeState != null) {
         this.frostedGlassEffect(
             state = hazeState,
-            showTopDivider = false,
-            tintAlpha = 0.25f
+            showTopDivider = false
         )
     } else {
         val fallbackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -105,7 +104,7 @@ fun Modifier.frostedGlassSearchBar(
 @Composable
 fun Modifier.frostedGlassEffect(
     state: HazeState,
-    tintAlpha: Float = 0.58f,
+    tintAlpha: Float = 0.70f,
     fallbackAlpha: Float = 0.92f,
     blurRadius: Dp = 24.dp,
     noiseFactor: Float = 0f,
