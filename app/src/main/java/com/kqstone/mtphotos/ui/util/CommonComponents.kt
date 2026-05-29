@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import java.time.LocalDate
 
 @Composable
@@ -43,25 +44,32 @@ fun AppTopBarContainer(
     expandedContent: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
-    StatusBarStyleEffect(darkOverlay = !isOpaque && scrollAlpha > 0.05f)
+    val isDarkOverlay = !isOpaque && scrollAlpha > 0.05f
+    StatusBarStyleEffect(darkOverlay = isDarkOverlay)
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(
-                if (isOpaque) Modifier.background(MaterialTheme.colorScheme.surface)
-                else Modifier.gradientShadowCached(alpha = scrollAlpha)
-            )
-            .statusBarsPadding()
+    val contentColor = if (isDarkOverlay) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides contentColor
     ) {
-        Row(
-            modifier = Modifier
+        Column(
+            modifier = modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
-        expandedContent?.invoke()
+                .then(
+                    if (isOpaque) Modifier.background(MaterialTheme.colorScheme.surface)
+                    else Modifier.gradientShadowCached(alpha = scrollAlpha, maxAlpha = 0.85f)
+                )
+                .statusBarsPadding()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content
+            )
+            expandedContent?.invoke()
+        }
     }
 }
 
@@ -84,7 +92,6 @@ fun TitleTopBar(
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
         actions()
@@ -110,13 +117,36 @@ fun BackTitleTopBar(
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    contentDescription = "返回"
                 )
             }
         },
         actions = actions
     )
+}
+
+@Composable
+fun TopBarActionIcon(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconSize: androidx.compose.ui.unit.Dp = 18.dp,
+    buttonSize: androidx.compose.ui.unit.Dp = 32.dp,
+    isVariant: Boolean = true
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(buttonSize)
+    ) {
+        Icon(
+            imageVector = imageVector,
+            contentDescription = contentDescription,
+            tint = if (isVariant) androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.8f)
+                   else androidx.compose.material3.LocalContentColor.current,
+            modifier = Modifier.size(iconSize)
+        )
+    }
 }
 
 @Composable
@@ -135,17 +165,11 @@ fun SimpleTitleHeader(
         scrollAlpha = scrollAlpha,
         actions = {
             Box {
-                IconButton(
-                    onClick = { menuExpanded = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = "更多选项",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                TopBarActionIcon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "更多选项",
+                    onClick = { menuExpanded = true }
+                )
                 DropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },

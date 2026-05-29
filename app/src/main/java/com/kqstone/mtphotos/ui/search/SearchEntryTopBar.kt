@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
 import androidx.compose.ui.draw.clip
 import com.kqstone.mtphotos.ui.util.frostedGlassSearchBar
+import com.kqstone.mtphotos.ui.util.TopBarActionIcon
 
 @Composable
 fun SearchEntryTopBar(
@@ -77,17 +78,11 @@ fun SearchEntryTopBar(
         }
         Spacer(modifier = Modifier.width(10.dp))
         Box {
-            IconButton(
-                onClick = { menuExpanded = true },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = "更多选项",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            TopBarActionIcon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "更多选项",
+                onClick = { menuExpanded = true }
+            )
             DropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
