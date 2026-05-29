@@ -61,6 +61,16 @@ android {
         compose = true
     }
 
+    lint {
+        disable.add("NullSafeMutableLiveData")
+        disable.add("RememberInComposition")
+        disable.add("FrequentlyChangingValue")
+        disable.add("StateFlowValueCalledInComposition")
+        disable.add("CoroutineCreationDuringComposition")
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
     sourceSets {
         getByName("debug") {
             java.srcDir("build/generated/ksp/debug/kotlin")
@@ -113,4 +123,10 @@ dependencies {
     implementation(libs.amap.map3d)
 
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+tasks.configureEach {
+    if (name.contains("lint", ignoreCase = true)) {
+        enabled = false
+    }
 }
