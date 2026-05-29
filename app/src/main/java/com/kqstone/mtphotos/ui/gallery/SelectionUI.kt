@@ -28,7 +28,8 @@ fun SelectionTopBar(
 ) {
     AppTopBarContainer(
         modifier = modifier,
-        scrollAlpha = scrollAlpha
+        scrollAlpha = scrollAlpha,
+        isOpaque = true
     ) {
         IconButton(
             onClick = onClearSelection,

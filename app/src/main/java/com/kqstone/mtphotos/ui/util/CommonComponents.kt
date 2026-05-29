@@ -39,15 +39,19 @@ import java.time.LocalDate
 fun AppTopBarContainer(
     modifier: Modifier = Modifier,
     scrollAlpha: Float = 1f,
+    isOpaque: Boolean = false,
     expandedContent: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
-    StatusBarStyleEffect(darkOverlay = scrollAlpha > 0.05f)
+    StatusBarStyleEffect(darkOverlay = !isOpaque && scrollAlpha > 0.05f)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .gradientShadowCached(alpha = scrollAlpha)
+            .then(
+                if (isOpaque) Modifier.background(MaterialTheme.colorScheme.surface)
+                else Modifier.gradientShadowCached(alpha = scrollAlpha)
+            )
             .statusBarsPadding()
     ) {
         Row(
