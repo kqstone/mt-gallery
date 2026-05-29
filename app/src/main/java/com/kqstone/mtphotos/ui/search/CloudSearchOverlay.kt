@@ -87,6 +87,7 @@ import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.hazeContentSource
+import com.kqstone.mtphotos.ui.util.OverlayStatusBarStyleEffect
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -96,6 +97,8 @@ fun CloudSearchOverlay(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    OverlayStatusBarStyleEffect(darkOverlay = false)
+
     val uiState by viewModel.uiState.collectAsState()
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()

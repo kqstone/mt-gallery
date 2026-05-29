@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -232,6 +233,38 @@ fun StatusBarStyleEffect(darkOverlay: Boolean) {
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.isAppearanceLightStatusBars = isLightStatusBars
+            }
+        }
+    }
+}
+
+/**
+ * A variant of [StatusBarStyleEffect] intended for overlays or modal screens.
+ * It remembers the previous status bar icon appearance when it enters the composition,
+ * and restores it when the overlay leaves the composition (is disposed).
+ */
+@Composable
+fun OverlayStatusBarStyleEffect(darkOverlay: Boolean) {
+    val view = LocalView.current
+    val darkTheme = isSystemInDarkTheme()
+
+    if (!view.isInEditMode) {
+        val window = view.context.findActivity()?.window
+        if (window != null) {
+            val insetsController = WindowCompat.getInsetsController(window, view)
+            
+            // Capture the existing state when this composable first enters the tree
+            val previousState = remember { insetsController.isAppearanceLightStatusBars }
+            val isLightStatusBars = if (darkOverlay) false else !darkTheme
+            
+            SideEffect {
+                insetsController.isAppearanceLightStatusBars = isLightStatusBars
+            }
+            
+            DisposableEffect(Unit) {
+                onDispose {
+                    insetsController.isAppearanceLightStatusBars = previousState
+                }
             }
         }
     }
