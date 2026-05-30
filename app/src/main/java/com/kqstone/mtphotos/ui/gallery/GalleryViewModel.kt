@@ -20,10 +20,13 @@ import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
+import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.util.ShareManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "GalleryVM"
 private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
@@ -77,6 +80,7 @@ class GalleryViewModel(
         onDelete = { ids -> galleryRepository.deleteFiles(ids) },
         onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
     )
+    val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
         loadTimeline()
@@ -611,6 +615,18 @@ class GalleryViewModel(
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
     }
 
+    fun getVideoUrl(photo: UnifiedPhotoItem): String {
+        if (!photo.isMotionPhoto()) {
+            photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
+        }
+        val cloudId = photo.cloudId ?: return ""
+        return if (photo.isMotionPhoto()) {
+            galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
+        } else {
+            galleryRepository.getTranscodeVideoUrl(cloudId, photo.md5)
+        }
+    }
+
     fun getThumbUrl(md5: String, fileId: Double): String = galleryRepository.getThumbUrl(md5, fileId)
 
     fun getVideoThumbUrl(md5: String): String = galleryRepository.getVideoThumbUrl(md5)
@@ -619,6 +635,14 @@ class GalleryViewModel(
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> {
         return _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
+    }
+
+    fun shareSelected(context: android.content.Context) {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        val photos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        shareManager.sharePhotos(context, photos) {
+            selectionManager.clearSelection()
+        }
     }
 
     private fun warmLocalVideoThumbnails(photos: List<UnifiedPhotoItem>) {

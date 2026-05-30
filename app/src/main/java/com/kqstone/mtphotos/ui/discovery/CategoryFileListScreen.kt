@@ -224,6 +224,7 @@ fun CategoryFileListScreen(
                     selectedCount = selectedIds.size,
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog.value = true },
+                    onShare = { viewModel.shareSelected(context) },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )
@@ -249,4 +250,6 @@ fun CategoryFileListScreen(
             onDismiss = { showDeleteDialog.value = false }
         )
     }
+
+    com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
 }

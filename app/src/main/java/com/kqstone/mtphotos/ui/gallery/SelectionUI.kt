@@ -17,11 +17,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
 
+import androidx.compose.material.icons.filled.Share
+
 @Composable
 fun SelectionTopBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
     onDelete: () -> Unit,
+    onShare: (() -> Unit)? = null,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
     scrollAlpha: Float = 1f
@@ -45,6 +48,17 @@ fun SelectionTopBar(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.weight(1f)
         )
+        if (onShare != null) {
+            IconButton(
+                onClick = onShare,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Share,
+                    contentDescription = "分享"
+                )
+            }
+        }
         IconButton(
             onClick = onSelectAll,
             modifier = Modifier.size(32.dp)

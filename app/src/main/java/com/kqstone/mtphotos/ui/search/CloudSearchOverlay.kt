@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -136,9 +140,11 @@ fun CloudSearchOverlay(
             if (isSelectionMode) {
                 SelectionTopBar(
                     selectedCount = selectedIds.size,
-                    onSelectAll = viewModel::selectAll,
+                    onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog = true },
+                    onShare = { viewModel.shareSelected(context) },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
+                    modifier = Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
                     scrollAlpha = 1f
                 )
             } else {
@@ -233,6 +239,8 @@ fun CloudSearchOverlay(
             onDismiss = { showDeleteDialog = false }
         )
     }
+
+    com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
 }
 
 @Composable

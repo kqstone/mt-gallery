@@ -311,7 +311,7 @@ fun ViewerScreen(
                         HUDButton(
                             icon = Icons.Default.Share,
                             label = "分享",
-                            onClick = { viewModel.sharePhoto(context, currentPhoto) }
+                            onClick = { viewModel.sharePhoto(context) }
                         )
 
                         // Favorite with scale animation
@@ -351,34 +351,7 @@ fun ViewerScreen(
         }
 
         // Sharing Overlay Indicator
-        if (uiState.isSharing) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.width(180.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "正在下载原图...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
-        }
+        com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
     }
 
     // Modal Bottom Sheet Details Drawer

@@ -10,6 +10,7 @@ import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
+import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +51,8 @@ class FolderDetailViewModel(
         onDelete = { ids -> galleryRepository.deleteFiles(ids) },
         onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
     )
+
+    val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     fun loadFolder(folderId: String, force: Boolean = false) {
         if (restoreCached(folderId, force)) return
@@ -181,6 +184,14 @@ class FolderDetailViewModel(
             val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
             _uiState.value = _uiState.value.copy(photos = remaining)
             updateActiveCache(_uiState.value)
+        }
+    }
+
+    fun shareSelected(context: android.content.Context) {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        val photos = _uiState.value.photos.filter { it.id in selectedIds }
+        shareManager.sharePhotos(context, photos) {
+            selectionManager.clearSelection()
         }
     }
 

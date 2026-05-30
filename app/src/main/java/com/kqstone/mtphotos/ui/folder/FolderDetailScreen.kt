@@ -41,11 +41,13 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
+import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.bounceClick
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
@@ -172,6 +174,7 @@ fun FolderDetailScreen(
                     selectedCount = selectedIds.size,
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog.value = true },
+                    onShare = { viewModel.shareSelected(context) },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )
@@ -197,6 +200,8 @@ fun FolderDetailScreen(
             onDismiss = { showDeleteDialog.value = false }
         )
     }
+
+    com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
 }
 
 @Composable

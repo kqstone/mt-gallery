@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import com.kqstone.mtphotos.ui.util.ShareManager
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -26,7 +27,6 @@ data class ViewerUiState(
     val isLoadingDetails: Boolean = false,
     val exifInfo: Map<String, Any>? = null,
     val fileDetailInfo: Map<String, Any>? = null,
-    val isSharing: Boolean = false,
     val isDownloadingOriginal: Boolean = false,
     val downloadProgress: Float? = null,
     val originalDownloaded: Boolean = false,
@@ -41,6 +41,8 @@ class ViewerViewModel(
 
     private val _uiState = MutableStateFlow(ViewerUiState())
     val uiState: StateFlow<ViewerUiState> = _uiState
+
+    val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
         viewModelScope.launch {
@@ -185,58 +187,9 @@ class ViewerViewModel(
         }
     }
 
-    fun sharePhoto(context: android.content.Context, photo: UnifiedPhotoItem) {
-        if (_uiState.value.isSharing) return
-        _uiState.update { it.copy(isSharing = true) }
-        
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val uri = if (photo.localUri != null && photo.localUri.isNotEmpty() && !photo.isStorageOptimized) {
-                    android.net.Uri.parse(photo.localUri)
-                } else {
-                    val downloadUrl = if (photo.isVideo()) getVideoUrl(photo) else getFullImageUrl(photo)
-                    val client = OkHttpClient()
-                    val request = Request.Builder().url(downloadUrl).build()
-                    val response = client.newCall(request).execute()
-                    if (!response.isSuccessful) throw Exception("Download failed")
-                    
-                    val sharedMediaDir = File(context.cacheDir, "shared_media")
-                    if (!sharedMediaDir.exists()) sharedMediaDir.mkdirs()
-                    
-                    val ext = if (photo.isVideo()) "mp4" else "jpg"
-                    val tempFile = File(sharedMediaDir, "${photo.md5}_share.$ext")
-                    
-                    response.body?.byteStream()?.use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    
-                    androidx.core.content.FileProvider.getUriForFile(
-                        context,
-                        "com.kqstone.mtphotos.fileprovider",
-                        tempFile
-                    )
-                }
-                
-                withContext(Dispatchers.Main) {
-                    _uiState.update { it.copy(isSharing = false) }
-                    val shareIntent = android.content.Intent().apply {
-                        action = android.content.Intent.ACTION_SEND
-                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                        type = if (photo.isVideo()) "video/*" else "image/*"
-                        flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    }
-                    context.startActivity(android.content.Intent.createChooser(shareIntent, "分享媒体"))
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ViewerVM", "Sharing failed", e)
-                withContext(Dispatchers.Main) {
-                    _uiState.update { it.copy(isSharing = false) }
-                    android.widget.Toast.makeText(context, "分享失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+    fun sharePhoto(context: android.content.Context) {
+        val photo = getCurrentPhoto() ?: return
+        shareManager.sharePhotos(context, listOf(photo))
     }
 
     fun getFullImageUrl(photo: UnifiedPhotoItem): String {
@@ -269,7 +222,7 @@ class ViewerViewModel(
         return if (photo.isMotionPhoto()) {
             galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
         } else {
-            galleryRepository.getFullImageUrl(cloudId, photo.md5)
+            galleryRepository.getTranscodeVideoUrl(cloudId, photo.md5)
         }
     }
 

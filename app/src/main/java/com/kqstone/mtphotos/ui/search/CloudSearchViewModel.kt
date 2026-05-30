@@ -18,6 +18,7 @@ import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DayGroup
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -58,6 +59,8 @@ class CloudSearchViewModel(
         onDelete = { ids -> galleryRepository.deleteFiles(ids) },
         onError = { msg -> _uiState.value = _uiState.value.copy(error = msg) }
     )
+
+    val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
         refreshClipAvailability()
@@ -336,6 +339,14 @@ class CloudSearchViewModel(
             _uiState.value = _uiState.value.copy(
                 resultMonths = removeSelectedPhotos(_uiState.value.resultMonths, selectedIds)
             )
+        }
+    }
+
+    fun shareSelected(context: android.content.Context) {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        val photos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        shareManager.sharePhotos(context, photos) {
+            selectionManager.clearSelection()
         }
     }
 
