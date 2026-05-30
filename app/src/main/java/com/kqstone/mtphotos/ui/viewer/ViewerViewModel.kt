@@ -223,11 +223,14 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 if (downloadUrl.isEmpty()) throw Exception("无法获取原图地址")
 
                 // OkHttp 下载原图
-                val client = OkHttpClient()
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
                 val request = Request.Builder().url(downloadUrl).build()
                 val response = client.newCall(request).execute()
                 if (!response.isSuccessful) throw Exception("下载失败: ${response.code}")
-                val bytes = response.body?.bytes() ?: throw Exception("响应为空")
+                val body = response.body ?: throw Exception("响应为空")
 
                 // 通过 MediaStore 写入 Pictures/MtGallery/
                 val resolver = context.contentResolver
@@ -283,8 +286,11 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 }
                 val uri = resolver.insert(collectionUri, contentValues)
                     ?: throw Exception("MediaStore 创建失败")
-                resolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    ?: throw Exception("无法写入文件")
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    body.byteStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                } ?: throw Exception("无法写入文件")
 
                 // 查询实际文件路径
                 val filePath = resolver.query(
