@@ -576,6 +576,10 @@ class GalleryRepository(private val container: AppContainer) {
         return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}&type=ori"
     }
 
+    fun getTranscodeVideoUrl(id: Double, md5: String): String {
+        return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}&type=transcode"
+    }
+
     fun getFileDownloadUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileDownload/$id/$md5${urlSuffix()}"
     }

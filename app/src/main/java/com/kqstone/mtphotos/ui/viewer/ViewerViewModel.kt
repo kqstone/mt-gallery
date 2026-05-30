@@ -28,7 +28,9 @@ data class ViewerUiState(
     val fileDetailInfo: Map<String, Any>? = null,
     val isSharing: Boolean = false,
     val isDownloadingOriginal: Boolean = false,
-    val originalDownloaded: Boolean = false
+    val originalDownloaded: Boolean = false,
+    val resolvedVideoUrl: String? = null,
+    val isPlayingTranscode: Boolean = false
 )
 
 class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
@@ -52,7 +54,9 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 isFavorite = false,
                 exifInfo = null,
                 fileDetailInfo = null,
-                originalDownloaded = false
+                originalDownloaded = false,
+                resolvedVideoUrl = null,
+                isPlayingTranscode = false
             )
         }
         loadExifAndFavoriteForCurrent()
@@ -78,6 +82,42 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                     fileDetailInfo = detailResult.getOrNull()
                 )
             }
+            if (photo.isPlayableMedia()) {
+                resolveVideoUrl(photo)
+            }
+        }
+    }
+
+    private suspend fun resolveVideoUrl(photo: UnifiedPhotoItem) {
+        if (!photo.isMotionPhoto() && photo.localUri?.isNotEmpty() == true && !photo.isStorageOptimized) {
+            _uiState.update { it.copy(resolvedVideoUrl = photo.localUri, isPlayingTranscode = false) }
+            return
+        }
+        val cloudId = photo.cloudId
+        if (cloudId == null) {
+            _uiState.update { it.copy(resolvedVideoUrl = "", isPlayingTranscode = false) }
+            return
+        }
+        if (photo.isMotionPhoto()) {
+            val url = galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
+            _uiState.update { it.copy(resolvedVideoUrl = url, isPlayingTranscode = false) }
+            return
+        }
+        
+        withContext(Dispatchers.IO) {
+            val transcodeUrl = galleryRepository.getTranscodeVideoUrl(cloudId, photo.md5)
+            val request = Request.Builder().url(transcodeUrl).head().build()
+            try {
+                val client = OkHttpClient()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(resolvedVideoUrl = transcodeUrl, isPlayingTranscode = true) }
+                    return@withContext
+                }
+            } catch (e: Exception) {}
+            
+            val originalUrl = galleryRepository.getFullImageUrl(cloudId, photo.md5)
+            _uiState.update { it.copy(resolvedVideoUrl = originalUrl, isPlayingTranscode = false) }
         }
     }
 
@@ -195,6 +235,11 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                     photo.fileName.endsWith(".png", true) -> "image/png"
                     photo.fileName.endsWith(".webp", true) -> "image/webp"
                     photo.fileName.endsWith(".gif", true) -> "image/gif"
+                    photo.fileName.endsWith(".mp4", true) -> "video/mp4"
+                    photo.fileName.endsWith(".mov", true) -> "video/quicktime"
+                    photo.fileName.endsWith(".mkv", true) -> "video/x-matroska"
+                    photo.fileName.endsWith(".avi", true) -> "video/x-msvideo"
+                    photo.isVideo() -> "video/mp4"
                     else -> "image/jpeg"
                 }
                 // 保留原始拍摄时间

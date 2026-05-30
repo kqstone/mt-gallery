@@ -123,7 +123,7 @@ fun ViewerScreen(
             val isPlayableMedia = photo.isPlayableMedia()
 
             if (isPlayableMedia && isCurrentPage) {
-                val url = viewModel.getVideoUrl(photo)
+                val url = uiState.resolvedVideoUrl ?: ""
                 if (url.isNotEmpty()) {
                     VideoPlayer(
                         videoUrl = url,
@@ -137,7 +137,7 @@ fun ViewerScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("无法播放该视频", color = Color.White)
+                        CircularProgressIndicator(color = Color.White)
                     }
                 }
             } else if (isPlayableMedia) {
@@ -227,7 +227,7 @@ fun ViewerScreen(
                     val needsOriginal = currentPhoto.syncStatus == com.kqstone.mtphotos.data.local.db.SyncStatus.CLOUD_ONLY ||
                         currentPhoto.isStorageOptimized
                     val showLoadOriginalButton = needsOriginal &&
-                        !currentPhoto.isVideo() &&
+                        (!currentPhoto.isVideo() || uiState.isPlayingTranscode) &&
                         !uiState.originalDownloaded
 
                     if (showLoadOriginalButton) {
