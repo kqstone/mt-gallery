@@ -266,17 +266,22 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 val newFileName = "${photo.md5}.$ext"
 
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, newFileName)
-                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MtGallery/$idStr")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, newFileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/MtGallery/$idStr")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
                     if (dateTakenMillis != null) {
-                        put(MediaStore.Images.Media.DATE_TAKEN, dateTakenMillis)
-                        put(MediaStore.Images.Media.DATE_MODIFIED, dateTakenMillis / 1000)
-                        put(MediaStore.Images.Media.DATE_ADDED, dateTakenMillis / 1000)
+                        put(MediaStore.MediaColumns.DATE_TAKEN, dateTakenMillis)
+                        put(MediaStore.MediaColumns.DATE_MODIFIED, dateTakenMillis / 1000)
+                        put(MediaStore.MediaColumns.DATE_ADDED, dateTakenMillis / 1000)
                     }
                 }
-                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                val collectionUri = if (photo.isVideo()) {
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
+                val uri = resolver.insert(collectionUri, contentValues)
                     ?: throw Exception("MediaStore 创建失败")
                 resolver.openOutputStream(uri)?.use { it.write(bytes) }
                     ?: throw Exception("无法写入文件")
@@ -304,11 +309,11 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
 
                 // 取消 PENDING 状态，并再次写入时间避免被系统覆盖
                 val updateValues = ContentValues().apply {
-                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
                     if (dateTakenMillis != null) {
-                        put(MediaStore.Images.Media.DATE_TAKEN, dateTakenMillis)
-                        put(MediaStore.Images.Media.DATE_MODIFIED, dateTakenMillis / 1000)
-                        put(MediaStore.Images.Media.DATE_ADDED, dateTakenMillis / 1000)
+                        put(MediaStore.MediaColumns.DATE_TAKEN, dateTakenMillis)
+                        put(MediaStore.MediaColumns.DATE_MODIFIED, dateTakenMillis / 1000)
+                        put(MediaStore.MediaColumns.DATE_ADDED, dateTakenMillis / 1000)
                     }
                 }
                 resolver.update(uri, updateValues, null, null)
