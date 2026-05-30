@@ -51,7 +51,7 @@ class BackupWorker(
             val container = app.container
             val syncRepo = container.syncRepository
             val prefsManager = container.prefsManager
-            val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
+            val selectedFolders = prefsManager.getBackupFolderSelectionSync().effectiveFolders
 
             if (!prefsManager.getBackupEnabledSync()) {
                 Log.d(TAG, "Backup not enabled, skipping")

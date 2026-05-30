@@ -94,7 +94,7 @@ class OriginalDownloadManager(
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, newFileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/MtGallery/$idStr")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${MediaConstants.MT_GALLERY_DOWNLOAD_FOLDER_RELATIVE}/$idStr")
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                     if (dateTakenMillis != null) {
                         put(MediaStore.MediaColumns.DATE_TAKEN, dateTakenMillis)

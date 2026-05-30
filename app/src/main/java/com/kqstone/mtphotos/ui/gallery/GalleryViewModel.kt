@@ -122,13 +122,13 @@ class GalleryViewModel(
                         return@launch
                     }
                     if (syncRepository.hasData()) {
-                        syncRepository.reconcileFolderSelection(folderSelection.folders)
-                        loadFromRoom(folderSelection.folders)
-                        refreshCloudTimelineIndex(folderSelection.folders)
+                        syncRepository.reconcileFolderSelection(folderSelection.effectiveFolders)
+                        loadFromRoom(folderSelection.effectiveFolders)
+                        refreshCloudTimelineIndex(folderSelection.effectiveFolders)
                         return@launch
                     }
                     loadFromCloud()
-                    triggerInitialSync(folderSelection.folders)
+                    triggerInitialSync(folderSelection.effectiveFolders)
                 } catch (e: Exception) {
                     Log.e(TAG, "Hybrid load failed, fallback to cloud", e)
                     loadFromCloud()
@@ -387,10 +387,11 @@ class GalleryViewModel(
                         _uiState.value = _uiState.value.copy(isRefreshing = false)
                         return@launch
                     }
-                    val folders = folderSelection.folders
+                    val folders = folderSelection.effectiveFolders
                     syncRepository.reconcileFolderSelection(folders)
                     syncRepository.refreshCloudState()
                     loadFromRoom(folders)
+                    refreshCloudTimelineIndex(folders)
                     _uiState.value = _uiState.value.copy(isRefreshing = false)
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(
@@ -447,7 +448,7 @@ class GalleryViewModel(
                     loadFromCloud()
                     return@launch
                 }
-                val folders = folderSelection.folders
+                val folders = folderSelection.effectiveFolders
                 if (folderChanged) {
                     syncRepository.reconcileFolderSelection(folders)
                     lastFolderSelectionKey = folderKey

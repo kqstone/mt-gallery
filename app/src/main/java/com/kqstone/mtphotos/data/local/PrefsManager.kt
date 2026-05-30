@@ -23,7 +23,10 @@ private const val TAG = "PrefsManager"
 data class BackupFolderSelection(
     val folders: Set<String>?,
     val isConfigured: Boolean
-)
+) {
+    val effectiveFolders: Set<String>?
+        get() = folders?.let { it + com.kqstone.mtphotos.data.local.MediaConstants.MT_GALLERY_DOWNLOAD_FOLDER_ABSOLUTE }
+}
 
 class PrefsManager(val context: Context) {
 

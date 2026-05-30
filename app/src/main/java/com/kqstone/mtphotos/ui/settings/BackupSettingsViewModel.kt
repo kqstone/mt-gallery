@@ -178,7 +178,7 @@ class BackupSettingsViewModel(
                 }
 
                 val stats = withContext(Dispatchers.IO) {
-                    val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
+                    val selectedFolders = prefsManager.getBackupFolderSelectionSync().effectiveFolders
                     val optimizable = storageOptimizer.getOptimizationStatsSummary()
                     BackupSettingsStats(
                         syncedCount = syncRepository.getSyncedCount(),
@@ -283,7 +283,13 @@ class BackupSettingsViewModel(
                 expandFoldersWithParents(savedFolders.orEmpty()).forEach { mergedPaths.add(it) }
                 expandFoldersWithParents(historicalPaths).forEach { mergedPaths.add(it) }
 
-                val folderItems = orderFolderPaths(mergedPaths, scannedOrder).map { path ->
+                val folderItems = orderFolderPaths(mergedPaths, scannedOrder)
+                    .filterNot { path ->
+                        val normalizedPath = FolderPathMatcher.normalize(path)
+                        val targetFolder = FolderPathMatcher.normalize(com.kqstone.mtphotos.data.local.MediaConstants.MT_GALLERY_DOWNLOAD_FOLDER_ABSOLUTE)
+                        normalizedPath == targetFolder || FolderPathMatcher.isDescendantOf(normalizedPath, targetFolder)
+                    }
+                    .map { path ->
                     val scanned = scannedByPath[path]
                     FolderUiItem(
                         path = path,
@@ -387,7 +393,7 @@ class BackupSettingsViewModel(
                 error = null
             )
             try {
-                val selectedFolders = prefsManager.getBackupFolderSelectionSync().folders
+                val selectedFolders = prefsManager.getBackupFolderSelectionSync().effectiveFolders
                 val result = syncRepository.repairMissingBackups(selectedFolders)
                 val pending = syncRepository.getPendingBackupMedia(selectedFolders).size
                 _uiState.value = _uiState.value.copy(
@@ -462,13 +468,14 @@ class BackupSettingsViewModel(
 
             _uiState.value = _uiState.value.copy(isSyncing = true)
             try {
-                syncRepository.reconcileFolderSelection(selected)
-                syncRepository.performFullSync(selected)
+                val effectiveSelected = prefsManager.getBackupFolderSelectionSync().effectiveFolders
+                syncRepository.reconcileFolderSelection(effectiveSelected)
+                syncRepository.performFullSync(effectiveSelected)
 
                 val synced = syncRepository.getSyncedCount()
                 val backedUp = syncRepository.getBackedUpCount()
                 val backedUpSize = syncRepository.getBackedUpSize()
-                val pending = syncRepository.getPendingBackupMedia(selected).size
+                val pending = syncRepository.getPendingBackupMedia(effectiveSelected).size
                 val stats = storageOptimizer.getOptimizationStats()
 
                 _uiState.value = _uiState.value.copy(

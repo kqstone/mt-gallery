@@ -34,7 +34,7 @@ class SyncWorker(
 
             // 获取用户选择的备份文件夹
             val folderSelection = prefsManager.getBackupFolderSelectionSync()
-            val folders = folderSelection.folders
+            val folders = folderSelection.effectiveFolders
             if (folderSelection.isConfigured) {
                 syncRepo.reconcileFolderSelection(folders)
             }
