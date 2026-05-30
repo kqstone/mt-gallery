@@ -28,15 +28,56 @@ data class ViewerUiState(
     val fileDetailInfo: Map<String, Any>? = null,
     val isSharing: Boolean = false,
     val isDownloadingOriginal: Boolean = false,
+    val downloadProgress: Float? = null,
     val originalDownloaded: Boolean = false,
     val resolvedVideoUrl: String? = null,
     val isPlayingTranscode: Boolean = false
 )
 
-class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
+class ViewerViewModel(
+    private val galleryRepository: GalleryRepository,
+    private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewerUiState())
     val uiState: StateFlow<ViewerUiState> = _uiState
+
+    init {
+        viewModelScope.launch {
+            originalDownloadManager.downloadStates.collect { states ->
+                val currentMd5 = getCurrentPhoto()?.md5 ?: return@collect
+                if (states.containsKey(currentMd5)) {
+                    syncDownloadState()
+                }
+            }
+        }
+    }
+
+    private fun syncDownloadState() {
+        val currentMd5 = getCurrentPhoto()?.md5 ?: return
+        val state = originalDownloadManager.downloadStates.value[currentMd5]
+        
+        _uiState.update { stateUi ->
+            val updatedPhotos = if (state?.isCompleted == true && state.localUri != null && !stateUi.originalDownloaded) {
+                stateUi.photos.map { p ->
+                    if (p.md5 == currentMd5) p.copy(
+                        syncStatus = com.kqstone.mtphotos.data.local.db.SyncStatus.SYNCED,
+                        localUri = state.localUri,
+                        isStorageOptimized = false
+                    ) else p
+                }
+            } else {
+                stateUi.photos
+            }
+
+            stateUi.copy(
+                isDownloadingOriginal = state?.isDownloading == true,
+                downloadProgress = if (state?.isDownloading == true) state.progress else null,
+                originalDownloaded = state?.isCompleted == true || stateUi.originalDownloaded,
+                photos = updatedPhotos
+            )
+        }
+    }
 
     fun setPhotos(photos: List<UnifiedPhotoItem>, initialIndex: Int) {
         val index = initialIndex.coerceIn(0, (photos.size - 1).coerceAtLeast(0))
@@ -44,6 +85,7 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
             photos = photos,
             currentIndex = index
         )
+        syncDownloadState()
         loadExifAndFavoriteForCurrent()
     }
 
@@ -59,6 +101,7 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 isPlayingTranscode = false
             )
         }
+        syncDownloadState()
         loadExifAndFavoriteForCurrent()
     }
 
@@ -215,147 +258,7 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
     fun downloadOriginal(context: android.content.Context) {
         val photo = getCurrentPhoto() ?: return
         if (_uiState.value.isDownloadingOriginal) return
-        _uiState.update { it.copy(isDownloadingOriginal = true) }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val downloadUrl = getFileDownloadUrl(photo)
-                if (downloadUrl.isEmpty()) throw Exception("无法获取原图地址")
-
-                // OkHttp 下载原图
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                    .build()
-                val request = Request.Builder().url(downloadUrl).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) throw Exception("下载失败: ${response.code}")
-                val body = response.body ?: throw Exception("响应为空")
-
-                // 通过 MediaStore 写入 Pictures/MtGallery/
-                val resolver = context.contentResolver
-                val mimeType = when {
-                    photo.fileName.endsWith(".png", true) -> "image/png"
-                    photo.fileName.endsWith(".webp", true) -> "image/webp"
-                    photo.fileName.endsWith(".gif", true) -> "image/gif"
-                    photo.fileName.endsWith(".mp4", true) -> "video/mp4"
-                    photo.fileName.endsWith(".mov", true) -> "video/quicktime"
-                    photo.fileName.endsWith(".mkv", true) -> "video/x-matroska"
-                    photo.fileName.endsWith(".avi", true) -> "video/x-msvideo"
-                    photo.isVideo() -> "video/mp4"
-                    else -> "image/jpeg"
-                }
-                // 保留原始拍摄时间
-                val fileDetailMtime = _uiState.value.fileDetailInfo?.get("mtime")
-                val dateTakenMillis = try {
-                    if (fileDetailMtime is Number) {
-                        val mtimeMs = fileDetailMtime.toLong()
-                        if (mtimeMs > 9999999999L) mtimeMs else mtimeMs * 1000L
-                    } else {
-                        val rawMtime = (fileDetailMtime as? String)?.takeIf { it.isNotBlank() } ?: photo.mtime
-                        val clean = rawMtime.replace("T", " ")
-                            .substringBefore("+").substringBefore("Z")
-                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                            .parse(clean)?.time
-                    }
-                } catch (_: Exception) { null }
-
-                val idStr = photo.id.toLong().toString()
-                val extRaw = (_uiState.value.fileDetailInfo?.get("fileType") as? String)
-                    ?.takeIf { it.isNotBlank() }
-                    ?: photo.fileType.takeIf { it.isNotBlank() }
-                    ?: photo.fileName.substringAfterLast('.', "jpg")
-                val ext = extRaw.trim().lowercase().removePrefix(".")
-                val newFileName = "${photo.md5}.$ext"
-
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, newFileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/MtGallery/$idStr")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    if (dateTakenMillis != null) {
-                        put(MediaStore.MediaColumns.DATE_TAKEN, dateTakenMillis)
-                        put(MediaStore.MediaColumns.DATE_MODIFIED, dateTakenMillis / 1000)
-                        put(MediaStore.MediaColumns.DATE_ADDED, dateTakenMillis / 1000)
-                    }
-                }
-                val collectionUri = if (photo.isVideo()) {
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                } else {
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                }
-                val uri = resolver.insert(collectionUri, contentValues)
-                    ?: throw Exception("MediaStore 创建失败")
-                resolver.openOutputStream(uri)?.use { outputStream ->
-                    body.byteStream().use { inputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                } ?: throw Exception("无法写入文件")
-
-                // 查询实际文件路径
-                val filePath = resolver.query(
-                    uri,
-                    arrayOf(MediaStore.Images.Media.DATA),
-                    null, null, null
-                )?.use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) else null
-                } ?: ""
-
-                // 修改底层文件系统的修改时间，避免后续被扫描时因为没有 EXIF 而使用当前时间
-                if (filePath.isNotEmpty() && dateTakenMillis != null) {
-                    try {
-                        val file = java.io.File(filePath)
-                        if (file.exists()) {
-                            file.setLastModified(dateTakenMillis)
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                // 取消 PENDING 状态，并再次写入时间避免被系统覆盖
-                val updateValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    if (dateTakenMillis != null) {
-                        put(MediaStore.MediaColumns.DATE_TAKEN, dateTakenMillis)
-                        put(MediaStore.MediaColumns.DATE_MODIFIED, dateTakenMillis / 1000)
-                        put(MediaStore.MediaColumns.DATE_ADDED, dateTakenMillis / 1000)
-                    }
-                }
-                resolver.update(uri, updateValues, null, null)
-
-                // 更新 Room 数据库
-                galleryRepository.markOriginalDownloaded(
-                    photo.md5, uri.toString(), filePath
-                )
-
-                // 更新内存中的照片状态
-                withContext(Dispatchers.Main) {
-                    _uiState.update { state ->
-                        state.copy(
-                            isDownloadingOriginal = false,
-                            originalDownloaded = true,
-                            photos = state.photos.map { p ->
-                                if (p.md5 == photo.md5) p.copy(
-                                    syncStatus = SyncStatus.SYNCED,
-                                    localUri = uri.toString(),
-                                    isStorageOptimized = false
-                                ) else p
-                            }
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ViewerVM", "Download original failed", e)
-                withContext(Dispatchers.Main) {
-                    _uiState.update { it.copy(isDownloadingOriginal = false) }
-                    android.widget.Toast.makeText(
-                        context, "下载原图失败: ${e.message}",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-        }
+        originalDownloadManager.startDownload(photo, _uiState.value.fileDetailInfo)
     }
 
     fun getVideoUrl(photo: UnifiedPhotoItem): String {
@@ -383,10 +286,13 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
         return state.photos.getOrNull(state.currentIndex)
     }
 
-    class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val galleryRepository: GalleryRepository,
+        private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ViewerViewModel(galleryRepository) as T
+            return ViewerViewModel(galleryRepository, originalDownloadManager) as T
         }
     }
 }

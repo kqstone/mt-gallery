@@ -88,7 +88,10 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
     }
 
     val viewerViewModel: ViewerViewModel = viewModel(
-        factory = ViewerViewModel.Factory(container.galleryRepository)
+        factory = ViewerViewModel.Factory(
+            container.galleryRepository,
+            container.originalDownloadManager
+        )
     )
 
     NavHost(navController = navController, startDestination = startDestination!!) {

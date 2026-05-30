@@ -16,6 +16,7 @@ import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.local.ThumbnailCacheManager
+import com.kqstone.mtphotos.data.local.OriginalDownloadManager
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.repository.AuthRepository
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
@@ -163,4 +164,7 @@ class AppContainer(context: android.content.Context) {
 
     // 存储优化器
     val storageOptimizer = StorageOptimizer(syncRepository)
+    
+    // 原文件后台下载管理器
+    val originalDownloadManager = OriginalDownloadManager(context, galleryRepository)
 }

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
@@ -233,11 +234,28 @@ fun ViewerScreen(
                     if (showLoadOriginalButton) {
                         IconButton(onClick = { viewModel.downloadOriginal(context) }) {
                             if (uiState.isDownloadingOriginal) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    val progress = uiState.downloadProgress
+                                    if (progress != null) {
+                                        CircularProgressIndicator(
+                                            progress = progress,
+                                            modifier = Modifier.size(24.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Text(
+                                            text = "${(progress * 100).toInt()}%",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp)
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.Download,
