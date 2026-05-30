@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,18 @@ class MainActivity : ComponentActivity() {
         intent?.let { _intentFlow.tryEmit(it) }
         enableEdgeToEdge()
         enableHighRefreshRate()
+
+        // 注册最低优先级的返回键回调（在 setContent 之前注册，
+        // 使所有 Compose BackHandler 和 Navigation 回调拥有更高优先级）。
+        // 当导航栈为空、无 BackHandler 处理时，此回调兜底：
+        // 将 task 移至后台而非 finish Activity，避免 ChooserActivity 等
+        // 外部 Activity 关闭后 isTaskRoot() 短暂失效导致的意外销毁。
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                moveTaskToBack(true)
+            }
+        })
+
         setContent {
             MTGalleryTheme {
                 Surface(
