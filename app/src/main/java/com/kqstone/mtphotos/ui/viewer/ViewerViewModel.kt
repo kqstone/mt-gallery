@@ -167,6 +167,11 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
         return galleryRepository.getOriginalImageUrl(cloudId, photo.md5)
     }
 
+    fun getFileDownloadUrl(photo: UnifiedPhotoItem): String {
+        val cloudId = photo.cloudId ?: return ""
+        return galleryRepository.getFileDownloadUrl(cloudId, photo.md5)
+    }
+
     fun downloadOriginal(context: android.content.Context) {
         val photo = getCurrentPhoto() ?: return
         if (_uiState.value.isDownloadingOriginal) return
@@ -174,7 +179,7 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val downloadUrl = getOriginalImageUrl(photo)
+                val downloadUrl = getFileDownloadUrl(photo)
                 if (downloadUrl.isEmpty()) throw Exception("无法获取原图地址")
 
                 // OkHttp 下载原图
@@ -192,17 +197,34 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                     photo.fileName.endsWith(".gif", true) -> "image/gif"
                     else -> "image/jpeg"
                 }
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, photo.fileName)
-                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MtGallery")
-                    // 保留原始拍摄时间
-                    val dateTakenMillis = try {
-                        val clean = photo.mtime.replace("T", " ")
+                // 保留原始拍摄时间
+                val fileDetailMtime = _uiState.value.fileDetailInfo?.get("mtime")
+                val dateTakenMillis = try {
+                    if (fileDetailMtime is Number) {
+                        val mtimeMs = fileDetailMtime.toLong()
+                        if (mtimeMs > 9999999999L) mtimeMs else mtimeMs * 1000L
+                    } else {
+                        val rawMtime = (fileDetailMtime as? String)?.takeIf { it.isNotBlank() } ?: photo.mtime
+                        val clean = rawMtime.replace("T", " ")
                             .substringBefore("+").substringBefore("Z")
                         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
                             .parse(clean)?.time
-                    } catch (_: Exception) { null }
+                    }
+                } catch (_: Exception) { null }
+
+                val idStr = photo.id.toLong().toString()
+                val extRaw = (_uiState.value.fileDetailInfo?.get("fileType") as? String)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: photo.fileType.takeIf { it.isNotBlank() }
+                    ?: photo.fileName.substringAfterLast('.', "jpg")
+                val ext = extRaw.trim().lowercase().removePrefix(".")
+                val newFileName = "${photo.md5}.$ext"
+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, newFileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MtGallery/$idStr")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
                     if (dateTakenMillis != null) {
                         put(MediaStore.Images.Media.DATE_TAKEN, dateTakenMillis)
                         put(MediaStore.Images.Media.DATE_MODIFIED, dateTakenMillis / 1000)
@@ -222,6 +244,29 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 )?.use { cursor ->
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 } ?: ""
+
+                // 修改底层文件系统的修改时间，避免后续被扫描时因为没有 EXIF 而使用当前时间
+                if (filePath.isNotEmpty() && dateTakenMillis != null) {
+                    try {
+                        val file = java.io.File(filePath)
+                        if (file.exists()) {
+                            file.setLastModified(dateTakenMillis)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                // 取消 PENDING 状态，并再次写入时间避免被系统覆盖
+                val updateValues = ContentValues().apply {
+                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                    if (dateTakenMillis != null) {
+                        put(MediaStore.Images.Media.DATE_TAKEN, dateTakenMillis)
+                        put(MediaStore.Images.Media.DATE_MODIFIED, dateTakenMillis / 1000)
+                        put(MediaStore.Images.Media.DATE_ADDED, dateTakenMillis / 1000)
+                    }
+                }
+                resolver.update(uri, updateValues, null, null)
 
                 // 更新 Room 数据库
                 galleryRepository.markOriginalDownloaded(

@@ -223,6 +223,30 @@ fun ViewerScreen(
                             )
                         }
                     }
+
+                    val needsOriginal = currentPhoto.syncStatus == com.kqstone.mtphotos.data.local.db.SyncStatus.CLOUD_ONLY ||
+                        currentPhoto.isStorageOptimized
+                    val showLoadOriginalButton = needsOriginal &&
+                        !currentPhoto.isVideo() &&
+                        !uiState.originalDownloaded
+
+                    if (showLoadOriginalButton) {
+                        IconButton(onClick = { viewModel.downloadOriginal(context) }) {
+                            if (uiState.isDownloadingOriginal) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "加载原图",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -249,54 +273,15 @@ fun ViewerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Pager Number Indicator or Load Original Button
-                    val needsOriginal = currentPhoto.syncStatus == com.kqstone.mtphotos.data.local.db.SyncStatus.CLOUD_ONLY ||
-                        currentPhoto.isStorageOptimized
-                    val showLoadOriginalButton = needsOriginal &&
-                        !currentPhoto.isVideo() &&
-                        !uiState.originalDownloaded
-
-                    if (showLoadOriginalButton) {
-                        Button(
-                            onClick = { viewModel.downloadOriginal(context) },
-                            enabled = !uiState.isDownloadingOriginal,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White.copy(alpha = 0.2f),
-                                contentColor = Color.White,
-                                disabledContainerColor = Color.White.copy(alpha = 0.15f),
-                                disabledContentColor = Color.White.copy(alpha = 0.7f)
-                            ),
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            if (uiState.isDownloadingOriginal) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("正在下载...", style = MaterialTheme.typography.labelMedium)
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Download,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("加载原图", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "${pagerState.settledPage + 1} / ${photos.size}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier
-                                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
+                    // Pager Number Indicator
+                    Text(
+                        text = "${pagerState.settledPage + 1} / ${photos.size}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Control Buttons (Narrower width, no pill background)
