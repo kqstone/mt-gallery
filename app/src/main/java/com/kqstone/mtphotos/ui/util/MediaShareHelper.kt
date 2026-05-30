@@ -14,7 +14,8 @@ import java.io.FileOutputStream
 
 object MediaShareHelper {
 
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class, coil.annotation.ExperimentalCoilApi::class)
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @kotlin.OptIn(coil.annotation.ExperimentalCoilApi::class)
     suspend fun prepareShareUris(
         context: Context,
         photos: List<UnifiedPhotoItem>,
@@ -35,8 +36,11 @@ object MediaShareHelper {
                 Uri.parse(photo.localUri)
             } else {
                 val downloadUrl = if (photo.isVideo()) getVideoUrl(photo) else getFullImageUrl(photo)
-                val ext = if (photo.isVideo()) "mp4" else "jpg"
-                val tempFile = File(sharedMediaDir, "${photo.md5}_share.$ext")
+                val extension = photo.fileName.substringAfterLast('.', "")
+                val actualExt = if (extension.isNotEmpty()) ".$extension" else if (photo.isVideo()) ".mp4" else ".jpg"
+                val nameWithoutExt = if (extension.isNotEmpty()) photo.fileName.substringBeforeLast('.') else photo.fileName
+                val shortMd5 = if (photo.md5.length >= 8) photo.md5.substring(0, 8) else photo.md5
+                val tempFile = File(sharedMediaDir, "${nameWithoutExt}_${shortMd5}_share$actualExt")
 
                 if (!tempFile.exists()) {
                     if (photo.isVideo()) {

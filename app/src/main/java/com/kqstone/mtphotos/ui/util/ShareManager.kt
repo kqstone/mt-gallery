@@ -82,7 +82,15 @@ class ShareManager(
                             } else {
                                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                             }
-                            type = "*/*"
+                            
+                            val mimeTypes = uris.mapNotNull { context.contentResolver.getType(it) }.distinct()
+                            type = when {
+                                mimeTypes.isEmpty() -> "*/*"
+                                mimeTypes.size == 1 -> mimeTypes.first()
+                                mimeTypes.all { it.startsWith("image/") } -> "image/*"
+                                mimeTypes.all { it.startsWith("video/") } -> "video/*"
+                                else -> "*/*"
+                            }
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         }
                         context.startActivity(Intent.createChooser(shareIntent, "分享媒体"))
