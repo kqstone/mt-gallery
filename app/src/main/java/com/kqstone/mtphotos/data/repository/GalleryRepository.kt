@@ -572,6 +572,14 @@ class GalleryRepository(private val container: AppContainer) {
         return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}"
     }
 
+    fun getOriginalImageUrl(id: Double, md5: String): String {
+        return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}&type=ori"
+    }
+
+    suspend fun markOriginalDownloaded(md5: String, localUri: String, localPath: String) {
+        container.syncRepository.markOriginalDownloaded(md5, localUri, localPath)
+    }
+
     fun getMotionPhotoUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileMotion/$id/$md5${urlSuffix()}"
     }

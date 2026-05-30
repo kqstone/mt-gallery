@@ -862,6 +862,10 @@ class SyncRepository(
         return mediaDao.findByMd5(md5)
     }
 
+    suspend fun markOriginalDownloaded(md5: String, localUri: String, localPath: String) {
+        mediaDao.markOriginalDownloaded(md5, localUri, localPath)
+    }
+
     suspend fun findByCloudId(cloudId: Double): MediaEntity? {
         return mediaDao.findByCloudId(cloudId)
     }

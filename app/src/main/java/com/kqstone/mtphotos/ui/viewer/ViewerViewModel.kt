@@ -1,8 +1,11 @@
 package com.kqstone.mtphotos.ui.viewer
 
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +26,9 @@ data class ViewerUiState(
     val isLoadingDetails: Boolean = false,
     val exifInfo: Map<String, Any>? = null,
     val fileDetailInfo: Map<String, Any>? = null,
-    val isSharing: Boolean = false
+    val isSharing: Boolean = false,
+    val isDownloadingOriginal: Boolean = false,
+    val originalDownloaded: Boolean = false
 )
 
 class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
@@ -46,7 +51,8 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 currentIndex = index,
                 isFavorite = false,
                 exifInfo = null,
-                fileDetailInfo = null
+                fileDetailInfo = null,
+                originalDownloaded = false
             )
         }
         loadExifAndFavoriteForCurrent()
@@ -154,6 +160,101 @@ class ViewerViewModel(private val galleryRepository: GalleryRepository) : ViewMo
         photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
+    }
+
+    fun getOriginalImageUrl(photo: UnifiedPhotoItem): String {
+        val cloudId = photo.cloudId ?: return ""
+        return galleryRepository.getOriginalImageUrl(cloudId, photo.md5)
+    }
+
+    fun downloadOriginal(context: android.content.Context) {
+        val photo = getCurrentPhoto() ?: return
+        if (_uiState.value.isDownloadingOriginal) return
+        _uiState.update { it.copy(isDownloadingOriginal = true) }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloadUrl = getOriginalImageUrl(photo)
+                if (downloadUrl.isEmpty()) throw Exception("无法获取原图地址")
+
+                // OkHttp 下载原图
+                val client = OkHttpClient()
+                val request = Request.Builder().url(downloadUrl).build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) throw Exception("下载失败: ${response.code}")
+                val bytes = response.body?.bytes() ?: throw Exception("响应为空")
+
+                // 通过 MediaStore 写入 Pictures/MtGallery/
+                val resolver = context.contentResolver
+                val mimeType = when {
+                    photo.fileName.endsWith(".png", true) -> "image/png"
+                    photo.fileName.endsWith(".webp", true) -> "image/webp"
+                    photo.fileName.endsWith(".gif", true) -> "image/gif"
+                    else -> "image/jpeg"
+                }
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, photo.fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MtGallery")
+                    // 保留原始拍摄时间
+                    val dateTakenMillis = try {
+                        val clean = photo.mtime.replace("T", " ")
+                            .substringBefore("+").substringBefore("Z")
+                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                            .parse(clean)?.time
+                    } catch (_: Exception) { null }
+                    if (dateTakenMillis != null) {
+                        put(MediaStore.Images.Media.DATE_TAKEN, dateTakenMillis)
+                        put(MediaStore.Images.Media.DATE_MODIFIED, dateTakenMillis / 1000)
+                        put(MediaStore.Images.Media.DATE_ADDED, dateTakenMillis / 1000)
+                    }
+                }
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: throw Exception("MediaStore 创建失败")
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw Exception("无法写入文件")
+
+                // 查询实际文件路径
+                val filePath = resolver.query(
+                    uri,
+                    arrayOf(MediaStore.Images.Media.DATA),
+                    null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: ""
+
+                // 更新 Room 数据库
+                galleryRepository.markOriginalDownloaded(
+                    photo.md5, uri.toString(), filePath
+                )
+
+                // 更新内存中的照片状态
+                withContext(Dispatchers.Main) {
+                    _uiState.update { state ->
+                        state.copy(
+                            isDownloadingOriginal = false,
+                            originalDownloaded = true,
+                            photos = state.photos.map { p ->
+                                if (p.md5 == photo.md5) p.copy(
+                                    syncStatus = SyncStatus.SYNCED,
+                                    localUri = uri.toString(),
+                                    isStorageOptimized = false
+                                ) else p
+                            }
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ViewerVM", "Download original failed", e)
+                withContext(Dispatchers.Main) {
+                    _uiState.update { it.copy(isDownloadingOriginal = false) }
+                    android.widget.Toast.makeText(
+                        context, "下载原图失败: ${e.message}",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     fun getVideoUrl(photo: UnifiedPhotoItem): String {

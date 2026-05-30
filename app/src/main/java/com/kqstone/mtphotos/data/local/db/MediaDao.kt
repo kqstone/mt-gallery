@@ -276,6 +276,24 @@ interface MediaDao {
     @Query("UPDATE media SET thumbCachePath = :path, updatedAt = :now WHERE id = :id")
     suspend fun updateThumbCachePath(id: Long, path: String, now: Long = System.currentTimeMillis())
 
+    // ===== 原图下载后标记 =====
+
+    @Query("""
+        UPDATE media
+        SET syncStatus = 'SYNCED',
+            localUri = :localUri,
+            localPath = :localPath,
+            isStorageOptimized = 0,
+            updatedAt = :now
+        WHERE md5 = :md5
+    """)
+    suspend fun markOriginalDownloaded(
+        md5: String,
+        localUri: String,
+        localPath: String,
+        now: Long = System.currentTimeMillis()
+    )
+
     // ===== 统计 =====
 
     @Query("SELECT COUNT(*) FROM media")
