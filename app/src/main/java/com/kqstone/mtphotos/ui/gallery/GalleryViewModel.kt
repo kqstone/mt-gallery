@@ -401,19 +401,19 @@ class GalleryViewModel(
                     }
                     val folders = folderSelection.effectiveFolders
 
-                    // Step 1: 立即从 Room 加载已有数据并收起刷新动画
+                    // Step 1: 从 Room 加载已有数据（刷新动画保持显示）
                     loadFromRoom(folders)
-                    _uiState.value = _uiState.value.copy(isRefreshing = false)
 
                     // Step 2: 后台静默同步云端
                     // Step 2a: 获取 snapshot（轻量，只拉索引 + 服务端预取的最近几个月数据）
                     syncRepository.reconcileFolderSelection(folders)
                     val snapshot = galleryRepository.getTimelineSnapshot().getOrElse { throw it }
 
-                    // Step 2b: 立即用 snapshot 中已预取的最近月份数据更新 UI，让用户尽快看到变化
+                    // Step 2b: 用 snapshot 中已预取的最近月份数据更新 UI，然后收起刷新动画
                     if (snapshot.photosByMonth.isNotEmpty()) {
                         applyCloudTimelineSnapshot(snapshot, folders)
                     }
+                    _uiState.value = _uiState.value.copy(isRefreshing = false)
 
                     // Step 2c: 全量拉取并同步到 Room（复用已有 snapshot 避免重复请求）
                     val fullSnapshot = syncRepository.refreshCloudState(existingSnapshot = snapshot)
