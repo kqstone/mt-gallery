@@ -171,6 +171,10 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE cloudId IS NOT NULL")
     suspend fun getCloudBoundMedia(): List<MediaEntity>
 
+    /** 获取所有有本地绑定的记录（用于文件夹范围校验） */
+    @Query("SELECT * FROM media WHERE localMediaStoreId IS NOT NULL")
+    suspend fun getLocalBoundMedia(): List<MediaEntity>
+
     /** 获取已备份但本地原图未清理的文件 */
     @Query("""
         SELECT * FROM media 

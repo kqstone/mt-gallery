@@ -202,6 +202,35 @@ class GalleryRepository(private val container: AppContainer) {
         }
     }
 
+    /**
+     * 批量请求多个月份的文件数据（单次 API 调用）。
+     * 返回按 yearMonth 分组的照片 Map。
+     */
+    suspend fun getTimelineMonthFilesBatch(months: List<TimelineMonth>): Result<Map<String, List<PhotoItem>>> {
+        val monthsWithKey = months.filter { it.monthKey != null }
+        if (monthsWithKey.isEmpty()) return Result.success(emptyMap())
+        return try {
+            val monthKeys = monthsWithKey.map { it.monthKey!! }
+            val keyToYearMonth = monthsWithKey.associate { it.monthKey!! to it.yearMonth }
+            val response = container.gatewayApi.GatewayControllerGetTimelineMonthData(
+                mapOf(
+                    "monthList" to monthKeys,
+                    "platform" to "web"
+                )
+            )
+            val result = mutableMapOf<String, List<PhotoItem>>()
+            for ((key, yearMonth) in keyToYearMonth) {
+                val monthData = response[key] ?: continue
+                val photos = parseTimelineMonthData(monthData)
+                    .filter { it.mtime.startsWith(yearMonth) }
+                result[yearMonth] = photos
+            }
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun parseTimelineMonthResponse(response: Map<String, Any>, monthKey: String): List<PhotoItem> {
         val monthData = response[monthKey]
             ?: response.values.firstOrNull()

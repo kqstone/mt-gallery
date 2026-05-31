@@ -58,7 +58,7 @@ class SyncRepository(
             val localMedia = localScanner.scanMedia(localFolders, computeMd5 = true)
             Log.d(TAG, "Local scan found ${localMedia.size} files")
 
-            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
@@ -93,7 +93,7 @@ class SyncRepository(
             Log.d(TAG, "Starting initial sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
@@ -153,7 +153,7 @@ class SyncRepository(
             Log.d(TAG, "Starting incremental sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
@@ -306,7 +306,7 @@ class SyncRepository(
 
     suspend fun syncCloudOnly() = withContext(Dispatchers.IO) {
         try {
-            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud-only sync: ${cloudPhotos.size} files")
@@ -320,9 +320,12 @@ class SyncRepository(
         }
     }
 
-    suspend fun refreshCloudState() = withContext(Dispatchers.IO) {
+    /**
+     * 刷新云端状态并返回 TimelineSnapshot 供调用方复用，避免重复 API 调用。
+     */
+    suspend fun refreshCloudState(existingSnapshot: TimelineSnapshot? = null): TimelineSnapshot = withContext(Dispatchers.IO) {
         try {
-            val fetchedCloudPhotos = fetchAllCloudPhotos()
+            val (fetchedCloudPhotos, snapshot) = fetchAllCloudPhotos(existingSnapshot)
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             if (cloudDeleteChanges.changed > 0) {
@@ -330,28 +333,35 @@ class SyncRepository(
             }
             upsertCloudPhotos(cloudPhotos)
             Log.d(TAG, "Cloud state refresh complete: ${cloudPhotos.size} files")
+            snapshot
         } catch (e: Exception) {
             Log.e(TAG, "Cloud state refresh failed", e)
             throw e
         }
     }
 
-    private suspend fun fetchAllCloudPhotos(): List<MediaEntity> {
-        val snapshot = galleryRepository.getTimelineSnapshot().getOrElse { throw it }
+    private data class FetchCloudResult(
+        val entities: List<MediaEntity>,
+        val snapshot: TimelineSnapshot
+    )
+
+    private suspend fun fetchAllCloudPhotos(existingSnapshot: TimelineSnapshot? = null): FetchCloudResult {
+        val snapshot = existingSnapshot ?: galleryRepository.getTimelineSnapshot().getOrElse { throw it }
         val photosByMonth = linkedMapOf<String, List<PhotoItem>>()
         photosByMonth.putAll(snapshot.photosByMonth)
 
-        for (month in snapshot.months) {
-            if (photosByMonth.containsKey(month.yearMonth)) continue
-            val monthPhotos = galleryRepository.getTimelineMonthFiles(month).getOrElse { throw it }
-            photosByMonth[month.yearMonth] = monthPhotos
+        val missingMonths = snapshot.months.filter { !photosByMonth.containsKey(it.yearMonth) }
+        if (missingMonths.isNotEmpty()) {
+            val batchResult = galleryRepository.getTimelineMonthFilesBatch(missingMonths)
+                .getOrElse { throw it }
+            photosByMonth.putAll(batchResult)
         }
 
         val result = photosByMonth.values.flatten().map { it.toCloudEntity() }
         if (snapshot.months.sumOf { it.count } > 0 && result.isEmpty()) {
             throw IllegalStateException("Cloud timeline has items, but no cloud file details were parsed")
         }
-        return result
+        return FetchCloudResult(result, snapshot)
     }
 
     suspend fun upsertCloudPhotoItems(photos: List<PhotoItem>) = withContext(Dispatchers.IO) {
@@ -660,7 +670,7 @@ class SyncRepository(
     suspend fun reconcileFolderSelection(localFolders: Set<String>?) = withContext(Dispatchers.IO) {
         if (localFolders == null) return@withContext
 
-        val localRecords = mediaDao.getAllMedia().filter { it.localMediaStoreId != null }
+        val localRecords = mediaDao.getLocalBoundMedia()
         val outOfScope = localRecords.filter {
             !FolderPathMatcher.isInAnyScope(it.localFolderPath, localFolders)
         }
@@ -750,7 +760,7 @@ class SyncRepository(
         val entities = mediaDao.findByIds(dbIds.distinct())
         if (entities.isEmpty()) return@withContext 0
 
-        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos().entities)
         val cloudIds = cloudPhotos.mapNotNull { it.cloudId }.toSet()
         val cloudMd5s = cloudPhotos.map { it.md5 }.filter { it.isNotEmpty() }.toSet()
 
@@ -776,7 +786,7 @@ class SyncRepository(
         localFolders: Set<String>? = null,
         includeRemoteDeleted: Boolean = false
     ): BackupRepairResult = withContext(Dispatchers.IO) {
-        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos())
+        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos().entities)
         val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
         val cloudMd5s = cloudMd5Map.keys
 
