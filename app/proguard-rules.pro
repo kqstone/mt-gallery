@@ -10,3 +10,8 @@
 }
 -keep class androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# AMap (Gaode Map) Rules
+-keep class com.amap.api.** { *; }
+-keep class com.autonavi.** { *; }
+-keep class com.aps.** { *; }

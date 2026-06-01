@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -87,6 +88,7 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val currentContext = rememberUpdatedState(context)
     val lifecycleOwner = LocalLifecycleOwner.current
     val imageLoader = remember(context) { Coil.imageLoader(context) }
     val markerBitmapCache = remember {
@@ -270,6 +272,7 @@ fun MapScreen(
 
         LaunchedEffect(aMap, uiState.clusters) {
             val map = aMap ?: return@LaunchedEffect
+            val ctx = currentContext.value
             val clusters = uiState.clusters
             Log.d("MapScreen", "draw markers clusters=${clusters.size}")
 
@@ -298,7 +301,7 @@ fun MapScreen(
                 }
                 val initialBitmap = cachedBitmap ?: synchronized(markerBitmapCache) {
                     markerBitmapCache.getOrPut(buildSimpleMarkerCacheKey(cluster.count)) {
-                        MapClusterRenderer.createSimpleMarkerBitmap(context, cluster.count)
+                        MapClusterRenderer.createSimpleMarkerBitmap(ctx, cluster.count)
                     }
                 }
 
@@ -336,7 +339,7 @@ fun MapScreen(
                 markerRenderJobs[pending.clusterKey] = launch(Dispatchers.IO) {
                     val bitmap = markerRenderSemaphore.withPermit {
                         MapClusterRenderer.createCircularThumbMarkerBitmap(
-                            context = context,
+                            context = ctx,
                             thumbUrl = pending.thumbUrl,
                             count = pending.cluster.count,
                             imageLoader = imageLoader
