@@ -84,7 +84,7 @@ fun AboutScreen(
                 val apkFile = status.apkFile
                 val apkUri = androidx.core.content.FileProvider.getUriForFile(
                     context,
-                    "com.kqstone.mtphotos.fileprovider",
+                    "${context.packageName}.fileprovider",
                     apkFile
                 )
                 val intent = Intent(Intent.ACTION_VIEW).apply {

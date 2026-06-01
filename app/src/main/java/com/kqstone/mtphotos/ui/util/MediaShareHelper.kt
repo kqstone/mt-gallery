@@ -113,7 +113,7 @@ object MediaShareHelper {
 
                 FileProvider.getUriForFile(
                     context,
-                    "com.kqstone.mtphotos.fileprovider",
+                    "${context.packageName}.fileprovider",
                     tempFile
                 )
             }
