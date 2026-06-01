@@ -128,8 +128,26 @@ class GalleryViewModel(
                         refreshCloudTimelineIndex(folderSelection.effectiveFolders)
                         return@launch
                     }
-                    loadFromCloud()
-                    triggerInitialSync(folderSelection.effectiveFolders)
+                    // 首启无缓存：先获取 snapshot 构建月份骨架
+                    val folders = folderSelection.effectiveFolders
+                    val snapshot = galleryRepository.getTimelineSnapshot().getOrElse {
+                        Log.e(TAG, "Failed to get timeline snapshot for initial load", it)
+                        _uiState.value = _uiState.value.copy(isLoading = false, error = it.message ?: "加载失败")
+                        return@launch
+                    }
+                    timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
+                    _uiState.value = _uiState.value.copy(
+                        months = buildMonthGroups(snapshot),
+                        isLoading = false,
+                        isHybridMode = true
+                    )
+                    // 复用下拉刷新流程：hydrate 预取月份数据并写入 Room，立即展开缩略图
+                    if (snapshot.photosByMonth.isNotEmpty()) {
+                        applyCloudTimelineSnapshot(snapshot, folders)
+                    }
+                    // triggerInitialSync 中 "cloud_ready" 阶段会调用 loadFromRoom 展开所有月份
+                    currentLocalFolders = folders
+                    triggerInitialSync(folders)
                 } catch (e: Exception) {
                     Log.e(TAG, "Hybrid load failed, fallback to cloud", e)
                     loadFromCloud()
@@ -179,6 +197,10 @@ class GalleryViewModel(
                             _uiState.value = _uiState.value.copy(
                                 syncProgressText = "正在整理本地记录..."
                             )
+                        }
+                        "cloud_ready" -> {
+                            // 云端数据已入库，立刻展开所有月份
+                            loadFromRoom(folders)
                         }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(isSyncing = false, syncProgressText = null)
@@ -386,6 +408,7 @@ class GalleryViewModel(
             monthLoadJobs.remove(yearMonth)
         }
     }
+
 
     fun refresh() {
         _uiState.value = _uiState.value.copy(isRefreshing = true)

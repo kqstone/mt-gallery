@@ -136,6 +136,9 @@ class SyncRepository(
                 emit(SyncProgress(written, total, "finalizing", total))
             }
 
+            // 云端数据已全部写入 Room，通知 UI 可以展开所有月份
+            emit(SyncProgress(scannedCount, scannedCount, "cloud_ready", cloudPhotos.size))
+
             emit(SyncProgress(scannedCount, scannedCount, "cleanup", cloudPhotos.size))
             val cleaned = cleanupOrphanedLocalRecords()
             if (cleaned > 0) Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
