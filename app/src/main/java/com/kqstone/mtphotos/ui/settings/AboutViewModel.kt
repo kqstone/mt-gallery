@@ -65,7 +65,12 @@ class AboutViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                val verName = packageInfo.versionName ?: "1.0"
+                var verName = packageInfo.versionName ?: "1.0"
+                val isDebug = context.packageName.endsWith(".debug") ||
+                        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                if (isDebug) {
+                    verName += " (Debug)"
+                }
                 _uiState.update { it.copy(currentVersion = verName) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to get version name", e)
