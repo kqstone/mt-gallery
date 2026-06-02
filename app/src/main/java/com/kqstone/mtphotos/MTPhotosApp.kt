@@ -21,6 +21,7 @@ import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.repository.AuthRepository
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
 import com.kqstone.mtphotos.network.RetrofitClient
@@ -129,9 +130,9 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
             val syncInterval = container.prefsManager.getSyncIntervalSync().toLong()
             BackupScheduler.scheduleAll(this, wifiOnly, syncInterval)
         } else {
-            BackupScheduler.schedulePeriodicCloudDelete(this)
+            BackupScheduler.schedulePeriodicServerOp(this)
         }
-        BackupScheduler.triggerCloudDeleteWork(this)
+        BackupScheduler.triggerServerOpWork(this)
     }
 }
 
@@ -164,7 +165,10 @@ class AppContainer(context: android.content.Context) {
 
     // 存储优化器
     val storageOptimizer = StorageOptimizer(syncRepository)
-    
+
+    // 服务器操作任务仓库
+    val serverOpTaskRepository = ServerOpTaskRepository(this, database)
+
     // 原文件后台下载管理器
     val originalDownloadManager = OriginalDownloadManager(context, galleryRepository)
 }

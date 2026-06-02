@@ -171,15 +171,38 @@ class BackupWorker(
                         }
                         successCount++
                         Log.d(TAG, "Uploaded: ${media.fileName} -> cloudId=${uploadResult.cloudId}")
+                        // 记录上传成功日志
+                        container.serverOpTaskRepository.recordBackupResult(
+                            fileName = media.fileName,
+                            md5 = media.md5,
+                            cloudId = uploadResult.cloudId,
+                            success = true
+                        )
                     } else {
                         container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.FAILED)
                         failCount++
                         Log.w(TAG, "Upload failed: ${media.fileName}")
+                        // 记录上传失败日志
+                        container.serverOpTaskRepository.recordBackupResult(
+                            fileName = media.fileName,
+                            md5 = media.md5,
+                            cloudId = null,
+                            success = false,
+                            error = "Upload returned null"
+                        )
                     }
                 } catch (e: Exception) {
                     container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.FAILED)
                     failCount++
                     Log.e(TAG, "Upload error: ${media.fileName}", e)
+                    // 记录上传异常日志
+                    container.serverOpTaskRepository.recordBackupResult(
+                        fileName = media.fileName,
+                        md5 = media.md5,
+                        cloudId = null,
+                        success = false,
+                        error = e.message ?: e::class.java.simpleName
+                    )
                 }
             }
 

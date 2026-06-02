@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.viewer
 
 import android.content.ContentValues
+import android.content.Context
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -8,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
+import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -36,7 +39,9 @@ data class ViewerUiState(
 
 class ViewerViewModel(
     private val galleryRepository: GalleryRepository,
-    private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager
+    private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
+    private val serverOpTaskRepository: ServerOpTaskRepository,
+    private val appContext: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewerUiState())
@@ -169,11 +174,18 @@ class ViewerViewModel(
     fun toggleFavorite() {
         val photo = getCurrentPhoto() ?: return
         val currentFav = _uiState.value.isFavorite
+        val newFav = !currentFav
+        // 乐观更新 UI
+        _uiState.update { it.copy(isFavorite = newFav) }
+        // 通过任务队列执行，保证有操作日志和重试机制
         viewModelScope.launch {
-            val result = galleryRepository.toggleFavorite(photo.id, !currentFav)
-            if (result.isSuccess) {
-                _uiState.update { it.copy(isFavorite = !currentFav) }
-            }
+            serverOpTaskRepository.enqueueFavorite(
+                fileId = photo.id,
+                isFavorite = newFav,
+                fileName = photo.fileName,
+                md5 = photo.md5
+            )
+            BackupScheduler.triggerServerOpWork(appContext)
         }
     }
 
@@ -241,11 +253,13 @@ class ViewerViewModel(
 
     class Factory(
         private val galleryRepository: GalleryRepository,
-        private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager
+        private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
+        private val serverOpTaskRepository: ServerOpTaskRepository,
+        private val appContext: Context
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ViewerViewModel(galleryRepository, originalDownloadManager) as T
+            return ViewerViewModel(galleryRepository, originalDownloadManager, serverOpTaskRepository, appContext) as T
         }
     }
 }

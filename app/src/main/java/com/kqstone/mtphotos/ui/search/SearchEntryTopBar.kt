@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +43,7 @@ fun SearchEntryTopBar(
     onSearchClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onAboutClick: () -> Unit,
+    onOpLogClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     placeholder: String = "搜索云端媒体",
     scrollAlpha: Float = 1f
@@ -115,6 +117,26 @@ fun SearchEntryTopBar(
                     onClick = {
                         menuExpanded = false
                         onSettingsClick()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { 
+                        Text(
+                            text = "操作日志", 
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                        ) 
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        onOpLogClick()
                     }
                 )
                 DropdownMenuItem(

@@ -11,9 +11,6 @@ import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.FolderPathMatcher
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.local.db.BackupStatus
-import com.kqstone.mtphotos.data.local.db.CloudDeleteStatus
-import com.kqstone.mtphotos.data.local.db.CloudDeleteTaskDao
-import com.kqstone.mtphotos.data.local.db.CloudDeleteTaskEntity
 import com.kqstone.mtphotos.data.local.db.LocalFileRef
 import com.kqstone.mtphotos.data.local.db.MediaDao
 import com.kqstone.mtphotos.data.local.db.MediaEntity
@@ -25,26 +22,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import retrofit2.HttpException
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 private const val TAG = "SyncRepo"
-private const val CLOUD_DELETE_STALE_RUNNING_MINUTES = 30L
-private const val CLOUD_DELETE_FAILED_WAITING_ATTEMPTS = 7
-
-data class CloudDeleteProcessResult(
-    val processed: Int,
-    val succeeded: Int,
-    val failed: Int
-)
 
 class SyncRepository(
     private val container: AppContainer,
     private val database: AppDatabase
 ) {
     private val mediaDao: MediaDao get() = database.mediaDao()
-    private val cloudDeleteTaskDao: CloudDeleteTaskDao get() = database.cloudDeleteTaskDao()
     private val galleryRepository: GalleryRepository get() = container.galleryRepository
     private val localScanner: LocalMediaScanner by lazy { LocalMediaScanner(container.prefsManager.context) }
     private val localVideoThumbnailGenerator: LocalVideoThumbnailGenerator by lazy {
@@ -929,79 +915,9 @@ class SyncRepository(
         }
     }
 
+    /** 委托给 ServerOpTaskRepository */
     suspend fun enqueueCloudDeleteTasks(entities: List<MediaEntity>) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val tasks = entities
-            .mapNotNull { entity ->
-                val cloudId = entity.cloudId?.takeIf { it > 0 } ?: return@mapNotNull null
-                CloudDeleteTaskEntity(
-                    cloudId = cloudId,
-                    md5 = entity.cloudMd5 ?: entity.md5,
-                    fileName = entity.fileName,
-                    nextAttemptAt = now,
-                    createdAt = now,
-                    updatedAt = now
-                )
-            }
-            .distinctBy { it.cloudId }
-
-        if (tasks.isNotEmpty()) {
-            cloudDeleteTaskDao.insertAll(tasks)
-        }
-    }
-
-    suspend fun processPendingCloudDeletes(limit: Int = 25): CloudDeleteProcessResult = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        cloudDeleteTaskDao.resetStaleRunning(
-            staleBefore = now - TimeUnit.MINUTES.toMillis(CLOUD_DELETE_STALE_RUNNING_MINUTES),
-            now = now
-        )
-
-        val tasks = cloudDeleteTaskDao.getDueTasks(now, limit)
-        var succeeded = 0
-        var failed = 0
-
-        for (task in tasks) {
-            val claimed = cloudDeleteTaskDao.claim(task.cloudId)
-            if (claimed == 0) continue
-
-            try {
-                deleteCloudFile(task.cloudId)
-                cloudDeleteTaskDao.deleteByCloudId(task.cloudId)
-                succeeded++
-            } catch (e: Exception) {
-                if (isAlreadyDeletedError(e)) {
-                    cloudDeleteTaskDao.deleteByCloudId(task.cloudId)
-                    succeeded++
-                } else {
-                    failed++
-                    val attemptCount = task.attemptCount + 1
-                    cloudDeleteTaskDao.markFailed(
-                        cloudId = task.cloudId,
-                        status = if (attemptCount >= CLOUD_DELETE_FAILED_WAITING_ATTEMPTS) {
-                            CloudDeleteStatus.FAILED_WAITING
-                        } else {
-                            CloudDeleteStatus.PENDING
-                        },
-                        attemptCount = attemptCount,
-                        nextAttemptAt = System.currentTimeMillis() + cloudDeleteRetryDelayMillis(attemptCount),
-                        lastError = e.message ?: e::class.java.simpleName
-                    )
-                    Log.w(TAG, "Cloud delete failed for ${task.cloudId}, attempt=$attemptCount", e)
-                }
-            }
-        }
-
-        CloudDeleteProcessResult(processed = succeeded + failed, succeeded = succeeded, failed = failed)
-    }
-
-    suspend fun hasPendingCloudDeleteTasks(): Boolean = withContext(Dispatchers.IO) {
-        cloudDeleteTaskDao.countAll() > 0
-    }
-
-    suspend fun nextCloudDeleteDelayMillis(): Long = withContext(Dispatchers.IO) {
-        val next = cloudDeleteTaskDao.nextAttemptAt() ?: return@withContext 0L
-        (next - System.currentTimeMillis()).coerceAtLeast(0L)
+        container.serverOpTaskRepository.enqueueCloudDelete(entities)
     }
 
     suspend fun deleteLocalMediaFiles(entities: List<MediaEntity>) = withContext(Dispatchers.IO) {
@@ -1028,46 +944,6 @@ class SyncRepository(
     suspend fun deleteMediaRecords(entities: List<MediaEntity>) {
         if (entities.isEmpty()) return
         mediaDao.deleteByIds(entities.map { it.id })
-    }
-
-    private suspend fun deleteCloudFile(cloudId: Double) {
-        val body: Map<String, Any> = mapOf("fileIds" to listOf(cloudId.toInt()))
-        val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-        val code = response["code"]?.toString()
-        if (!code.isNullOrBlank() && code !in setOf("0", "OK", "SUCCESS", "success")) {
-            val message = response["message"]?.toString()
-                ?: response["msg"]?.toString()
-                ?: code
-            throw IllegalStateException(message)
-        }
-    }
-
-    private fun cloudDeleteRetryDelayMillis(attemptCount: Int): Long {
-        val minutes = when (attemptCount) {
-            1 -> 5L
-            2 -> 15L
-            3 -> 60L
-            4 -> 3 * 60L
-            5 -> 6 * 60L
-            else -> 24 * 60L
-        }
-        return TimeUnit.MINUTES.toMillis(minutes)
-    }
-
-    private fun isAlreadyDeletedError(error: Throwable): Boolean {
-        if ((error as? HttpException)?.code() == 404) return true
-        val text = listOfNotNull(error.message, error.cause?.message)
-            .joinToString(" ")
-            .lowercase()
-        return listOf(
-            "not found",
-            "not exist",
-            "notfound",
-            "already deleted",
-            "不存在",
-            "未找到",
-            "已删除"
-        ).any { it in text }
     }
 
     suspend fun deleteLocalMediaForOptimization(entity: MediaEntity): Boolean = withContext(Dispatchers.IO) {

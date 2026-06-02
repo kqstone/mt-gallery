@@ -634,7 +634,7 @@ class GalleryRepository(private val container: AppContainer) {
             // 仅将有 cloudId 的文件发送到云端 API 删除
             // 清理本地文件和 Room 记录
             syncRepo.deleteMediaRecords(entities)
-            BackupScheduler.triggerCloudDeleteWork(container.prefsManager.context)
+            BackupScheduler.triggerServerOpWork(container.prefsManager.context)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

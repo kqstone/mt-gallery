@@ -85,7 +85,8 @@ fun MainScreen(
     viewerViewModel: ViewerViewModel,
     onNavigateToViewer: (List<UnifiedPhotoItem>, Int) -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToAbout: () -> Unit
+    onNavigateToAbout: () -> Unit,
+    onNavigateToOpLog: () -> Unit = {}
 ) {
     val innerNavController = rememberNavController()
     val navBackStackEntry by innerNavController.currentBackStackEntryAsState()
@@ -187,7 +188,8 @@ fun MainScreen(
                         },
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
-                        onAboutClick = onNavigateToAbout
+                        onAboutClick = onNavigateToAbout,
+                        onOpLogClick = onNavigateToOpLog
                     )
                 }
 
@@ -205,7 +207,8 @@ fun MainScreen(
                         },
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
-                        onAboutClick = onNavigateToAbout
+                        onAboutClick = onNavigateToAbout,
+                        onOpLogClick = onNavigateToOpLog
                     )
                 }
 
@@ -223,7 +226,8 @@ fun MainScreen(
                         },
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
-                        onAboutClick = onNavigateToAbout
+                        onAboutClick = onNavigateToAbout,
+                        onOpLogClick = onNavigateToOpLog
                     )
                 }
 
@@ -339,6 +343,7 @@ fun MainScreen(
                         isActive = currentRoute == "map",
                         onSettingsClick = onNavigateToSettings,
                         onAboutClick = onNavigateToAbout,
+                        onOpLogClick = onNavigateToOpLog,
                         onPhotoClick = { photo, list ->
                             val index = list.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                             onNavigateToViewer(list, index)

@@ -16,6 +16,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.oplog.OpLogScreen
+import com.kqstone.mtphotos.ui.oplog.OpLogViewModel
 import com.kqstone.mtphotos.ui.settings.BackupSetupScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsScreen
 import com.kqstone.mtphotos.ui.settings.BackupSettingsViewModel
@@ -26,6 +28,7 @@ import com.kqstone.mtphotos.ui.settings.AboutViewModel
 import com.kqstone.mtphotos.ui.util.AppPermissionGate
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
+import com.kqstone.mtphotos.worker.BackupScheduler
 
 @Composable
 fun AppNavigation() {
@@ -87,10 +90,13 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         }
     }
 
+    val viewerContext = LocalContext.current
     val viewerViewModel: ViewerViewModel = viewModel(
         factory = ViewerViewModel.Factory(
             container.galleryRepository,
-            container.originalDownloadManager
+            container.originalDownloadManager,
+            container.serverOpTaskRepository,
+            viewerContext.applicationContext
         )
     )
 
@@ -184,6 +190,9 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 },
                 onNavigateToAbout = {
                     navController.navigate("about")
+                },
+                onNavigateToOpLog = {
+                    navController.navigate("op_log")
                 }
             )
         }
@@ -227,6 +236,21 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             AboutScreen(
                 viewModel = aboutViewModel,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("op_log") {
+            val opLogContext = LocalContext.current
+            val opLogViewModel: OpLogViewModel = viewModel(
+                factory = OpLogViewModel.Factory(
+                    container.serverOpTaskRepository,
+                    triggerServerOp = { BackupScheduler.triggerServerOpWork(opLogContext) }
+                )
+            )
+            OpLogScreen(
+                viewModel = opLogViewModel,
+                onBack = { navController.popBackStack() },
+                getThumbUrl = { md5, _ -> container.galleryRepository.getThumbUrlByMd5(md5) }
             )
         }
     }

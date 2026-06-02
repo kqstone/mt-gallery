@@ -84,6 +84,7 @@ fun MapScreen(
     isActive: Boolean = true,
     onSettingsClick: () -> Unit = {},
     onAboutClick: () -> Unit = {},
+    onOpLogClick: () -> Unit = {},
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -534,6 +535,7 @@ fun MapScreen(
             title = "足迹",
             onSettingsClick = onSettingsClick,
             onAboutClick = onAboutClick,
+            onOpLogClick = onOpLogClick,
             modifier = Modifier.align(Alignment.TopCenter)
         )
     }

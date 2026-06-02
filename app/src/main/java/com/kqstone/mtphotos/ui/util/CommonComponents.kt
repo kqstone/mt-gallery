@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
@@ -154,6 +155,7 @@ fun SimpleTitleHeader(
     title: String,
     onSettingsClick: () -> Unit,
     onAboutClick: () -> Unit,
+    onOpLogClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     scrollAlpha: Float = 1f
 ) {
@@ -202,6 +204,26 @@ fun SimpleTitleHeader(
                         onClick = {
                             menuExpanded = false
                             onSettingsClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { 
+                            Text(
+                                text = "操作日志", 
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            ) 
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onOpLogClick()
                         }
                     )
                     DropdownMenuItem(

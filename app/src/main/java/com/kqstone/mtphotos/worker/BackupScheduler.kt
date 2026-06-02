@@ -16,11 +16,11 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "BackupScheduler"
 private const val PERIODIC_BACKUP_WORK = "periodic_backup"
 private const val PERIODIC_SYNC_WORK = "periodic_sync"
-private const val PERIODIC_CLOUD_DELETE_WORK = "periodic_cloud_delete"
+private const val PERIODIC_SERVER_OP_WORK = "periodic_server_op"
 private const val ONE_TIME_SYNC_WORK = "one_time_sync"
 private const val ONE_TIME_BACKUP_WORK = "one_time_backup"
-private const val ONE_TIME_CLOUD_DELETE_WORK = "one_time_cloud_delete"
-private const val DELAYED_CLOUD_DELETE_WORK = "delayed_cloud_delete"
+private const val ONE_TIME_SERVER_OP_WORK = "one_time_server_op"
+private const val DELAYED_SERVER_OP_WORK = "delayed_server_op"
 private const val DEFAULT_SYNC_INTERVAL_MINUTES = 60L
 
 /**
@@ -131,69 +131,82 @@ object BackupScheduler {
         Log.d(TAG, "Triggered immediate backup")
     }
 
-    // ===== Cloud delete work =====
+    // ===== 服务器操作任务 =====
 
-    fun triggerCloudDeleteWork(context: Context) {
+    /**
+     * 触发一次服务器操作处理（替代原有的 triggerCloudDeleteWork）。
+     */
+    fun triggerServerOpWork(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val workRequest = OneTimeWorkRequestBuilder<CloudDeleteWorker>()
+        val workRequest = OneTimeWorkRequestBuilder<ServerOpWorker>()
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            ONE_TIME_CLOUD_DELETE_WORK,
+            ONE_TIME_SERVER_OP_WORK,
             ExistingWorkPolicy.KEEP,
             workRequest
         )
-        Log.d(TAG, "Triggered cloud delete work")
+        Log.d(TAG, "Triggered server op work")
     }
 
-    fun scheduleCloudDeleteRetry(context: Context, delayMillis: Long) {
+    /**
+     * 调度延迟重试的服务器操作处理。
+     */
+    fun scheduleServerOpRetry(context: Context, delayMillis: Long) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val delay = delayMillis.coerceAtLeast(0L)
-        val workRequest = OneTimeWorkRequestBuilder<CloudDeleteWorker>()
+        val workRequest = OneTimeWorkRequestBuilder<ServerOpWorker>()
             .setConstraints(constraints)
             .setInitialDelay(delay, TimeUnit.MILLISECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            DELAYED_CLOUD_DELETE_WORK,
+            DELAYED_SERVER_OP_WORK,
             ExistingWorkPolicy.REPLACE,
             workRequest
         )
-        Log.d(TAG, "Scheduled cloud delete retry in ${delay}ms")
+        Log.d(TAG, "Scheduled server op retry in ${delay}ms")
     }
 
-    fun schedulePeriodicCloudDelete(context: Context) {
+    /**
+     * 调度周期性服务器操作处理（每 6 小时）。
+     */
+    fun schedulePeriodicServerOp(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val workRequest = PeriodicWorkRequestBuilder<CloudDeleteWorker>(
+        val workRequest = PeriodicWorkRequestBuilder<ServerOpWorker>(
             6, TimeUnit.HOURS
         )
             .setConstraints(constraints)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            PERIODIC_CLOUD_DELETE_WORK,
+            PERIODIC_SERVER_OP_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             workRequest
         )
-        Log.d(TAG, "Scheduled periodic cloud delete")
+        Log.d(TAG, "Scheduled periodic server op")
     }
+
+    // 兼容别名
+    @Deprecated("Use triggerServerOpWork", ReplaceWith("triggerServerOpWork(context)"))
+    fun triggerCloudDeleteWork(context: Context) = triggerServerOpWork(context)
 
     // ===== 组合调度 =====
 
     /**
-     * 调度所有后台任务（同步 + 备份）。
+     * 调度所有后台任务（同步 + 备份 + 服务器操作）。
      * 应在 app 启动和开启备份时调用。
      * @param wifiOnly 备份是否仅 Wi-Fi
      * @param syncIntervalMinutes 同步间隔（分钟），默认 60
@@ -201,7 +214,7 @@ object BackupScheduler {
     fun scheduleAll(context: Context, wifiOnly: Boolean = true, syncIntervalMinutes: Long = DEFAULT_SYNC_INTERVAL_MINUTES) {
         schedulePeriodicSync(context, syncIntervalMinutes)
         schedulePeriodicBackup(context, wifiOnly)
-        schedulePeriodicCloudDelete(context)
+        schedulePeriodicServerOp(context)
         Log.d(TAG, "Scheduled all work (wifiOnly=$wifiOnly, syncInterval=${syncIntervalMinutes}min)")
     }
 
@@ -222,11 +235,11 @@ object BackupScheduler {
         val wm = WorkManager.getInstance(context)
         wm.cancelUniqueWork(PERIODIC_SYNC_WORK)
         wm.cancelUniqueWork(PERIODIC_BACKUP_WORK)
-        wm.cancelUniqueWork(PERIODIC_CLOUD_DELETE_WORK)
+        wm.cancelUniqueWork(PERIODIC_SERVER_OP_WORK)
         wm.cancelUniqueWork(ONE_TIME_SYNC_WORK)
         wm.cancelUniqueWork(ONE_TIME_BACKUP_WORK)
-        wm.cancelUniqueWork(ONE_TIME_CLOUD_DELETE_WORK)
-        wm.cancelUniqueWork(DELAYED_CLOUD_DELETE_WORK)
+        wm.cancelUniqueWork(ONE_TIME_SERVER_OP_WORK)
+        wm.cancelUniqueWork(DELAYED_SERVER_OP_WORK)
         Log.d(TAG, "Cancelled all work")
     }
 }
