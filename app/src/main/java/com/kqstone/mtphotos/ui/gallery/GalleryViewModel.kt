@@ -137,7 +137,7 @@ class GalleryViewModel(
                     }
                     timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
                     _uiState.value = _uiState.value.copy(
-                        months = buildMonthGroups(snapshot),
+                        months = buildMonthGroups(snapshot, folders),
                         isLoading = false,
                         isHybridMode = true
                     )
@@ -253,7 +253,7 @@ class GalleryViewModel(
             onSuccess = { snapshot ->
                 timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
                 _uiState.value = _uiState.value.copy(
-                    months = buildMonthGroups(snapshot),
+                    months = buildMonthGroups(snapshot, currentLocalFolders),
                     isLoading = false,
                     isHybridMode = false
                 )
@@ -460,7 +460,7 @@ class GalleryViewModel(
                     onSuccess = { snapshot ->
                         timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
                         _uiState.value = _uiState.value.copy(
-                            months = buildMonthGroups(snapshot),
+                            months = buildMonthGroups(snapshot, currentLocalFolders),
                             isRefreshing = false
                         )
                     },
@@ -539,14 +539,20 @@ class GalleryViewModel(
             }
     }
 
-    private fun buildMonthGroups(snapshot: TimelineSnapshot): List<MonthGroup> {
+    private suspend fun buildMonthGroups(
+        snapshot: TimelineSnapshot,
+        localFolders: Set<String>?
+    ): List<MonthGroup> {
         if (snapshot.months.isEmpty()) {
-            return buildMonthGroups(snapshot.photos.map { it.toUnifiedPhotoItem() })
+            val photos = syncRepository?.hydrateCloudPhotos(snapshot.photos, localFolders)
+                ?: snapshot.photos.map { it.toUnifiedPhotoItem() }
+            return buildMonthGroups(photos)
         }
 
         return snapshot.months.map { month ->
-            val photos = snapshot.photosByMonth[month.yearMonth].orEmpty()
-                .map { it.toUnifiedPhotoItem() }
+            val cloudPhotos = snapshot.photosByMonth[month.yearMonth].orEmpty()
+            val photos = syncRepository?.hydrateCloudPhotos(cloudPhotos, localFolders)
+                ?: cloudPhotos.map { it.toUnifiedPhotoItem() }
             MonthGroup(
                 yearMonth = month.yearMonth,
                 displayTitle = formatYearMonth(month.yearMonth),
