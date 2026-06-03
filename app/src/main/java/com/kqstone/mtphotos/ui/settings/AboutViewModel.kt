@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.ui.settings
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.Keep
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -44,12 +45,15 @@ data class AboutUiState(
 )
 
 // Data classes for parsing GitHub releases JSON
+// @Keep prevents R8 from obfuscating field names, which Gson needs for reflection-based deserialization
+@Keep
 private data class GitHubRelease(
     val tag_name: String,
     val body: String?,
     val assets: List<GitHubAsset>?
 )
 
+@Keep
 private data class GitHubAsset(
     val name: String,
     val browser_download_url: String
