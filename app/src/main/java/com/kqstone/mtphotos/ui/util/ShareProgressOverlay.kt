@@ -1,5 +1,7 @@
 package com.kqstone.mtphotos.ui.util
 
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -91,7 +93,7 @@ fun ShareProgressOverlay(shareManager: ShareManager) {
                     }
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = shareProgressText ?: "准备分享中...",
+                        text = shareProgressText?.asString() ?: stringResource(R.string.sharing_preparing),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,

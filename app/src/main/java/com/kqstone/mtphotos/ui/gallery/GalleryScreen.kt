@@ -41,6 +41,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 
@@ -69,7 +71,7 @@ fun GalleryScreen(
     val syncCompleteMessage = uiState.syncCompleteMessage
     LaunchedEffect(syncCompleteMessage) {
         if (syncCompleteMessage != null) {
-            snackbarHostState.showSnackbar(syncCompleteMessage)
+            snackbarHostState.showSnackbar(syncCompleteMessage.asString(context))
             viewModel.clearSyncCompleteMessage()
         }
     }
@@ -111,10 +113,10 @@ fun GalleryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = uiState.error!!, color = MaterialTheme.colorScheme.error)
+                        Text(text = uiState.error!!.asString(), color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "点击重试",
+                            text = stringResource(R.string.click_to_retry),
                             modifier = Modifier.clickable {
                                 viewModel.loadTimeline()
                             },
@@ -124,7 +126,7 @@ fun GalleryScreen(
                 }
             }
             else -> {
-                val progressText = uiState.syncProgressText
+                val progressText = uiState.syncProgressText?.asString()
                 val hasSyncProgress = uiState.isSyncing && progressText != null
                 
                 Box(modifier = Modifier.fillMaxSize()) {

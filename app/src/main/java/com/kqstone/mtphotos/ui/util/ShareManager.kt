@@ -3,8 +3,10 @@ package com.kqstone.mtphotos.ui.util
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +21,7 @@ class ShareManager(
     private val _isSharing = MutableStateFlow(false)
     val isSharing = _isSharing.asStateFlow()
 
-    private val _shareProgressText = MutableStateFlow<String?>(null)
+    private val _shareProgressText = MutableStateFlow<UiText?>(null)
     val shareProgressText = _shareProgressText.asStateFlow()
 
     private val _shareProgress = MutableStateFlow<Float?>(null)
@@ -28,7 +30,7 @@ class ShareManager(
     fun sharePhotos(context: Context, photos: List<UnifiedPhotoItem>, onComplete: () -> Unit = {}) {
         if (photos.isEmpty() || _isSharing.value) return
         _isSharing.value = true
-        _shareProgressText.value = "准备分享中..."
+        _shareProgressText.value = UiText.StringResource(R.string.sharing_preparing)
         _shareProgress.value = null
 
         coroutineScope.launch {
@@ -57,14 +59,14 @@ class ShareManager(
                     onProgress = { current, total, ratio ->
                         if (photos.size == 1) {
                             val text = if (ratio != null) {
-                                "准备分享中... ${(ratio * 100).toInt()}%"
+                                UiText.StringResource(R.string.sharing_preparing_percentage, (ratio * 100).toInt())
                             } else {
-                                "准备分享中..."
+                                UiText.StringResource(R.string.sharing_preparing)
                             }
                             _shareProgressText.value = text
                             _shareProgress.value = ratio
                         } else {
-                            _shareProgressText.value = "准备分享中: ${current + 1}/$total"
+                            _shareProgressText.value = UiText.StringResource(R.string.sharing_preparing_progress, current + 1, total)
                             _shareProgress.value = ratio
                         }
                     }
@@ -93,7 +95,7 @@ class ShareManager(
                             }
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
                         }
-                        context.startActivity(Intent.createChooser(shareIntent, "分享媒体"))
+                        context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_media)))
                         onComplete()
                     }
                 }
@@ -103,7 +105,7 @@ class ShareManager(
                     _isSharing.value = false
                     _shareProgressText.value = null
                     _shareProgress.value = null
-                    Toast.makeText(context, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, UiText.StringResource(R.string.share_failed, e.message.orEmpty()).asString(context), Toast.LENGTH_SHORT).show()
                 }
             }
         }

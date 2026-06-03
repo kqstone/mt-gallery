@@ -43,11 +43,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
+import com.kqstone.mtphotos.ui.util.UiText
 import com.kqstone.mtphotos.ui.util.formatDayHeaderDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -80,7 +83,7 @@ fun buildPhotoTimelineLayout(photos: List<UnifiedPhotoItem>): PhotoTimelineLayou
             months = listOf(
                 MonthGroup(
                     yearMonth = "all",
-                    displayTitle = "",
+                    displayTitle = UiText.DynamicString(""),
                     totalCount = sortedPhotos.size,
                     days = listOf(DayGroup(date = "", photos = sortedPhotos)),
                     isLoaded = true
@@ -142,6 +145,8 @@ fun TimelinePhotoGrid(
     },
     contentPadding: PaddingValues = PaddingValues(1.dp)
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     data class GridItem(
         val type: String,
         val key: String,
@@ -166,7 +171,7 @@ fun TimelinePhotoGrid(
                             type = "month",
                             key = "month_${month.yearMonth}",
                             monthGroup = month,
-                            parentMonthTitle = month.displayTitle.takeIf { it.isNotBlank() }
+                            parentMonthTitle = month.displayTitle.asString(context).takeIf { it.isNotBlank() }
                         )
                     )
                     continue
@@ -179,7 +184,7 @@ fun TimelinePhotoGrid(
                                 type = "day",
                                 key = "day_${month.yearMonth}_${day.date}",
                                 dayGroup = day,
-                                parentMonthTitle = month.displayTitle.takeIf { it.isNotBlank() }
+                                parentMonthTitle = month.displayTitle.asString(context).takeIf { it.isNotBlank() }
                             )
                         )
                         for (photo in day.photos) {
@@ -188,7 +193,7 @@ fun TimelinePhotoGrid(
                                     type = "photo",
                                     key = "photo_${photo.uniqueKey}",
                                     photo = photo,
-                                    parentMonthTitle = month.displayTitle.takeIf { it.isNotBlank() }
+                                    parentMonthTitle = month.displayTitle.asString(context).takeIf { it.isNotBlank() }
                                 )
                             )
                         }
@@ -200,7 +205,7 @@ fun TimelinePhotoGrid(
                                 type = "photo",
                                 key = "photo_${photo.uniqueKey}",
                                 photo = photo,
-                                parentMonthTitle = month.displayTitle.takeIf {
+                                parentMonthTitle = month.displayTitle.asString(context).takeIf {
                                     showMonthHeaders && it.isNotBlank()
                                 }
                             )
@@ -469,13 +474,13 @@ private fun MonthPlaceholder(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = monthGroup.displayTitle,
+                text = monthGroup.displayTitle.asString(),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = monthGroup.loadError ?: "${monthGroup.totalCount} items",
+                text = monthGroup.loadError?.asString() ?: stringResource(R.string.item_count_short, monthGroup.totalCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (monthGroup.loadError == null) {
                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -498,6 +503,7 @@ private fun DayHeader(dayGroup: DayGroup) {
     if (dayGroup.date.isBlank()) {
         return
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Row(
         modifier = Modifier
@@ -507,7 +513,7 @@ private fun DayHeader(dayGroup: DayGroup) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = formatDayHeaderDate(dayGroup.date),
+            text = formatDayHeaderDate(context, dayGroup.date),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -521,7 +527,7 @@ private fun DayHeader(dayGroup: DayGroup) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = addrSummary,
+                    text = addrSummary.asString(),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     maxLines = 1,
@@ -551,17 +557,18 @@ private fun String.allIndexed(predicate: (Int, Char) -> Boolean): Boolean {
     return true
 }
 
-private fun formatYearMonthLabel(yearMonth: String): String {
+private fun formatYearMonthLabel(yearMonth: String): UiText {
     val parts = yearMonth.split("-")
     return if (parts.size >= 2) {
-        val month = parts[1].toIntOrNull()?.toString() ?: parts[1]
-        "${parts[0]}年${month}月"
+        val year = parts[0]
+        val month = parts[1].toIntOrNull() ?: 1
+        UiText.StringResource(R.string.year_month_format, year, month)
     } else {
-        yearMonth
+        UiText.DynamicString(yearMonth)
     }
 }
 
-private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): String? {
+private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): UiText? {
     val addrCounts = photos
         .mapNotNull { normalizeAddr(it.addr) }
         .groupingBy { it }
@@ -573,9 +580,9 @@ private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): String? {
     )?.key ?: return null
 
     return if (addrCounts.size == 1) {
-        primary
+        UiText.DynamicString(primary)
     } else {
-        "$primary 等${addrCounts.size}地"
+        UiText.StringResource(R.string.addr_summary_format, primary, addrCounts.size)
     }
 }
 
@@ -584,6 +591,7 @@ private fun normalizeAddr(addr: String?): String? {
     return normalized.takeIf {
         it.isNotEmpty() &&
             !it.equals("null", ignoreCase = true) &&
-            it != "未知"
+            it != "未知" &&
+            it != "Unknown"
     }
 }

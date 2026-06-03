@@ -5,6 +5,7 @@ import android.content.Context
 import android.provider.MediaStore
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,13 +48,13 @@ class OriginalDownloadManager(
             try {
                 val cloudId = photo.cloudId ?: throw Exception("Invalid cloudId")
                 val downloadUrl = galleryRepository.getFileDownloadUrl(cloudId, md5)
-                if (downloadUrl.isEmpty()) throw Exception("无法获取原图地址")
+                if (downloadUrl.isEmpty()) throw Exception(context.getString(R.string.download_err_get_url_failed))
 
                 val request = Request.Builder().url(downloadUrl).build()
                 val response = client.newCall(request).execute()
-                if (!response.isSuccessful) throw Exception("下载失败: ${response.code}")
+                if (!response.isSuccessful) throw Exception(context.getString(R.string.download_err_http_failed, response.code))
                 
-                val body = response.body ?: throw Exception("响应为空")
+                val body = response.body ?: throw Exception(context.getString(R.string.download_err_empty_response))
                 val totalBytes = body.contentLength()
 
                 val resolver = context.contentResolver
@@ -109,7 +110,7 @@ class OriginalDownloadManager(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                 }
                 val uri = resolver.insert(collectionUri, contentValues)
-                    ?: throw Exception("MediaStore 创建失败")
+                    ?: throw Exception(context.getString(R.string.download_err_mediastore_failed))
 
                 resolver.openOutputStream(uri)?.use { outputStream ->
                     body.byteStream().use { inputStream ->
@@ -130,7 +131,7 @@ class OriginalDownloadManager(
                             }
                         }
                     }
-                } ?: throw Exception("无法写入文件")
+                } ?: throw Exception(context.getString(R.string.download_err_write_failed))
 
                 val filePath = resolver.query(
                     uri,
@@ -165,13 +166,13 @@ class OriginalDownloadManager(
                 _downloadStates.update { it + (md5 to DownloadState(isDownloading = false, isCompleted = true, progress = 1f, localUri = uri.toString())) }
                 
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "下载完成", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, context.getString(R.string.download_completed), android.widget.Toast.LENGTH_SHORT).show()
                 }
 
             } catch (e: Exception) {
                 _downloadStates.update { it + (md5 to DownloadState(isDownloading = false, error = e.message)) }
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "下载失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, context.getString(R.string.download_failed_format, e.message.orEmpty()), android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }

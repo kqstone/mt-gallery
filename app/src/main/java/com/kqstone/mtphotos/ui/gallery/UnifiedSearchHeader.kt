@@ -45,6 +45,8 @@ import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.frostedGlassSearchBar
 
 @Suppress("UNUSED_PARAMETER")
@@ -88,22 +90,22 @@ fun UnifiedSearchHeader(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        UnifiedSearchChip("综合", searchType == SearchType.AUTO) {
+                        UnifiedSearchChip(stringResource(R.string.search_type_auto), searchType == SearchType.AUTO) {
                             onSearchTypeChange(SearchType.AUTO)
                         }
-                        UnifiedSearchChip("文件名", searchType == SearchType.FILE_NAME) {
+                        UnifiedSearchChip(stringResource(R.string.search_type_filename), searchType == SearchType.FILE_NAME) {
                             onSearchTypeChange(SearchType.FILE_NAME)
                         }
-                        UnifiedSearchChip("文本识别", searchType == SearchType.OCR_TEXT) {
+                        UnifiedSearchChip(stringResource(R.string.search_type_ocr), searchType == SearchType.OCR_TEXT) {
                             onSearchTypeChange(SearchType.OCR_TEXT)
                         }
-                        UnifiedSearchChip("识图", searchType == SearchType.VISUAL_TEXT) {
+                        UnifiedSearchChip(stringResource(R.string.search_type_visual), searchType == SearchType.VISUAL_TEXT) {
                             onSearchTypeChange(SearchType.VISUAL_TEXT)
                         }
                     }
 
                     if (suggestions.isNotEmpty()) {
-                        UnifiedFilterSection(title = "建议")
+                        UnifiedFilterSection(title = stringResource(R.string.search_suggestions))
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -115,12 +117,12 @@ fun UnifiedSearchHeader(
                     }
 
                     if (people.isNotEmpty()) {
-                        UnifiedFilterSection(title = "人物")
+                        UnifiedFilterSection(title = stringResource(R.string.search_people))
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            UnifiedSearchChip("不限", searchFilters.personId.isNullOrBlank()) {
+                            UnifiedSearchChip(stringResource(R.string.search_unlimited), searchFilters.personId.isNullOrBlank()) {
                                 onPersonFilterChange(null)
                             }
                             people.forEach { person ->
@@ -132,12 +134,12 @@ fun UnifiedSearchHeader(
                     }
 
                     if (locations.isNotEmpty()) {
-                        UnifiedFilterSection(title = "地点")
+                        UnifiedFilterSection(title = stringResource(R.string.search_locations))
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            UnifiedSearchChip("不限", searchFilters.location.isNullOrBlank()) {
+                            UnifiedSearchChip(stringResource(R.string.search_unlimited), searchFilters.location.isNullOrBlank()) {
                                 onLocationFilterChange(null)
                             }
                             locations.forEach { location ->
@@ -163,7 +165,7 @@ fun UnifiedSearchHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "搜索",
+                contentDescription = stringResource(R.string.search),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
@@ -186,7 +188,7 @@ fun UnifiedSearchHeader(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (query.isEmpty()) {
                             Text(
-                                text = "搜索云端媒体",
+                                text = stringResource(R.string.search_cloud_media),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
@@ -207,7 +209,7 @@ fun UnifiedSearchHeader(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = "清空搜索",
+                        contentDescription = stringResource(R.string.clear_search),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )
@@ -220,7 +222,7 @@ fun UnifiedSearchHeader(
             ) {
                 Icon(
                     imageVector = if (isPanelActive) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "筛选菜单",
+                    contentDescription = stringResource(R.string.filter_panel),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
                 )
@@ -233,7 +235,7 @@ fun UnifiedSearchHeader(
         ) {
             Icon(
                 Icons.Default.Settings,
-                contentDescription = "设置",
+                contentDescription = stringResource(R.string.settings),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )

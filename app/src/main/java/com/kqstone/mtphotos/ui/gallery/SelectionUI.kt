@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.util.AppTopBarContainer
 
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.material.icons.filled.Share
 
 @Composable
@@ -44,11 +46,11 @@ fun SelectionTopBar(
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "取消选择"
+                contentDescription = stringResource(R.string.cancel_selection)
             )
         }
         Text(
-            text = "已选择 $selectedCount 项",
+            text = stringResource(R.string.selected_count_format, selectedCount),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.weight(1f)
         )
@@ -59,7 +61,7 @@ fun SelectionTopBar(
             ) {
                 Icon(
                     Icons.Default.Share,
-                    contentDescription = "分享"
+                    contentDescription = stringResource(R.string.share)
                 )
             }
         }
@@ -70,7 +72,7 @@ fun SelectionTopBar(
             ) {
                 Icon(
                     Icons.Default.Star,
-                    contentDescription = "收藏"
+                    contentDescription = stringResource(R.string.favorite)
                 )
             }
         }
@@ -81,7 +83,7 @@ fun SelectionTopBar(
             ) {
                 Icon(
                     Icons.Default.StarBorder,
-                    contentDescription = "取消收藏"
+                    contentDescription = stringResource(R.string.unfavorite)
                 )
             }
         }
@@ -91,7 +93,7 @@ fun SelectionTopBar(
         ) {
             Icon(
                 Icons.Default.SelectAll,
-                contentDescription = "全选"
+                contentDescription = stringResource(R.string.select_all)
             )
         }
         IconButton(
@@ -100,7 +102,7 @@ fun SelectionTopBar(
         ) {
             Icon(
                 Icons.Default.Delete,
-                contentDescription = "删除",
+                contentDescription = stringResource(R.string.delete),
                 tint = MaterialTheme.colorScheme.error
             )
         }
@@ -115,16 +117,16 @@ private fun LegacyDeleteConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("确认删除") },
-        text = { Text("确定要删除选中的 $selectedCount 张照片吗？\n照片将移入服务端回收站。") },
+        title = { Text(stringResource(R.string.confirm_delete_title)) },
+        text = { Text(stringResource(R.string.delete_confirm_desc_legacy, selectedCount)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -138,16 +140,16 @@ fun DeleteConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("确认删除") },
-        text = { Text("照片将删除至服务端回收站") },
+        title = { Text(stringResource(R.string.confirm_delete_title)) },
+        text = { Text(stringResource(R.string.delete_confirm_desc)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

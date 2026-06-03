@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MT Gallery</string>
+    <string name="back">返回</string>
+
+    <!-- Settings Screen -->
+    <string name="server_connection">服务器连接</string>
+    <string name="connect_to_private_server">连接到您的私有媒体服务器</string>
+    <string name="update_server_address">更新服务器访问地址</string>
+    <string name="primary_server_url">主服务器地址</string>
+    <string name="secondary_server_url">备用服务器地址</string>
+    <string name="username">用户名</string>
+    <string name="password">密码</string>
+    <string name="saved_password_notice">将使用已保存的密码重新登录，用户名和密码不可在此处修改。</string>
+    <string name="save_and_relogin">保存并重新登录</string>
+    <string name="connect_now">立即连接</string>
+    <string name="currently_used">当前使用</string>
+    <string name="test_connection">测试连接</string>
+    <string name="test_connection_success">连接测试成功</string>
+    <string name="test_connection_failed">连接测试失败</string>
+    <string name="please_fill_server_url">请先填写服务器地址</string>
+    <string name="please_fill_primary_url">请至少填写主服务器地址并选择当前使用地址</string>
+    <string name="primary_secondary_cannot_be_same">主地址和备用地址不能相同</string>
+    <string name="please_fill_username_password">请填写用户名和密码</string>
+    <string name="connection_failed">连接失败</string>
+
+    <!-- About Screen -->
+    <string name="about">关于</string>
+    <string name="about_title">关于 MT Gallery</string>
+    <string name="about_desc_title">简介</string>
+    <string name="about_desc_content">MT Gallery 是一款精美且流畅的MT Photos第三方客户端，支持本地云端混合显示、无感备份。</string>
+    <string name="author">作者</string>
+    <string name="github_repo">GitHub 开源仓库</string>
+    <string name="go_to_project">前往项目页</string>
+    <string name="cannot_launch_installer">无法拉起安装程序</string>
+    <string name="cannot_open_link">无法打开链接</string>
+    <string name="download_and_install">下载并安装</string>
+    <string name="current_version">版本 v%s</string>
+    <string name="check_updates">检查更新</string>
+    <string name="checking_updates">正在检查更新…</string>
+    <string name="up_to_date">已是最新版本</string>
+    <string name="new_version_available">有新版本可用: %s</string>
+    <string name="update_error">网络连接失败，请稍后重试</string>
+    <string name="download_failed">下载更新失败，请重试</string>
+    <string name="downloading">下载中 (%1$.1f%%)</string>
+    <string name="install">安装</string>
+    <string name="latest_version">最新版本: %s</string>
+    <string name="release_notes">更新日志</string>
+    <string name="download_now">立即下载</string>
+
+    <!-- Backup Settings Screen -->
+    <string name="backup_scan_found_missing">已扫描 %1$d 个文件，发现 %2$d 个需要补传</string>
+    <string name="backup_scan_no_missing">已扫描 %1$d 个文件，未发现缺失备份</string>
+    <string name="backup_scan_failed">扫描未备份文件失败</string>
+    <string name="backup_load_directory_failed">加载服务端目录失败</string>
+    <string name="backup_save_default_directory_failed">保存默认备份目录失败</string>
+    <string name="backup_create_folder_failed">创建文件夹失败</string>
+    <string name="backup_save_directory_failed">保存服务端目录失败</string>
+
+    <!-- Folder Setup Screen -->
+    <string name="select_media_folders">选择媒体文件夹</string>
+    <string name="select_media_folders_desc">选中的文件夹将显示在 Gallery 中，并可备份到云端。\n你可以稍后在设置中修改。</string>
+    <string name="scanning_device_folders">正在扫描设备文件夹…</string>
+    <string name="selected_folders_count">已选择 %1$d / %2$d 个文件夹</string>
+    <string name="files_count_format">%1$d 个文件</string>
+    <string name="select_all">全部选择</string>
+    <string name="start_using">开始使用</string>
+
+    <!-- Map Screen -->
+    <string name="map_title">足迹地图</string>
+    <string name="photos_count_format">%1$d 张照片</string>
+    <string name="loading_photos_location">正在加载照片位置…</string>
+    <string name="no_photos_with_location">没有找到带位置信息的照片</string>
+    <string name="locate">定位</string>
+    <string name="footprint">足迹</string>
+    <string name="close">关闭</string>
+    <string name="no_showable_photos">未找到可展示的照片</string>
+    <string name="load_failed">加载失败</string>
+
+    <!-- Main Navigation Tabs -->
+    <string name="tab_photos">照片</string>
+    <string name="tab_albums">图集</string>
+    <string name="tab_footprints">足迹</string>
+    <string name="tab_explore">发现</string>
+
+    <!-- Collection Categories & Defaults -->
+    <string name="default_album_name">相册</string>
+    <string name="people_photos">人物照片</string>
+    <string name="scene_photos">场景照片</string>
+    <string name="category_favorites">收藏</string>
+    <string name="category_recent">最近添加</string>
+    <string name="category_videos">视频</string>
+    <string name="category_trash">回收站</string>
+    <string name="category_other">类别</string>
+
+    <!-- Permission Gate -->
+    <string name="media_permission_required_title">需要媒体访问权限</string>
+    <string name="media_permission_required_desc">MT Gallery 需要访问您设备上的照片和视频，以便在本地和云端之间管理和备份您的媒体文件。</string>
+    <string name="grant_permission">授予权限</string>
+    <string name="go_to_settings">前往系统设置</string>
+    <string name="skip_cloud_only">跳过，仅使用云端模式</string>
+
+    <!-- Discovery Screen -->
+    <string name="click_to_retry">点击重试</string>
+    <string name="no_discovery_content">暂无发现内容</string>
+    <string name="section_people">人物</string>
+    <string name="section_scenes">场景</string>
+    <string name="section_locations">地点</string>
+    <string name="photo_count_short">%1$d 张</string>
+
+    <!-- Folder & Categories Screen -->
+    <string name="section_albums">相册</string>
+    <string name="section_folders">文件夹</string>
+    <string name="section_categories">类别</string>
+    <string name="item_count_short">%1$d 项</string>
+    <string name="category_favorites_desc">收藏相册</string>
+    <string name="category_recent_desc">最近入库的媒体</string>
+    <string name="category_videos_desc">全部视频</string>
+    <string name="category_trash_desc">已删除但未清空</string>
+
+    <!-- Folder Detail Screen -->
+    <string name="folder_empty">文件夹为空</string>
+    <string name="section_subfolders">子文件夹</string>
+
+    <!-- Category File List Screen -->
+    <string name="no_photos">暂无照片</string>
+    <string name="filter_all">全部</string>
+
+    <!-- Gallery & Sync -->
+    <string name="sync_complete_message">数据已更新</string>
+    <string name="sync_failed">同步失败: %1$s</string>
+    <string name="refresh_failed">刷新失败</string>
+    <string name="addr_summary_format">%1$s 等 %2$d 地</string>
+    <string name="year_month_format">%1$s年%2$d月</string>
+    <string name="sync_loading_cloud">正在加载云端数据…</string>
+    <string name="sync_cloud_indexed_scanning_local">云端 %1$d 个文件，正在扫描本地…</string>
+    <string name="sync_scanned_local_files">已扫描 %1$d 个本地文件…</string>
+    <string name="sync_writing_cloud_index_progress">正在写入云端索引 %1$d/%2$d…</string>
+    <string name="sync_writing_cloud_index">正在写入云端索引…</string>
+    <string name="sync_cleaning_up">正在整理本地记录…</string>
+
+    <!-- Selection & Delete -->
+    <string name="cancel_selection">取消选择</string>
+    <string name="selected_count_format">已选择 %1$d 项</string>
+    <string name="share">分享</string>
+    <string name="favorite">收藏</string>
+    <string name="unfavorite">取消收藏</string>
+    <string name="delete">删除</string>
+    <string name="confirm_delete_title">确认删除</string>
+    <string name="delete_confirm_desc_legacy">确定要删除选中的 %1$d 张照片吗？\n照片将移入服务端回收站。</string>
+    <string name="delete_confirm_desc">照片将删除至服务端回收站</string>
+    <string name="cancel">取消</string>
+    <string name="delete_failed_format">删除失败: %1$s</string>
+    <string name="video">视频</string>
+    <string name="selected">已选中</string>
+    <string name="backing_up">备份中</string>
+    <string name="synced">已同步</string>
+    <string name="cloud_only">仅云端</string>
+    <string name="pending_backup">待备份</string>
+
+    <!-- Viewer Screen -->
+    <string name="load_original">加载原图</string>
+    <string name="favorited">已收藏</string>
+    <string name="info">信息</string>
+    <string name="delete_this_media">删除此媒体？</string>
+    <string name="delete_media_confirm_desc">确定要从本地存储与云端服务器永久删除此文件吗？该操作不可撤销。</string>
+    <string name="details">详情</string>
+    <string name="file_info">文件信息</string>
+    <string name="taken_time">拍摄时间</string>
+    <string name="file_name">文件名</string>
+    <string name="file_size">大小</string>
+    <string name="resolution">分辨率</string>
+    <string name="storage_path">存储路径</string>
+    <string name="shutter_fraction_format">1/%1$d 秒</string>
+    <string name="shutter_seconds_format">%1$s 秒</string>
+    <string name="camera_brand_model">相机品牌/型号</string>
+    <string name="lens_model">镜头型号</string>
+    <string name="aperture">光圈</string>
+    <string name="shutter_speed">快门速度</string>
+    <string name="iso_speed">ISO 速度</string>
+    <string name="focal_length">焦距</string>
+    <string name="exif_parameters">拍摄参数 (EXIF)</string>
+    <string name="photo_location_coords_format">照片位置 (%1$.4f, %2$.4f)</string>
+    <string name="location">位置</string>
+    <string name="open_map_failed">打开地图失败: %1$s</string>
+    <string name="view_in_map">在地图中查看</string>
+    <string name="friendly_date_format">yyyy年M月d日 EEEE a h:mm</string>
+    <string name="friendly_date_short_format">yyyy年M月d日 HH:mm</string>
+    <string name="pause">暂停</string>
+    <string name="play">播放</string>
+    <string name="unmute">取消静音</string>
+    <string name="mute">静音</string>
+    <string name="more_options">更多选项</string>
+    <string name="settings">设置</string>
+    <string name="op_log">操作日志</string>
+    <string name="today">今天</string>
+    <string name="yesterday">昨天</string>
+
+    <!-- Sharing -->
+    <string name="sharing_preparing">准备分享中…</string>
+    <string name="sharing_preparing_percentage">准备分享中… %1$d%%</string>
+    <string name="sharing_preparing_progress">准备分享中: %1$d/%2$d</string>
+    <string name="share_media">分享媒体</string>
+    <string name="share_failed">分享失败: %1$s</string>
+
+    <!-- Search Overlay -->
+    <string name="search">搜索</string>
+    <string name="search_cloud_media">搜索云端媒体</string>
+    <string name="clear_search">清空搜索</string>
+    <string name="filter_panel">筛选面板</string>
+    <string name="search_type">搜索类型</string>
+    <string name="search_type_visual">识图</string>
+    <string name="search_type_ocr">OCR</string>
+    <string name="search_type_filename">文件名</string>
+    <string name="search_type_auto">综合</string>
+    <string name="search_suggestions">建议</string>
+    <string name="search_people">人物</string>
+    <string name="search_unlimited">不限</string>
+    <string name="search_locations">地点</string>
+    <string name="loading_filter_options">正在加载筛项…</string>
+    <string name="searching_loading">正在搜索</string>
+    <string name="server_clip_disabled">当前服务端未启用文搜图</string>
+    <string name="no_matching_cloud_media">未找到匹配的云端媒体</string>
+    <string name="search_failed_simple">搜索失败</string>
+    <string name="search_unknown">未知</string>
+    <string name="search_unnamed">未命名</string>
+    <string name="search_results">搜索结果</string>
+
+    <!-- Operation Log -->
+    <string name="op_log_title">操作日志</string>
+    <string name="clear_success_logs">清除成功日志</string>
+    <string name="all_statuses">全部状态</string>
+    <string name="all_types">全部类型</string>
+    <string name="retry">重试</string>
+    <string name="no_op_logs">暂无操作日志</string>
+    <string name="op_type_delete">删除</string>
+    <string name="op_type_favorite">收藏</string>
+    <string name="op_type_rename_person">改名</string>
+    <string name="op_type_tag">标签</string>
+    <string name="op_type_hide">隐藏</string>
+    <string name="op_type_backup">上传</string>
+    <string name="status_running_simple">进行中</string>
+    <string name="status_error">错误中</string>
+    <string name="op_desc_delete">云端删除</string>
+    <string name="op_desc_favorite">收藏</string>
+    <string name="op_desc_unfavorite">取消收藏</string>
+    <string name="op_desc_rename_person">修改人物名称</string>
+    <string name="op_desc_tag_add">添加标签</string>
+    <string name="op_desc_tag_remove">移除标签</string>
+    <string name="op_desc_hide">隐藏</string>
+    <string name="op_desc_unhide">取消隐藏</string>
+    <string name="op_desc_backup">备份上传</string>
+    <string name="retry_in_hours">%1$d小时后重试</string>
+    <string name="retry_in_minutes">%1$d分钟后重试</string>
+    <string name="retry_soon">即将重试</string>
+    <string name="waiting_retry">等待重试</string>
+    <string name="status_error_format">错误(%1$d次) · %2$s</string>
+    <string name="status_failed_format">失败(%1$d次)</string>
+    <string name="status_success">成功</string>
+    <string name="status_pending">待执行</string>
+    <string name="status_running">执行中</string>
+    <string name="status_failed">失败</string>
+
+    <!-- Download Manager -->
+    <string name="download_completed">下载完成</string>
+    <string name="download_failed_format">下载失败: %1$s</string>
+    <string name="download_err_get_url_failed">无法获取原图地址</string>
+    <string name="download_err_http_failed">下载失败: %1$d</string>
+    <string name="download_err_empty_response">响应为空</string>
+    <string name="download_err_mediastore_failed">MediaStore 创建失败</string>
+    <string name="download_err_write_failed">无法写入文件</string>
+
+    <!-- Backup Setup and Settings -->
+    <string name="select_backup_destination">选择备份目标</string>
+    <string name="select_backup_folder">选择备份文件夹</string>
+    <string name="backup_destination">备份到</string>
+    <string name="next_step">下一步</string>
+    <string name="backup_folder">备份文件夹</string>
+    <string name="complete">完成</string>
+    <string name="no_folder_selected">未选择任何文件夹</string>
+    <string name="folders_selected_some_empty_format">已选择 %1$d 个文件夹，其中 %2$d 个已无本地文件</string>
+    <string name="folders_selected_format">已选择 %1$d 个文件夹</string>
+    <string name="setup_backup">设置备份</string>
+    <string name="backup_and_storage">备份与存储</string>
+    <string name="scanning_device_files">正在扫描设备文件...</string>
+    <string name="first_scan_takes_time">首次扫描可能需要一点时间，请稍候。</string>
+    <string name="server">服务器</string>
+    <string name="maintain_server_addresses">维护主/备用访问地址并重新登录</string>
+    <string name="auto_backup">自动备份</string>
+    <string name="enable_auto_backup">开启自动备份</string>
+    <string name="auto_backup_desc">自动将设备照片和视频备份到服务器</string>
+    <string name="backup_on_wifi_only">仅在 Wi-Fi 下备份</string>
+    <string name="backup_on_wifi_only_desc">关闭后也可使用移动数据备份</string>
+    <string name="backup_now">立即备份</string>
+    <string name="pending_backup_count_format">%1$d 个文件待备份</string>
+    <string name="all_files_backed_up">所有文件已备份</string>
+    <string name="scan_and_upload_missing">扫描并补传未备份文件</string>
+    <string name="scan_and_upload_missing_desc">全量比对本地与云端，重新备份缺失文件</string>
+    <string name="storage_management">存储管理</string>
+    <string name="cache_management">缓存管理</string>
+    <string name="max_thumbnail_cache_size">最大缩略图缓存容量</string>
+    <string name="clear_thumbnail_cache">清理缩略图缓存</string>
+    <string name="current_used_cache_format">当前已用: %1$s</string>
+    <string name="clear_media_cache">清理照片与视频缓存</string>
+    <string name="free_up_storage_space">释放存储空间</string>
+    <string name="free_up_storage_desc">即将删除 %1$d 个已备份的本地原图或视频文件。</string>
+    <string name="can_free_up_format">可释放约 %1$s</string>
+    <string name="free_up_warning_desc">删除后将无法恢复本地原文件，但云端备份和缩略图缓存不受影响。</string>
+    <string name="free_up_warning_folder_config">已选择的备份文件夹配置会被保留，即使该文件夹中的本地文件已被清理。</string>
+    <string name="confirm_delete_btn">确认删除</string>
+    <string name="max_cache_limit">最大缓存容量限制</string>
+    <string name="default_label"> (默认)</string>
+    <string name="clear_thumbnail_cache_confirm_desc">即将清理所有已加载的相册缩略图缓存 (当前占用约 %1$s)。清理后，在没有网络连接时将无法加载已离线缓存的缩略图，直到再次联网加载。确定要清除吗？</string>
+    <string name="confirm_clear">确认清理</string>
+    <string name="clear_media_cache_confirm_desc">即将清理本地查看时缓存的全部高清照片和大图、视频文件 (当前占用约 %1$s)。清理后，在没有网络连接时将需要重新从云端加载原图或视频。确定要清除吗？</string>
+    <string name="sync_summary">同步概况</string>
+    <string name="synced_label_format">已同步</string>
+    <string name="uploaded_label_format">已上传</string>
+    <string name="pending_backup_label_format">待备份</string>
+    <string name="items_count_suffix_format">%1$s 项</string>
+    <string name="backing_up_progress">正在备份...</string>
+    <string name="free_up_storage_desc_simple">共有 %1$d 个已备份文件可以删除本地原件。</string>
+    <string name="free_up_storage_warning_simple">不会移除备份文件夹配置。</string>
+    <string name="free_up_space_btn">释放空间</string>
+    <string name="no_optimizable_files">暂无可优化的文件</string>
+    <string name="no_media_folders_found">未发现可选择的媒体文件夹</string>
+    <string name="ok">确定</string>
+    <string name="select_backup_to">选择备份到</string>
+    <string name="default_destination">默认</string>
+    <string name="custom">自定义</string>
+    <string name="select_server_folder">选择服务端文件夹</string>
+    <string name="current_location_format">当前位置：%1$s</string>
+    <string name="select_current_directory">选择当前目录</string>
+    <string name="parent_directory">上一级</string>
+    <string name="creating_folder">创建中…</string>
+    <string name="new_folder">新建文件夹</string>
+    <string name="no_subfolders_in_directory">当前目录下没有可选子目录</string>
+    <string name="close_btn">关闭</string>
+    <string name="refresh_btn">刷新</string>
+    <string name="enter_folder_name">输入文件夹名称</string>
+    <string name="create_btn">创建</string>
+    <string name="enter">进入</string>
+    <string name="covered_by_parent_folder">已由上级文件夹覆盖</string>
+    <string name="files_count_with_subfolders_format">%1$d 个文件，含子文件夹</string>
+    <string name="folder_retained_after_clear">本地文件已清理，仍保留为已选备份文件夹</string>
+    <string name="historical_folder_no_files">历史文件夹，当前未发现本地文件</string>
+    <string name="sync_interval">同步间隔</string>
+    <string name="sync_interval_desc">定期扫描本地媒体变化，补充实时检测</string>
+    <string name="minutes_format">%1$d 分钟</string>
+</resources>

@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
@@ -33,7 +35,7 @@ data class MapUiState(
     val isLoading: Boolean = true,
     val allPhotos: List<MapPhotoItem> = emptyList(),
     val clusters: List<MapCluster> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
     val selectedCluster: MapCluster? = null,
     val selectedClusterPhotos: List<UnifiedPhotoItem> = emptyList(),
     val isResolvingSelectedCluster: Boolean = false,
@@ -95,7 +97,14 @@ class MapViewModel(
                 val current = _uiState.value
                 _uiState.value = current.copy(
                     isLoading = false,
-                    error = if (current.allPhotos.isEmpty()) error.message ?: "加载失败" else null
+                    error = if (current.allPhotos.isEmpty()) {
+                        val msg = error.message
+                        if (msg.isNullOrBlank()) {
+                            UiText.StringResource(R.string.load_failed)
+                        } else {
+                            UiText.DynamicString(msg)
+                        }
+                    } else null
                 )
             }
         }

@@ -39,6 +39,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -298,7 +300,7 @@ private fun CloudSearchTopBar(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.back),
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -317,7 +319,7 @@ private fun CloudSearchTopBar(
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "搜索",
+                contentDescription = stringResource(R.string.search),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
@@ -341,7 +343,7 @@ private fun CloudSearchTopBar(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (query.isEmpty()) {
                             Text(
-                                text = "搜索云端媒体",
+                                text = stringResource(R.string.search_cloud_media),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
                             )
@@ -362,7 +364,7 @@ private fun CloudSearchTopBar(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = "清空搜索",
+                        contentDescription = stringResource(R.string.clear_search),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(14.dp)
                     )
@@ -378,7 +380,7 @@ private fun CloudSearchTopBar(
                     } else {
                         Icons.Default.KeyboardArrowDown
                     },
-                    contentDescription = "筛选面板",
+                    contentDescription = stringResource(R.string.filter_panel),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
@@ -415,14 +417,14 @@ private fun SearchFilterContent(
         // 搜索类型 Card
         SectionContainer {
             Column {
-                FilterSectionTitle("搜索类型", icon = Icons.Default.Tune)
+                FilterSectionTitle(stringResource(R.string.search_type), icon = Icons.Default.Tune)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     SearchChip(
-                        text = "识图",
+                        text = stringResource(R.string.search_type_visual),
                         selected = searchType == SearchType.VISUAL_TEXT,
                         enabled = isClipAvailable,
                         leadingIcon = { Icon(Icons.Default.Image, null, modifier = Modifier.size(14.dp)) }
@@ -430,21 +432,21 @@ private fun SearchFilterContent(
                         onSearchTypeChange(SearchType.VISUAL_TEXT)
                     }
                     SearchChip(
-                        text = "OCR",
+                        text = stringResource(R.string.search_type_ocr),
                         selected = searchType == SearchType.OCR_TEXT,
                         leadingIcon = { Icon(Icons.Default.Translate, null, modifier = Modifier.size(14.dp)) }
                     ) {
                         onSearchTypeChange(SearchType.OCR_TEXT)
                     }
                     SearchChip(
-                        text = "文件名",
+                        text = stringResource(R.string.search_type_filename),
                         selected = searchType == SearchType.FILE_NAME,
                         leadingIcon = { Icon(Icons.Default.Description, null, modifier = Modifier.size(14.dp)) }
                     ) {
                         onSearchTypeChange(SearchType.FILE_NAME)
                     }
                     SearchChip(
-                        text = "综合",
+                        text = stringResource(R.string.search_type_auto),
                         selected = searchType == SearchType.AUTO,
                         leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(14.dp)) }
                     ) {
@@ -457,7 +459,7 @@ private fun SearchFilterContent(
         if (suggestions.isNotEmpty()) {
             SectionContainer {
                 Column {
-                    FilterSectionTitle("建议", icon = Icons.Default.Star)
+                    FilterSectionTitle(stringResource(R.string.search_suggestions), icon = Icons.Default.Star)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -487,14 +489,14 @@ private fun SearchFilterContent(
         if (people.isNotEmpty()) {
             SectionContainer {
                 Column {
-                    FilterSectionTitle("人物", icon = Icons.Default.Person)
+                    FilterSectionTitle(stringResource(R.string.search_people), icon = Icons.Default.Person)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         SearchChip(
-                            text = "不限",
+                            text = stringResource(R.string.search_unlimited),
                             selected = filters.personId.isNullOrBlank(),
                             leadingIcon = { Icon(Icons.Default.Person, null, modifier = Modifier.size(14.dp)) }
                         ) {
@@ -502,13 +504,18 @@ private fun SearchFilterContent(
                         }
                         people.forEach { person ->
                             val isSelected = filters.personId == person.id
+                            val displayName = when (person.name) {
+                                "未知" -> stringResource(R.string.search_unknown)
+                                "未命名" -> stringResource(R.string.search_unnamed)
+                                else -> person.name
+                            }
                             SearchChip(
-                                text = person.name,
+                                text = displayName,
                                 selected = isSelected,
                                 leadingIcon = {
                                     PersonChipAvatar(
                                         url = if (person.coverFileId > 0) portraitUrlProvider(person) else null,
-                                        name = person.name
+                                        name = displayName
                                     )
                                 }
                             ) {
@@ -523,14 +530,14 @@ private fun SearchFilterContent(
         if (locations.isNotEmpty()) {
             SectionContainer {
                 Column {
-                    FilterSectionTitle("地点", icon = Icons.Default.Place)
+                    FilterSectionTitle(stringResource(R.string.search_locations), icon = Icons.Default.Place)
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         SearchChip(
-                            text = "不限",
+                            text = stringResource(R.string.search_unlimited),
                             selected = filters.location.isNullOrBlank(),
                             leadingIcon = { Icon(Icons.Default.Place, null, modifier = Modifier.size(14.dp)) }
                         ) {
@@ -538,8 +545,9 @@ private fun SearchFilterContent(
                         }
                         locations.forEach { location ->
                             val isSelected = filters.location == location.city
+                            val displayCity = if (location.city == "未知") stringResource(R.string.search_unknown) else location.city
                             SearchChip(
-                                text = location.city,
+                                text = displayCity,
                                 selected = isSelected,
                                 leadingIcon = {
                                     Icon(
@@ -577,7 +585,7 @@ private fun SearchFilterContent(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "正在加载筛选项...",
+                    text = stringResource(R.string.loading_filter_options),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

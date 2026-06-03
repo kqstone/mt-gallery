@@ -40,13 +40,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import android.content.Context
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -82,7 +85,7 @@ fun ViewerScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            Text("无照片", color = Color.White)
+            Text(stringResource(R.string.no_photos), color = Color.White)
         }
         return
     }
@@ -181,7 +184,7 @@ fun ViewerScreen(
                     IconButton(onClick = stopAndGoBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = stringResource(R.string.back),
                             tint = Color.White
                         )
                     }
@@ -193,7 +196,7 @@ fun ViewerScreen(
                         val address = uiState.fileDetailInfo?.let {
                             (it["addr"] ?: it["address"] ?: it["location"])?.toString()
                         } ?: currentPhoto.addr
-                        val dateText = remember(currentPhoto.mtime) { formatFriendlyDateShort(currentPhoto.mtime) }
+                        val dateText = remember(currentPhoto.mtime) { formatFriendlyDateShort(context, currentPhoto.mtime) }
 
                         if (!address.isNullOrBlank()) {
                             Text(
@@ -259,7 +262,7 @@ fun ViewerScreen(
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.Download,
-                                    contentDescription = "加载原图",
+                                    contentDescription = stringResource(R.string.load_original),
                                     tint = Color.White
                                 )
                             }
@@ -310,7 +313,7 @@ fun ViewerScreen(
                         // Share
                         HUDButton(
                             icon = Icons.Default.Share,
-                            label = "分享",
+                            label = stringResource(R.string.share),
                             onClick = { viewModel.sharePhoto(context) }
                         )
 
@@ -326,7 +329,7 @@ fun ViewerScreen(
 
                         HUDButton(
                             icon = if (uiState.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                            label = if (uiState.isFavorite) "已收藏" else "收藏",
+                            label = if (uiState.isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
                             iconColor = if (uiState.isFavorite) Color(0xFFFFD700) else Color.White,
                             iconScale = favScale,
                             onClick = { viewModel.toggleFavorite() }
@@ -335,14 +338,14 @@ fun ViewerScreen(
                         // Delete
                         HUDButton(
                             icon = Icons.Default.Delete,
-                            label = "删除",
+                            label = stringResource(R.string.delete),
                             onClick = { showDeleteDialog = true }
                         )
 
                         // Info Details
                         HUDButton(
                             icon = Icons.Default.Info,
-                            label = "信息",
+                            label = stringResource(R.string.info),
                             onClick = { showBottomSheet = true }
                         )
                     }
@@ -392,12 +395,12 @@ fun ViewerScreen(
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "删除此媒体？", fontWeight = FontWeight.Bold)
+                    Text(text = stringResource(R.string.delete_this_media), fontWeight = FontWeight.Bold)
                 }
             },
             text = {
                 Text(
-                    text = "确定要从本地存储与云端服务器永久删除此文件吗？该操作不可撤销。",
+                    text = stringResource(R.string.delete_media_confirm_desc),
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -417,7 +420,7 @@ fun ViewerScreen(
                     ),
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text("删除")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
@@ -425,7 +428,7 @@ fun ViewerScreen(
                     onClick = { showDeleteDialog = false },
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             },
             shape = RoundedCornerShape(16.dp),
@@ -591,17 +594,17 @@ fun DetailsBottomSheet(
                     .padding(horizontal = 20.dp, vertical = 8.dp)
             ) {
                 Text(
-                text = "详情",
+                text = stringResource(R.string.details),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
             // Date and time
-            val friendlyDate = remember(photo.mtime) { formatFriendlyDate(photo.mtime) }
+            val friendlyDate = remember(photo.mtime) { formatFriendlyDate(context, photo.mtime) }
 
             // Specs Section
-            InfoSectionHeader(title = "文件信息")
+            InfoSectionHeader(title = stringResource(R.string.file_info))
             val sizeBytes = uiState.fileDetailInfo?.let {
                 (it["size"] ?: it["fileSize"])?.toString()?.toLongOrNull()
             } ?: photo.fileSize
@@ -625,17 +628,17 @@ fun DetailsBottomSheet(
                 modifier = Modifier.padding(bottom = 12.dp)
             ) {
                 if (friendlyDate.isNotEmpty()) {
-                    InfoRowItem(label = "拍摄时间", value = friendlyDate)
+                    InfoRowItem(label = stringResource(R.string.taken_time), value = friendlyDate)
                 }
-                InfoRowItem(label = "文件名", value = photo.fileName)
+                InfoRowItem(label = stringResource(R.string.file_name), value = photo.fileName)
                 if (formattedSize.isNotEmpty()) {
-                    InfoRowItem(label = "大小", value = formattedSize)
+                    InfoRowItem(label = stringResource(R.string.file_size), value = formattedSize)
                 }
                 if (formattedRes.isNotEmpty()) {
-                    InfoRowItem(label = "分辨率", value = formattedRes)
+                    InfoRowItem(label = stringResource(R.string.resolution), value = formattedRes)
                 }
                 if (localPath.isNotEmpty()) {
-                    InfoRowItem(label = "存储路径", value = localPath)
+                    InfoRowItem(label = stringResource(R.string.storage_path), value = localPath)
                 }
             }
 
@@ -660,9 +663,9 @@ fun DetailsBottomSheet(
                     if (doubleVal != null && doubleVal > 0) {
                         if (doubleVal < 1.0) {
                             val shutterFraction = Math.round(1.0 / doubleVal)
-                            "1/$shutterFraction 秒"
+                            context.getString(R.string.shutter_fraction_format, shutterFraction)
                         } else {
-                            "$doubleVal 秒"
+                            context.getString(R.string.shutter_seconds_format, doubleVal.toString())
                         }
                     } else {
                         it.toString()
@@ -678,31 +681,31 @@ fun DetailsBottomSheet(
             }
 
             val exifCards = remember(make, model, lens, aperture, shutter, iso, focal) {
-                val list = mutableListOf<Pair<String, String>>()
+                val list = mutableListOf<Pair<Int, String>>()
                 if (!make.isNullOrBlank() || !model.isNullOrBlank()) {
                     val deviceName = listOfNotNull(make, model).distinct().joinToString(" ")
-                    list.add("相机品牌/型号" to deviceName)
+                    list.add(R.string.camera_brand_model to deviceName)
                 }
                 if (!lens.isNullOrBlank()) {
-                    list.add("镜头型号" to lens)
+                    list.add(R.string.lens_model to lens)
                 }
                 if (!aperture.isNullOrBlank()) {
-                    list.add("光圈" to aperture)
+                    list.add(R.string.aperture to aperture)
                 }
                 if (!shutter.isNullOrBlank()) {
-                    list.add("快门速度" to shutter)
+                    list.add(R.string.shutter_speed to shutter)
                 }
                 if (!iso.isNullOrBlank()) {
-                    list.add("ISO 速度" to iso)
+                    list.add(R.string.iso_speed to iso)
                 }
                 if (!focal.isNullOrBlank()) {
-                    list.add("焦距" to focal)
+                    list.add(R.string.focal_length to focal)
                 }
                 list
             }
 
             if (exifCards.isNotEmpty()) {
-                InfoSectionHeader(title = "拍摄参数 (EXIF)")
+                InfoSectionHeader(title = stringResource(R.string.exif_parameters))
                 @OptIn(ExperimentalLayoutApi::class)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -712,7 +715,7 @@ fun DetailsBottomSheet(
                         .padding(bottom = 12.dp)
                 ) {
                     exifCards.forEach { (label, valStr) ->
-                        ExifCardItem(label = label, value = valStr)
+                        ExifCardItem(label = stringResource(label), value = valStr)
                     }
                 }
             }
@@ -727,8 +730,8 @@ fun DetailsBottomSheet(
             val lon = gpsInfo?.let { it["longitude"] ?: it["lon"] ?: it["Longitude"] }?.toString()?.toDoubleOrNull()
 
             if (!addr.isNullOrBlank() || (lat != null && lon != null)) {
-                val displayAddr = addr ?: "照片位置 (${lat}, ${lon})"
-                InfoSectionHeader(title = "位置")
+                val displayAddr = addr ?: context.getString(R.string.photo_location_coords_format, lat ?: 0.0, lon ?: 0.0)
+                InfoSectionHeader(title = stringResource(R.string.location))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -763,7 +766,7 @@ fun DetailsBottomSheet(
                                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "打开地图失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, context.getString(R.string.open_map_failed, e.message.orEmpty()), android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             },
                             shape = RoundedCornerShape(20.dp),
@@ -779,7 +782,7 @@ fun DetailsBottomSheet(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "在地图中查看", style = MaterialTheme.typography.bodyMedium)
+                            Text(text = stringResource(R.string.view_in_map), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
@@ -857,26 +860,28 @@ private fun ExifCardItem(label: String, value: String) {
     }
 }
 
-private fun formatFriendlyDate(mtime: String): String {
+private fun formatFriendlyDate(context: Context, mtime: String): String {
     if (mtime.isEmpty()) return ""
     return try {
         val clean = mtime.replace("T", " ").substringBefore("+").substringBefore("Z")
         val formatIn = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val date = formatIn.parse(clean) ?: return mtime
-        val formatOut = SimpleDateFormat("yyyy年M月d日 EEEE a h:mm", Locale.CHINA)
+        val pattern = context.getString(R.string.friendly_date_format)
+        val formatOut = SimpleDateFormat(pattern, Locale.getDefault())
         formatOut.format(date)
     } catch (e: Exception) {
         mtime
     }
 }
 
-private fun formatFriendlyDateShort(mtime: String): String {
+private fun formatFriendlyDateShort(context: Context, mtime: String): String {
     if (mtime.isEmpty()) return ""
     return try {
         val clean = mtime.replace("T", " ").substringBefore("+").substringBefore("Z")
         val formatIn = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val date = formatIn.parse(clean) ?: return mtime
-        val formatOut = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
+        val pattern = context.getString(R.string.friendly_date_short_format)
+        val formatOut = SimpleDateFormat(pattern, Locale.getDefault())
         formatOut.format(date)
     } catch (e: Exception) {
         mtime

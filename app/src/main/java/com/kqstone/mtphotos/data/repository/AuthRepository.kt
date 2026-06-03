@@ -75,7 +75,7 @@ class AuthRepository(private val container: AppContainer) {
         val username = prefsManager.getUsernameSync()
         val password = prefsManager.getPasswordSync()
         if (username.isBlank() || password.isBlank()) {
-            return Result.failure(Exception("缺少已保存的用户名或密码"))
+            return Result.failure(Exception("Missing saved username or password"))
         }
         return login(
             serverUrl = serverUrl,
@@ -154,10 +154,10 @@ class AuthRepository(private val container: AppContainer) {
             .replace(Regex("[\\p{Cf}\\p{Cc}]"), "")
             .trimEnd('/')
         if (cleanUrl.isBlank()) {
-            throw IllegalArgumentException("服务器地址不能为空")
+            throw IllegalArgumentException("Server URL cannot be empty")
         }
         if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-            throw IllegalArgumentException("服务器地址需要以 http:// 或 https:// 开头")
+            throw IllegalArgumentException("Server URL must start with http:// or https://")
         }
         return cleanUrl
     }

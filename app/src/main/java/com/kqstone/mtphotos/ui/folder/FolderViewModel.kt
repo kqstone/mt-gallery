@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.repository.AlbumItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,8 +16,8 @@ import kotlinx.coroutines.launch
 
 data class CollectionCategoryItem(
     val type: String,
-    val title: String,
-    val subtitle: String
+    val title: UiText,
+    val subtitle: UiText
 )
 
 data class FolderUiState(
@@ -24,7 +26,7 @@ data class FolderUiState(
     val categories: List<CollectionCategoryItem> = defaultCollectionCategories(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: String? = null
+    val error: UiText? = null
 )
 
 class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
@@ -79,17 +81,20 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 error = buildError(albumsResult.exceptionOrNull(), foldersResult.exceptionOrNull())
             )
         } catch (e: Exception) {
-            CollectionLoadResult(error = e.message ?: "加载失败")
+            CollectionLoadResult(
+                error = e.message?.let { UiText.DynamicString(it) }
+                    ?: UiText.StringResource(R.string.load_failed)
+            )
         }
     }
 
-    private fun buildError(albumError: Throwable?, folderError: Throwable?): String? {
+    private fun buildError(albumError: Throwable?, folderError: Throwable?): UiText? {
         val albumMessage = albumError?.message?.takeIf { it.isNotBlank() }
         val folderMessage = folderError?.message?.takeIf { it.isNotBlank() }
         return when {
             albumMessage == null && folderMessage == null -> null
-            albumMessage != null && folderMessage != null -> "$albumMessage / $folderMessage"
-            else -> albumMessage ?: folderMessage
+            albumMessage != null && folderMessage != null -> UiText.DynamicString("$albumMessage / $folderMessage")
+            else -> (albumMessage ?: folderMessage)?.let { UiText.DynamicString(it) }
         }
     }
 
@@ -104,14 +109,30 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
 private data class CollectionLoadResult(
     val albums: List<AlbumItem> = emptyList(),
     val folders: List<FolderItem> = emptyList(),
-    val error: String? = null
+    val error: UiText? = null
 )
 
 private fun defaultCollectionCategories(): List<CollectionCategoryItem> {
     return listOf(
-        CollectionCategoryItem(type = "favorites", title = "收藏", subtitle = "收藏相册"),
-        CollectionCategoryItem(type = "recent", title = "最近添加", subtitle = "最近入库的媒体"),
-        CollectionCategoryItem(type = "videos", title = "视频", subtitle = "全部视频"),
-        CollectionCategoryItem(type = "trash", title = "回收站", subtitle = "已删除但未清空")
+        CollectionCategoryItem(
+            type = "favorites",
+            title = UiText.StringResource(R.string.category_favorites),
+            subtitle = UiText.StringResource(R.string.category_favorites_desc)
+        ),
+        CollectionCategoryItem(
+            type = "recent",
+            title = UiText.StringResource(R.string.category_recent),
+            subtitle = UiText.StringResource(R.string.category_recent_desc)
+        ),
+        CollectionCategoryItem(
+            type = "videos",
+            title = UiText.StringResource(R.string.category_videos),
+            subtitle = UiText.StringResource(R.string.category_videos_desc)
+        ),
+        CollectionCategoryItem(
+            type = "trash",
+            title = UiText.StringResource(R.string.category_trash),
+            subtitle = UiText.StringResource(R.string.category_trash_desc)
+        )
     )
 }

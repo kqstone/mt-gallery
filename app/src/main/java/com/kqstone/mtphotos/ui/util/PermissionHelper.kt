@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.core.content.ContextCompat
 
 enum class MediaPermissionStatus {
@@ -362,29 +364,29 @@ private fun PermissionDeniedScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "需要媒体访问权限",
+            text = stringResource(R.string.media_permission_required_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "MT Gallery 需要访问您设备上的照片和视频，以便在本地和云端之间管理和备份您的媒体文件。",
+            text = stringResource(R.string.media_permission_required_desc),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = onRetry) {
-            Text("授予权限")
+            Text(stringResource(R.string.grant_permission))
         }
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(onClick = onOpenSettings) {
-            Text("前往系统设置")
+            Text(stringResource(R.string.go_to_settings))
         }
         Spacer(modifier = Modifier.height(12.dp))
         TextButton(onClick = onSkip) {
-            Text("跳过，仅使用云端模式")
+            Text(stringResource(R.string.skip_cloud_only))
         }
     }
 }

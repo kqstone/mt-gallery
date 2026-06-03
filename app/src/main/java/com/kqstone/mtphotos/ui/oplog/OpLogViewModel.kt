@@ -3,10 +3,12 @@ package com.kqstone.mtphotos.ui.oplog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.local.db.ServerOpStatus
 import com.kqstone.mtphotos.data.local.db.ServerOpTaskEntity
 import com.kqstone.mtphotos.data.local.db.ServerOpType
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
+import com.kqstone.mtphotos.ui.util.UiText
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,8 +36,8 @@ class OpLogViewModel(
         val mediaFileName: String,
         val mediaMd5: String,
         val mediaCloudId: Double?,
-        val opDescription: String,
-        val statusText: String,
+        val opDescription: UiText,
+        val statusText: UiText,
         val attemptCount: Int,
         val nextAttemptAt: Long,
         val canRetry: Boolean,
@@ -107,68 +109,71 @@ class OpLogViewModel(
     }
 
     companion object {
-        fun ServerOpType.toDescription(params: String): String {
+        fun ServerOpType.toDescription(params: String): UiText {
             return when (this) {
-                ServerOpType.CLOUD_DELETE -> "云端删除"
+                ServerOpType.CLOUD_DELETE -> UiText.StringResource(R.string.op_desc_delete)
                 ServerOpType.FAVORITE -> {
                     val isFav = params.contains("true", ignoreCase = true)
-                    if (isFav) "收藏" else "取消收藏"
+                    if (isFav) UiText.StringResource(R.string.op_desc_favorite)
+                    else UiText.StringResource(R.string.op_desc_unfavorite)
                 }
-                ServerOpType.RENAME_PERSON -> "修改人物名称"
+                ServerOpType.RENAME_PERSON -> UiText.StringResource(R.string.op_desc_rename_person)
                 ServerOpType.TAG -> {
                     val isAdd = params.contains("\"isAdd\":true") || params.contains("\"isAdd\": true")
-                    if (isAdd) "添加标签" else "移除标签"
+                    if (isAdd) UiText.StringResource(R.string.op_desc_tag_add)
+                    else UiText.StringResource(R.string.op_desc_tag_remove)
                 }
                 ServerOpType.HIDE -> {
                     val isHide = params.contains("\"isHide\":true") || params.contains("\"isHide\": true")
-                    if (isHide) "隐藏" else "取消隐藏"
+                    if (isHide) UiText.StringResource(R.string.op_desc_hide)
+                    else UiText.StringResource(R.string.op_desc_unhide)
                 }
-                ServerOpType.BACKUP_UPLOAD -> "备份上传"
+                ServerOpType.BACKUP_UPLOAD -> UiText.StringResource(R.string.op_desc_backup)
             }
         }
 
-        fun formatStatus(status: ServerOpStatus, attemptCount: Int, nextAttemptAt: Long): String {
+        fun formatStatus(status: ServerOpStatus, attemptCount: Int, nextAttemptAt: Long): UiText {
             return when (status) {
-                ServerOpStatus.SUCCESS -> "成功"
-                ServerOpStatus.PENDING -> "待执行"
-                ServerOpStatus.RUNNING -> "执行中"
+                ServerOpStatus.SUCCESS -> UiText.StringResource(R.string.status_success)
+                ServerOpStatus.PENDING -> UiText.StringResource(R.string.status_pending)
+                ServerOpStatus.RUNNING -> UiText.StringResource(R.string.status_running)
                 ServerOpStatus.ERROR -> {
                     val remaining = nextAttemptAt - System.currentTimeMillis()
-                    val retryText = if (remaining > 0) {
+                    val retryTextRes = if (remaining > 0) {
                         val minutes = remaining / 60_000
                         val hours = minutes / 60
                         when {
-                            hours > 0 -> "${hours}小时后重试"
-                            minutes > 0 -> "${minutes}分钟后重试"
-                            else -> "即将重试"
+                            hours > 0 -> UiText.StringResource(R.string.retry_in_hours, hours)
+                            minutes > 0 -> UiText.StringResource(R.string.retry_in_minutes, minutes)
+                            else -> UiText.StringResource(R.string.retry_soon)
                         }
                     } else {
-                        "等待重试"
+                        UiText.StringResource(R.string.waiting_retry)
                     }
-                    "错误(${attemptCount}次) · $retryText"
+                    UiText.StringResource(R.string.status_error_format, attemptCount, retryTextRes)
                 }
-                ServerOpStatus.FAILED -> "失败(${attemptCount}次)"
+                ServerOpStatus.FAILED -> UiText.StringResource(R.string.status_failed_format, attemptCount)
             }
         }
 
-        fun opTypeDisplayName(type: ServerOpType): String {
+        fun opTypeDisplayName(type: ServerOpType): Int {
             return when (type) {
-                ServerOpType.CLOUD_DELETE -> "删除"
-                ServerOpType.FAVORITE -> "收藏"
-                ServerOpType.RENAME_PERSON -> "改名"
-                ServerOpType.TAG -> "标签"
-                ServerOpType.HIDE -> "隐藏"
-                ServerOpType.BACKUP_UPLOAD -> "上传"
+                ServerOpType.CLOUD_DELETE -> R.string.op_type_delete
+                ServerOpType.FAVORITE -> R.string.op_type_favorite
+                ServerOpType.RENAME_PERSON -> R.string.op_type_rename_person
+                ServerOpType.TAG -> R.string.op_type_tag
+                ServerOpType.HIDE -> R.string.op_type_hide
+                ServerOpType.BACKUP_UPLOAD -> R.string.op_type_backup
             }
         }
 
-        fun statusDisplayName(status: ServerOpStatus): String {
+        fun statusDisplayName(status: ServerOpStatus): Int {
             return when (status) {
-                ServerOpStatus.SUCCESS -> "成功"
-                ServerOpStatus.PENDING -> "待执行"
-                ServerOpStatus.RUNNING -> "进行中"
-                ServerOpStatus.ERROR -> "错误中"
-                ServerOpStatus.FAILED -> "失败"
+                ServerOpStatus.SUCCESS -> R.string.status_success
+                ServerOpStatus.PENDING -> R.string.status_pending
+                ServerOpStatus.RUNNING -> R.string.status_running_simple
+                ServerOpStatus.ERROR -> R.string.status_error
+                ServerOpStatus.FAILED -> R.string.status_failed
             }
         }
     }

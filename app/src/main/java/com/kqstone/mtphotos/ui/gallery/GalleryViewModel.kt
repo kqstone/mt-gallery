@@ -25,6 +25,8 @@ import com.kqstone.mtphotos.worker.BackupScheduler
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
 import kotlinx.coroutines.Job
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -36,29 +38,29 @@ private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
 data class DayGroup(
     val date: String,
     val photos: List<UnifiedPhotoItem>,
-    val addrSummary: String? = null
+    val addrSummary: UiText? = null
 )
 
 data class MonthGroup(
     val yearMonth: String,
-    val displayTitle: String,
+    val displayTitle: UiText,
     val totalCount: Int,
     val days: List<DayGroup> = emptyList(),
     val isLoaded: Boolean = true,
     val isLoading: Boolean = false,
-    val loadError: String? = null
+    val loadError: UiText? = null
 )
 
 data class GalleryUiState(
     val months: List<MonthGroup> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val columnCount: Int = 4,
     val isHybridMode: Boolean = false,
     val isSyncing: Boolean = false,
-    val syncProgressText: String? = null,
-    val syncCompleteMessage: String? = null
+    val syncProgressText: UiText? = null,
+    val syncCompleteMessage: UiText? = null
 )
 
 class GalleryViewModel(
@@ -136,7 +138,11 @@ class GalleryViewModel(
                     val folders = folderSelection.effectiveFolders
                     val snapshot = galleryRepository.getTimelineSnapshot().getOrElse {
                         Log.e(TAG, "Failed to get timeline snapshot for initial load", it)
-                        _uiState.value = _uiState.value.copy(isLoading = false, error = it.message ?: "加载失败")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            error = it.message?.let { UiText.DynamicString(it) } 
+                                ?: UiText.StringResource(R.string.load_failed)
+                        )
                         return@launch
                     }
                     timelineMonthsByYearMonth = snapshot.months.associateBy { it.yearMonth }
@@ -168,7 +174,7 @@ class GalleryViewModel(
         _uiState.value = _uiState.value.copy(
             isSyncing = true,
             isLoading = false,
-            syncProgressText = "正在加载云端数据..."
+            syncProgressText = UiText.StringResource(R.string.sync_loading_cloud)
         )
 
         initialSyncJob = viewModelScope.launch {
@@ -176,30 +182,30 @@ class GalleryViewModel(
                 syncRepository.performInitialSync(folders).collect { progress ->
                     when (progress.phase) {
                         "cloud" -> {
-                            _uiState.value = _uiState.value.copy(syncProgressText = "正在加载云端数据...")
+                            _uiState.value = _uiState.value.copy(syncProgressText = UiText.StringResource(R.string.sync_loading_cloud))
                         }
                         "cloud_indexed" -> {
                             _uiState.value = _uiState.value.copy(
-                                syncProgressText = "云端 ${progress.cloudCount} 个文件，正在扫描本地..."
+                                syncProgressText = UiText.StringResource(R.string.sync_cloud_indexed_scanning_local, progress.cloudCount)
                             )
                         }
                         "scanning" -> {
                             _uiState.value = _uiState.value.copy(
-                                syncProgressText = "已扫描 ${progress.scanned} 个本地文件..."
+                                syncProgressText = UiText.StringResource(R.string.sync_scanned_local_files, progress.scanned)
                             )
                         }
                         "finalizing" -> {
                             _uiState.value = _uiState.value.copy(
                                 syncProgressText = if (progress.total > 0) {
-                                    "正在写入云端索引 ${progress.scanned.coerceAtMost(progress.total)}/${progress.total}..."
+                                    UiText.StringResource(R.string.sync_writing_cloud_index_progress, progress.scanned.coerceAtMost(progress.total), progress.total)
                                 } else {
-                                    "正在写入云端索引..."
+                                    UiText.StringResource(R.string.sync_writing_cloud_index)
                                 }
                             )
                         }
                         "cleanup" -> {
                             _uiState.value = _uiState.value.copy(
-                                syncProgressText = "正在整理本地记录..."
+                                syncProgressText = UiText.StringResource(R.string.sync_cleaning_up)
                             )
                         }
                         "cloud_ready" -> {
@@ -231,7 +237,7 @@ class GalleryViewModel(
                 _uiState.value = _uiState.value.copy(
                     isSyncing = false,
                     syncProgressText = null,
-                    error = "同步失败: ${e.message}"
+                    error = UiText.StringResource(R.string.sync_failed, e.message.orEmpty())
                 )
             }
         }
@@ -248,7 +254,10 @@ class GalleryViewModel(
             )
             warmLocalVideoThumbnails(photos)
         } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "加载失败")
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = e.message?.let { UiText.DynamicString(it) } ?: UiText.StringResource(R.string.load_failed)
+            )
         }
     }
 
@@ -264,7 +273,10 @@ class GalleryViewModel(
                 localVideoThumbJob?.cancel()
             },
             onFailure = { e ->
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "加载失败")
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message?.let { UiText.DynamicString(it) } ?: UiText.StringResource(R.string.load_failed)
+                )
             }
         )
     }
@@ -400,7 +412,8 @@ class GalleryViewModel(
                             if (current.yearMonth == yearMonth) {
                                 current.copy(
                                     isLoading = false,
-                                    loadError = e.message ?: "鍔犺浇澶辫触"
+                                    loadError = e.message?.let { UiText.DynamicString(it) }
+                                        ?: UiText.StringResource(R.string.load_failed)
                                 )
                             } else {
                                 current
@@ -447,7 +460,7 @@ class GalleryViewModel(
                     loadFromRoom(folders)
                     applyCloudTimelineSnapshot(fullSnapshot, folders)
                     _uiState.value = _uiState.value.copy(
-                        syncCompleteMessage = "数据已更新"
+                        syncCompleteMessage = UiText.StringResource(R.string.sync_complete_message)
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Background sync failed after refresh", e)
@@ -455,7 +468,8 @@ class GalleryViewModel(
                     if (_uiState.value.months.isEmpty()) {
                         _uiState.value = _uiState.value.copy(
                             isRefreshing = false,
-                            error = e.message ?: "同步失败"
+                            error = e.message?.let { UiText.DynamicString(it) }
+                                ?: UiText.StringResource(R.string.sync_failed, "")
                         )
                     }
                 }
@@ -471,7 +485,8 @@ class GalleryViewModel(
                     onFailure = { e ->
                         _uiState.value = _uiState.value.copy(
                             isRefreshing = false,
-                            error = e.message ?: "刷新失败"
+                            error = e.message?.let { UiText.DynamicString(it) }
+                                ?: UiText.StringResource(R.string.refresh_failed)
                         )
                     }
                 )
@@ -581,7 +596,7 @@ class GalleryViewModel(
             }
     }
 
-    private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): String? {
+    private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): UiText? {
         val addrCounts = photos
             .mapNotNull { normalizeAddr(it.addr) }
             .groupingBy { it }
@@ -593,9 +608,9 @@ class GalleryViewModel(
         )?.key ?: return null
 
         return if (addrCounts.size == 1) {
-            primary
+            UiText.DynamicString(primary)
         } else {
-            "$primary 等 ${addrCounts.size} 地"
+            UiText.StringResource(R.string.addr_summary_format, primary, addrCounts.size)
         }
     }
 
@@ -604,7 +619,8 @@ class GalleryViewModel(
         return normalized.takeIf {
             it.isNotEmpty() &&
                 !it.equals("null", ignoreCase = true) &&
-                it != "未知"
+                it != "未知" &&
+                it != "Unknown"
         }
     }
 
@@ -632,7 +648,10 @@ class GalleryViewModel(
                 loadFromRoom(folders)
                 _uiState.value = _uiState.value.copy(isSyncing = false)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isSyncing = false, error = "同步失败: ${e.message}")
+                _uiState.value = _uiState.value.copy(
+                    isSyncing = false,
+                    error = UiText.StringResource(R.string.sync_failed, e.message.orEmpty())
+                )
             }
         }
     }
@@ -793,12 +812,14 @@ class GalleryViewModel(
         }
     }
 
-    private fun formatYearMonth(ym: String): String {
+    private fun formatYearMonth(ym: String): UiText {
         val parts = ym.split("-")
         return if (parts.size >= 2) {
-            "${parts[0]}年${parts[1].toIntOrNull() ?: parts[1]}月"
+            val year = parts[0]
+            val month = parts[1].toIntOrNull() ?: 1
+            UiText.StringResource(R.string.year_month_format, year, month)
         } else {
-            ym
+            UiText.DynamicString(ym)
         }
     }
 

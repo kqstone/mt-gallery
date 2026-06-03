@@ -1,5 +1,7 @@
 package com.kqstone.mtphotos.ui.gallery
 
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,7 +10,7 @@ import kotlinx.coroutines.launch
 class SelectionManager(
     private val scope: CoroutineScope,
     private val onDelete: suspend (List<Double>) -> Result<Unit>,
-    private val onError: (String) -> Unit
+    private val onError: (UiText) -> Unit
 ) {
     private val _selectedPhotoIds = MutableStateFlow<Set<Double>>(emptySet())
     val selectedPhotoIds: StateFlow<Set<Double>> = _selectedPhotoIds
@@ -55,7 +57,7 @@ class SelectionManager(
                     onSuccess()
                 },
                 onFailure = { e ->
-                    onError("删除失败: ${e.message}")
+                    onError(UiText.StringResource(R.string.delete_failed_format, e.message.orEmpty()))
                 }
             )
         }

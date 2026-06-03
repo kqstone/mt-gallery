@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -178,7 +179,7 @@ fun VideoPlayer(
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (isPlaying) "暂停" else "播放",
+                    contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
                     tint = Color.White,
                     modifier = Modifier.size(40.dp)
                 )
@@ -254,7 +255,7 @@ fun VideoPlayer(
                     ) {
                         Icon(
                             imageVector = if (isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                            contentDescription = if (isMuted) "取消静音" else "静音",
+                            contentDescription = stringResource(if (isMuted) R.string.unmute else R.string.mute),
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
                         )

@@ -36,8 +36,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
@@ -109,11 +111,11 @@ fun FolderDetailScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = uiState.error!!,
+                            text = uiState.error!!.asString(),
                             color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            text = "点击重试",
+                            text = stringResource(R.string.click_to_retry),
                             modifier = Modifier.clickable { viewModel.loadFolder(folderId, force = true) },
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -128,7 +130,7 @@ fun FolderDetailScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "文件夹为空",
+                        text = stringResource(R.string.folder_empty),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -181,7 +183,7 @@ fun FolderDetailScreen(
                 )
             } else {
                 BackTitleTopBar(
-                    title = uiState.folderName.ifEmpty { "文件夹" },
+                    title = uiState.folderName.ifEmpty { stringResource(R.string.section_folders) },
                     onBack = onBack,
                     scrollAlpha = scrollState.scrollAlpha
                 )
@@ -213,7 +215,7 @@ private fun SubfolderSection(
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
-            text = "子文件夹",
+            text = stringResource(R.string.section_subfolders),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
@@ -282,7 +284,7 @@ private fun SubfolderCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${folder.fileCount} 项",
+                    text = stringResource(R.string.item_count_short, folder.fileCount),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

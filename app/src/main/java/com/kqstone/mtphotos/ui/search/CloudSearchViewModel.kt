@@ -22,6 +22,8 @@ import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
+import com.kqstone.mtphotos.ui.util.UiText
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,7 +43,7 @@ data class CloudSearchUiState(
     val isSearching: Boolean = false,
     val isRefreshing: Boolean = false,
     val resultMonths: List<MonthGroup> = emptyList(),
-    val error: String? = null,
+    val error: UiText? = null,
     val isClipAvailable: Boolean = true,
     val columnCount: Int = 4
 )
@@ -201,7 +203,7 @@ class CloudSearchViewModel(
                 isRefreshing = false,
                 isSearching = false,
                 resultMonths = emptyList(),
-                error = "当前服务端未启用文搜图"
+                error = UiText.StringResource(R.string.server_clip_disabled)
             )
             return
         }
@@ -231,14 +233,14 @@ class CloudSearchViewModel(
                     isActive = true,
                     isSearching = false,
                     isRefreshing = false,
-                    error = if (photos.isEmpty()) "未找到匹配的云端媒体" else null
+                    error = if (photos.isEmpty()) UiText.StringResource(R.string.no_matching_cloud_media) else null
                 )
             },
             onFailure = { e ->
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     isRefreshing = false,
-                    error = e.message ?: "搜索失败"
+                    error = if (e.message != null) UiText.DynamicString(e.message!!) else UiText.StringResource(R.string.search_failed_simple)
                 )
             }
         )
@@ -283,7 +285,7 @@ class CloudSearchViewModel(
         return listOf(
             MonthGroup(
                 yearMonth = "search",
-                displayTitle = "搜索结果",
+                displayTitle = UiText.StringResource(R.string.search_results),
                 totalCount = photos.size,
                 days = listOf(DayGroup("搜索结果", photos)),
                 isLoaded = true
@@ -291,7 +293,7 @@ class CloudSearchViewModel(
         )
     }
 
-    private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): String? {
+    private fun buildAddrSummary(photos: List<UnifiedPhotoItem>): UiText? {
         val addrCounts = photos
             .mapNotNull { normalizeAddr(it.addr) }
             .groupingBy { it }
@@ -303,9 +305,9 @@ class CloudSearchViewModel(
         )?.key ?: return null
 
         return if (addrCounts.size == 1) {
-            primary
+            UiText.DynamicString(primary)
         } else {
-            "$primary 等 ${addrCounts.size} 地"
+            UiText.StringResource(R.string.addr_summary_format, primary, addrCounts.size)
         }
     }
 
@@ -314,16 +316,19 @@ class CloudSearchViewModel(
         return normalized.takeIf {
             it.isNotEmpty() &&
                 !it.equals("null", ignoreCase = true) &&
-                it != "未知"
+                it != "未知" &&
+                it != "Unknown"
         }
     }
 
-    private fun formatYearMonth(ym: String): String {
+    private fun formatYearMonth(ym: String): UiText {
         val parts = ym.split("-")
         return if (parts.size >= 2) {
-            "${parts[0]}年${parts[1].toIntOrNull() ?: parts[1]}月"
+            val year = parts[0]
+            val month = parts[1].toIntOrNull() ?: 1
+            UiText.StringResource(R.string.year_month_format, year, month)
         } else {
-            ym
+            UiText.DynamicString(ym)
         }
     }
 

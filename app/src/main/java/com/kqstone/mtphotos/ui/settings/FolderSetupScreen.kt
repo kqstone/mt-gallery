@@ -25,6 +25,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -92,7 +94,7 @@ fun FolderSetupScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "选择媒体文件夹",
+            text = stringResource(R.string.select_media_folders),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
@@ -100,7 +102,7 @@ fun FolderSetupScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "选中的文件夹将显示在 Gallery 中，并可备份到云端。\n你可以稍后在设置中修改。",
+            text = stringResource(R.string.select_media_folders_desc),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -118,13 +120,13 @@ fun FolderSetupScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("正在扫描设备文件夹...")
+                    Text(stringResource(R.string.scanning_device_folders))
                 }
             }
         } else {
             // 选择计数
             Text(
-                text = "已选择 ${selectedPaths.size} / ${folders.size} 个文件夹",
+                text = stringResource(R.string.selected_folders_count, selectedPaths.size, folders.size),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -168,7 +170,7 @@ fun FolderSetupScreen(
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                "${folder.fileCount} 个文件",
+                                text = stringResource(R.string.files_count_format, folder.fileCount),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -193,7 +195,7 @@ fun FolderSetupScreen(
                 modifier = Modifier.weight(1f),
                 enabled = !isLoading
             ) {
-                Text("全部选择")
+                Text(stringResource(R.string.select_all))
             }
 
             Button(
@@ -208,7 +210,7 @@ fun FolderSetupScreen(
                 modifier = Modifier.weight(1f),
                 enabled = !isLoading && selectedPaths.isNotEmpty()
             ) {
-                Text("开始使用")
+                Text(stringResource(R.string.start_using))
             }
         }
     }

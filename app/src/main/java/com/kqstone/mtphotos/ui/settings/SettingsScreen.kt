@@ -45,11 +45,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.bounceClick
+import com.kqstone.mtphotos.ui.util.UiText
 
 @Composable
 fun SettingsScreen(
@@ -105,10 +108,13 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
                         }
                         Text(
-                            text = "服务器连接",
+                            text = stringResource(R.string.server_connection),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -149,14 +155,14 @@ fun SettingsScreen(
                 )
 
                 Text(
-                    text = if (reconnectMode) "更新服务器访问地址" else "连接到您的私有媒体服务器",
+                    text = if (reconnectMode) stringResource(R.string.update_server_address) else stringResource(R.string.connect_to_private_server),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.padding(top = 4.dp, bottom = 28.dp)
                 )
 
                 ServerUrlField(
-                    label = "主服务器地址",
+                    label = stringResource(R.string.primary_server_url),
                     value = uiState.primaryServerUrl,
                     onValueChange = viewModel::onPrimaryServerUrlChange,
                     selected = uiState.activeServerUrl == uiState.primaryServerUrl ||
@@ -170,7 +176,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ServerUrlField(
-                    label = "备用服务器地址",
+                    label = stringResource(R.string.secondary_server_url),
                     value = uiState.secondaryServerUrl,
                     onValueChange = viewModel::onSecondaryServerUrlChange,
                     selected = uiState.secondaryServerUrl.isNotBlank() &&
@@ -186,7 +192,7 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = uiState.username,
                     onValueChange = viewModel::onUsernameChange,
-                    label = { Text("用户名") },
+                    label = { Text(stringResource(R.string.username)) },
                     enabled = uiState.credentialsEditable,
                     leadingIcon = {
                         Icon(
@@ -210,7 +216,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = uiState.password,
                         onValueChange = viewModel::onPasswordChange,
-                        label = { Text("密码") },
+                        label = { Text(stringResource(R.string.password)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Lock,
@@ -230,7 +236,7 @@ fun SettingsScreen(
                     )
                 } else {
                     Text(
-                        text = "将使用已保存的密码重新登录，用户名和密码不可在此处修改。",
+                        text = stringResource(R.string.saved_password_notice),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth()
@@ -241,7 +247,7 @@ fun SettingsScreen(
 
                 if (uiState.error != null) {
                     Text(
-                        text = uiState.error!!,
+                        text = uiState.error!!.asString(),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
@@ -271,7 +277,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Text(
-                            text = if (reconnectMode) "保存并重新登录" else "立即连接",
+                            text = if (reconnectMode) stringResource(R.string.save_and_relogin) else stringResource(R.string.connect_now),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -289,7 +295,7 @@ private fun ServerUrlField(
     onValueChange: (String) -> Unit,
     selected: Boolean,
     onSelect: () -> Unit,
-    testMessage: String?,
+    testMessage: UiText?,
     isTesting: Boolean,
     onTest: () -> Unit
 ) {
@@ -320,7 +326,7 @@ private fun ServerUrlField(
         ) {
             RadioButton(selected = selected, onClick = onSelect)
             Text(
-                text = "当前使用",
+                text = stringResource(R.string.currently_used),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f)
             )
@@ -328,15 +334,16 @@ private fun ServerUrlField(
                 if (isTesting) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("测试连接")
+                    Text(stringResource(R.string.test_connection))
                 }
             }
         }
         if (testMessage != null) {
+            val resolvedMsg = testMessage.asString()
             Text(
-                text = testMessage,
+                text = resolvedMsg,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (testMessage.contains("成功")) {
+                color = if (resolvedMsg.contains("成功") || resolvedMsg.contains("success", ignoreCase = true)) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.error

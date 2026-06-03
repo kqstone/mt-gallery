@@ -3,6 +3,8 @@ package com.kqstone.mtphotos.ui.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,10 +47,11 @@ fun SearchEntryTopBar(
     onAboutClick: () -> Unit,
     onOpLogClick: () -> Unit = {},
     modifier: Modifier = Modifier,
-    placeholder: String = "搜索云端媒体",
+    placeholder: String? = null,
     scrollAlpha: Float = 1f
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val placeholderText = placeholder ?: stringResource(R.string.search_cloud_media)
 
     AppTopBarContainer(
         modifier = modifier,
@@ -65,14 +68,14 @@ fun SearchEntryTopBar(
         ) {
             Icon(
                 imageVector = Icons.Default.Search,
-                contentDescription = "搜索",
+                contentDescription = stringResource(R.string.search),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Box(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = placeholder,
+                    text = placeholderText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
                 )
@@ -82,7 +85,7 @@ fun SearchEntryTopBar(
         Box {
             TopBarActionIcon(
                 imageVector = Icons.Default.MoreVert,
-                contentDescription = "更多选项",
+                contentDescription = stringResource(R.string.more_options),
                 onClick = { menuExpanded = true }
             )
             DropdownMenu(
@@ -102,7 +105,7 @@ fun SearchEntryTopBar(
                 DropdownMenuItem(
                     text = { 
                         Text(
-                            text = "设置", 
+                            text = stringResource(R.string.settings), 
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                         ) 
                     },
@@ -122,7 +125,7 @@ fun SearchEntryTopBar(
                 DropdownMenuItem(
                     text = { 
                         Text(
-                            text = "操作日志", 
+                            text = stringResource(R.string.op_log), 
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                         ) 
                     },
@@ -142,7 +145,7 @@ fun SearchEntryTopBar(
                 DropdownMenuItem(
                     text = { 
                         Text(
-                            text = "关于", 
+                            text = stringResource(R.string.about), 
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                         ) 
                     },

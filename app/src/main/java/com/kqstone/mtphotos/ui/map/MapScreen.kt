@@ -34,6 +34,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -410,7 +412,7 @@ fun MapScreen(
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "正在加载照片位置...",
+                        text = stringResource(R.string.loading_photos_location),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -431,7 +433,7 @@ fun MapScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = uiState.error.orEmpty(),
+                    text = uiState.error!!.asString(),
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -451,7 +453,7 @@ fun MapScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "没有找到带位置信息的照片",
+                    text = stringResource(R.string.no_photos_with_location),
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -526,13 +528,13 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.MyLocation,
-                    contentDescription = "定位"
+                    contentDescription = stringResource(R.string.locate)
                 )
             }
         }
 
         SimpleTitleHeader(
-            title = "足迹",
+            title = stringResource(R.string.footprint),
             onSettingsClick = onSettingsClick,
             onAboutClick = onAboutClick,
             onOpLogClick = onOpLogClick,
@@ -586,14 +588,14 @@ private fun ClusterPhotoGrid(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${cluster.count} 张照片",
+                text = stringResource(R.string.photos_count_format, cluster.count),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
             IconButton(onClick = onDismiss) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "关闭"
+                    contentDescription = stringResource(R.string.close)
                 )
             }
         }
@@ -611,7 +613,7 @@ private fun ClusterPhotoGrid(
 
                 photos.isEmpty() -> {
                     Text(
-                        text = "未找到可展示的照片",
+                        text = stringResource(R.string.no_showable_photos),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium
                     )

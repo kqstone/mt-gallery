@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import java.time.LocalDate
 
 @Composable
@@ -118,7 +120,7 @@ fun BackTitleTopBar(
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回"
+                    contentDescription = stringResource(R.string.back)
                 )
             }
         },
@@ -169,7 +171,7 @@ fun SimpleTitleHeader(
             Box {
                 TopBarActionIcon(
                     imageVector = Icons.Default.MoreVert,
-                    contentDescription = "更多选项",
+                    contentDescription = stringResource(R.string.more_options),
                     onClick = { menuExpanded = true }
                 )
                 DropdownMenu(
@@ -189,7 +191,7 @@ fun SimpleTitleHeader(
                     DropdownMenuItem(
                         text = { 
                             Text(
-                                text = "设置", 
+                                text = stringResource(R.string.settings), 
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                             ) 
                         },
@@ -209,7 +211,7 @@ fun SimpleTitleHeader(
                     DropdownMenuItem(
                         text = { 
                             Text(
-                                text = "操作日志", 
+                                text = stringResource(R.string.op_log), 
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                             ) 
                         },
@@ -229,7 +231,7 @@ fun SimpleTitleHeader(
                     DropdownMenuItem(
                         text = { 
                             Text(
-                                text = "关于", 
+                                text = stringResource(R.string.about), 
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                             ) 
                         },
@@ -252,17 +254,27 @@ fun SimpleTitleHeader(
     )
 }
 
-fun formatDayHeaderDate(dateStr: String): String {
+fun formatDayHeaderDate(context: android.content.Context, dateStr: String): String {
     return try {
         val targetDate = LocalDate.parse(dateStr)
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
         when (targetDate) {
-            today -> "今天"
-            yesterday -> "昨天"
-            else -> dateStr
+            today -> context.getString(R.string.today)
+            yesterday -> context.getString(R.string.yesterday)
+            else -> {
+                if (dateStr == "搜索结果") {
+                    context.getString(R.string.search_results)
+                } else {
+                    dateStr
+                }
+            }
         }
     } catch (e: Exception) {
-        dateStr
+        if (dateStr == "搜索结果") {
+            context.getString(R.string.search_results)
+        } else {
+            dateStr
+        }
     }
 }

@@ -56,10 +56,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,7 +97,11 @@ fun AboutScreen(
                 context.startActivity(intent)
                 viewModel.resetDownloadStatus()
             } catch (e: Exception) {
-                Toast.makeText(context, "无法拉起安装程序: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.cannot_launch_installer) + ": ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
                 viewModel.resetDownloadStatus()
             }
         }
@@ -103,10 +110,10 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("关于 MT Gallery", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)) },
+                title = { Text(stringResource(R.string.about_title), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -144,7 +151,7 @@ fun AboutScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.PhotoLibrary,
-                    contentDescription = "MT Gallery Logo",
+                    contentDescription = stringResource(R.string.app_name),
                     tint = Color.White,
                     modifier = Modifier.size(54.dp)
                 )
@@ -164,7 +171,7 @@ fun AboutScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "版本 v${uiState.currentVersion}",
+                text = stringResource(R.string.current_version, uiState.currentVersion),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
@@ -185,20 +192,20 @@ fun AboutScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Info,
-                            contentDescription = "简介",
+                            contentDescription = stringResource(R.string.about_desc_title),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "简介",
+                            text = stringResource(R.string.about_desc_title),
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "MT Gallery 是一款精美且流畅的MT Photos第三方客户端，支持本地云端混合显示、无感备份。",
+                        text = stringResource(R.string.about_desc_content),
                         style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -224,13 +231,13 @@ fun AboutScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Person,
-                            contentDescription = "作者",
+                            contentDescription = stringResource(R.string.author),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "作者",
+                            text = stringResource(R.string.author),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
@@ -257,7 +264,7 @@ fun AboutScreen(
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kqstone/mt-gallery"))
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
-                                    Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.cannot_open_link), Toast.LENGTH_SHORT).show()
                                 }
                             }
                             .padding(horizontal = 18.dp, vertical = 16.dp),
@@ -271,13 +278,13 @@ fun AboutScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "GitHub 开源仓库",
+                            text = stringResource(R.string.github_repo),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = "前往项目页",
+                            text = stringResource(R.string.go_to_project),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary
@@ -309,9 +316,9 @@ fun AboutScreen(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("正在检查...")
+                    Text(stringResource(R.string.checking_updates))
                 } else {
-                    Text("检查更新", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.check_updates), fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -342,13 +349,13 @@ fun AboutScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "最新版",
+                                    contentDescription = stringResource(R.string.up_to_date),
                                     tint = Color(0xFF4CAF50),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "当前已是最新版本",
+                                    text = stringResource(R.string.up_to_date),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color(0xFF4CAF50)
                                 )
@@ -357,7 +364,7 @@ fun AboutScreen(
 
                         is CheckStatus.Error -> {
                             Text(
-                                text = checkStatus.message,
+                                text = checkStatus.message.asString(),
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(vertical = 8.dp),
@@ -377,7 +384,7 @@ fun AboutScreen(
                                     modifier = Modifier.padding(18.dp)
                                 ) {
                                     Text(
-                                        text = "发现新版本 ${checkStatus.latestVersion}",
+                                        text = stringResource(R.string.new_version_available, checkStatus.latestVersion),
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onSecondaryContainer
                                     )
@@ -403,7 +410,7 @@ fun AboutScreen(
                                             )
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "正在下载: ${(downloadStatus.progress * 100).toInt()}%",
+                                                text = stringResource(R.string.downloading, downloadStatus.progress * 100f),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                                             )
@@ -414,14 +421,14 @@ fun AboutScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(10.dp)
                                         ) {
-                                            Text("下载并安装", fontWeight = FontWeight.SemiBold)
+                                            Text(stringResource(R.string.download_and_install), fontWeight = FontWeight.SemiBold)
                                         }
                                     }
 
                                     if (downloadStatus is DownloadStatus.Error) {
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = downloadStatus.message,
+                                            text = downloadStatus.message.asString(),
                                             color = MaterialTheme.colorScheme.error,
                                             style = MaterialTheme.typography.bodySmall
                                         )

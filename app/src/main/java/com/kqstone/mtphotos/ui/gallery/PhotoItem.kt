@@ -41,7 +41,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.R
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Scale
@@ -129,7 +131,7 @@ fun PhotoThumbnail(
                     if (isSelected) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "已选中",
+                            contentDescription = stringResource(R.string.selected),
                             tint = Color.White,
                             modifier = Modifier.size(14.dp)
                         )
@@ -171,21 +173,21 @@ private fun SyncStatusIcon(
             CloudWithArrowIcon(
                 dashed = false,
                 animated = true,
-                contentDescription = "备份中",
+                contentDescription = stringResource(R.string.backing_up),
                 modifier = modifier
             )
         }
         syncStatus == SyncStatus.SYNCED -> {
             CloudIconWithBackground(
                 icon = Icons.Outlined.CloudDone,
-                contentDescription = "已同步",
+                contentDescription = stringResource(R.string.synced),
                 modifier = modifier
             )
         }
         syncStatus == SyncStatus.CLOUD_ONLY -> {
             CloudIconWithBackground(
                 icon = Icons.Outlined.Cloud,
-                contentDescription = "仅云端",
+                contentDescription = stringResource(R.string.cloud_only),
                 modifier = modifier
             )
         }
@@ -193,7 +195,7 @@ private fun SyncStatusIcon(
             CloudWithArrowIcon(
                 dashed = true,
                 animated = false,
-                contentDescription = "待备份",
+                contentDescription = stringResource(R.string.pending_backup),
                 modifier = modifier
             )
         }

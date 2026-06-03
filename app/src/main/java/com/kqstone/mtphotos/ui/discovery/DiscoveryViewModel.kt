@@ -7,6 +7,8 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +21,7 @@ data class DiscoveryUiState(
     val locations: List<LocationItem> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: String? = null
+    val error: UiText? = null
 )
 
 class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
@@ -51,7 +53,10 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
                     locations = locations.getOrNull() ?: emptyList()
                 )
             } catch (e: Exception) {
-                _uiState.value = DiscoveryUiState(error = e.message ?: "加载失败")
+                _uiState.value = DiscoveryUiState(
+                    error = e.message?.let { UiText.DynamicString(it) } 
+                        ?: UiText.StringResource(R.string.load_failed)
+                )
             }
         }
     }
@@ -78,7 +83,8 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isRefreshing = false,
-                    error = e.message
+                    error = e.message?.let { UiText.DynamicString(it) }
+                        ?: UiText.StringResource(R.string.load_failed)
                 )
             }
         }

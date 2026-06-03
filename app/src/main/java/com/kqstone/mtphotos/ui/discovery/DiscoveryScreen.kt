@@ -31,6 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -91,12 +93,12 @@ fun DiscoveryScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = uiState.error!!,
+                            text = uiState.error!!.asString(),
                             color = MaterialTheme.colorScheme.error
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "点击重试",
+                            text = stringResource(R.string.click_to_retry),
                             modifier = Modifier.clickable { viewModel.loadAll() },
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -159,7 +161,7 @@ fun DiscoveryScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "暂无发现内容",
+                                        text = stringResource(R.string.no_discovery_content),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -189,7 +191,7 @@ private fun PeopleSection(
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
-            text = "人物",
+            text = stringResource(R.string.section_people),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
@@ -221,7 +223,7 @@ private fun SceneSection(
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
-            text = "场景",
+            text = stringResource(R.string.section_scenes),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
@@ -235,7 +237,7 @@ private fun SceneSection(
             ) { scene ->
                 CoverCard(
                     name = scene.name,
-                    subtitle = "${scene.count} 张",
+                    subtitle = stringResource(R.string.photo_count_short, scene.count),
                     thumbUrl = if (scene.coverMd5.isNotEmpty()) {
                         thumbUrlProvider(scene.coverMd5, scene.coverFileId)
                     } else null,
@@ -255,7 +257,7 @@ private fun LocationSection(
 ) {
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
-            text = "地点",
+            text = stringResource(R.string.section_locations),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
@@ -269,7 +271,7 @@ private fun LocationSection(
             ) { location ->
                 CoverCard(
                     name = location.city,
-                    subtitle = "${location.count} 张",
+                    subtitle = stringResource(R.string.photo_count_short, location.count),
                     thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider),
                     onClick = { onItemClick(location) },
                     fallbackIcon = Icons.Default.Place,
@@ -345,7 +347,7 @@ private fun PersonCircleItem(
             modifier = Modifier.padding(horizontal = 4.dp)
         )
         Text(
-            text = "$count 张",
+            text = stringResource(R.string.photo_count_short, count),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )

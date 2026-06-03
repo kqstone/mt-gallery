@@ -16,6 +16,8 @@ import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +30,7 @@ data class CategoryFileListUiState(
     val locationDistricts: List<LocationItem> = emptyList(),
     val selectedDistrict: String? = null,
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val columnCount: Int = 4
 )
 
@@ -143,7 +145,8 @@ class CategoryFileListViewModel(
                         _uiState.value = _uiState.value.copy(
                             pageKey = cacheKey,
                             isLoading = false,
-                            error = e.message ?: "加载失败",
+                            error = e.message?.let { UiText.DynamicString(it) }
+                                ?: UiText.StringResource(R.string.load_failed),
                             locationDistricts = districts,
                             selectedDistrict = district
                         )
@@ -193,7 +196,8 @@ class CategoryFileListViewModel(
                         _uiState.value = _uiState.value.copy(
                             pageKey = cacheKey,
                             isLoading = false,
-                            error = e.message ?: "加载失败"
+                            error = e.message?.let { UiText.DynamicString(it) }
+                                ?: UiText.StringResource(R.string.load_failed)
                         )
                     }
                 }

@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MT Gallery</string>
+    <string name="back">Back</string>
+
+    <!-- Settings Screen -->
+    <string name="server_connection">Server Connection</string>
+    <string name="connect_to_private_server">Connect to your private media server</string>
+    <string name="update_server_address">Update server access address</string>
+    <string name="primary_server_url">Primary Server URL</string>
+    <string name="secondary_server_url">Backup Server URL</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="saved_password_notice">Saved password will be used to log in again. Username and password cannot be modified here.</string>
+    <string name="save_and_relogin">Save &amp; Log In</string>
+    <string name="connect_now">Connect</string>
+    <string name="currently_used">Currently active</string>
+    <string name="test_connection">Test</string>
+    <string name="test_connection_success">Connection test succeeded</string>
+    <string name="test_connection_failed">Connection test failed</string>
+    <string name="please_fill_server_url">Please enter the server address first</string>
+    <string name="please_fill_primary_url">Please fill in at least the primary server address and select the active address</string>
+    <string name="primary_secondary_cannot_be_same">Primary and backup addresses cannot be the same</string>
+    <string name="please_fill_username_password">Please fill in username and password</string>
+    <string name="connection_failed">Connection failed</string>
+
+    <!-- About Screen -->
+    <string name="about">About</string>
+    <string name="about_title">About MT Gallery</string>
+    <string name="about_desc_title">Introduction</string>
+    <string name="about_desc_content">MT Gallery is a beautiful and smooth third-party client for MT Photos, supporting local and cloud mixed display, and seamless background backup.</string>
+    <string name="author">Author</string>
+    <string name="github_repo">GitHub Repository</string>
+    <string name="go_to_project">Go to Project</string>
+    <string name="cannot_launch_installer">Cannot launch package installer</string>
+    <string name="cannot_open_link">Cannot open link</string>
+    <string name="download_and_install">Download &amp; Install</string>
+    <string name="current_version">Version v%s</string>
+    <string name="check_updates">Check for Updates</string>
+    <string name="checking_updates">Checking for updates…</string>
+    <string name="up_to_date">Already up to date</string>
+    <string name="new_version_available">New version %s is available</string>
+    <string name="update_error">Network connection failed, please try again later</string>
+    <string name="download_failed">Download failed, please try again</string>
+    <string name="downloading">Downloading (%1$.1f%%)</string>
+    <string name="install">Install</string>
+    <string name="latest_version">Latest Version: %s</string>
+    <string name="release_notes">Release Notes</string>
+    <string name="download_now">Download Now</string>
+
+    <!-- Backup Settings Screen -->
+    <string name="backup_scan_found_missing">Scanned %1$d files, found %2$d missing backups</string>
+    <string name="backup_scan_no_missing">Scanned %1$d files, no missing backups found</string>
+    <string name="backup_scan_failed">Failed to scan for unbacked up files</string>
+    <string name="backup_load_directory_failed">Failed to load server directory</string>
+    <string name="backup_save_default_directory_failed">Failed to save default backup directory</string>
+    <string name="backup_create_folder_failed">Failed to create folder</string>
+    <string name="backup_save_directory_failed">Failed to save server directory</string>
+
+    <!-- Folder Setup Screen -->
+    <string name="select_media_folders">Select Media Folders</string>
+    <string name="select_media_folders_desc">Selected folders will be displayed in the Gallery and can be backed up to the cloud.\nYou can change this later in settings.</string>
+    <string name="scanning_device_folders">Scanning device folders…</string>
+    <string name="selected_folders_count">Selected %1$d / %2$d folders</string>
+    <string name="files_count_format">%1$d files</string>
+    <string name="select_all">Select All</string>
+    <string name="start_using">Get Started</string>
+
+    <!-- Map Screen -->
+    <string name="map_title">Footprint Map</string>
+    <string name="photos_count_format">%1$d photos</string>
+    <string name="loading_photos_location">Loading photo locations…</string>
+    <string name="no_photos_with_location">No photos found with location info</string>
+    <string name="locate">Locate</string>
+    <string name="footprint">Footprints</string>
+    <string name="close">Close</string>
+    <string name="no_showable_photos">No showable photos found</string>
+    <string name="load_failed">Load failed</string>
+
+    <!-- Main Navigation Tabs -->
+    <string name="tab_photos">Photos</string>
+    <string name="tab_albums">Albums</string>
+    <string name="tab_footprints">Footprints</string>
+    <string name="tab_explore">Explore</string>
+
+    <!-- Collection Categories & Defaults -->
+    <string name="default_album_name">Album</string>
+    <string name="people_photos">People</string>
+    <string name="scene_photos">Scenes</string>
+    <string name="category_favorites">Favorites</string>
+    <string name="category_recent">Recently Added</string>
+    <string name="category_videos">Videos</string>
+    <string name="category_trash">Trash</string>
+    <string name="category_other">Category</string>
+
+    <!-- Permission Gate -->
+    <string name="media_permission_required_title">Media Access Required</string>
+    <string name="media_permission_required_desc">MT Gallery needs access to photos and videos on your device to display local files and perform background backups.</string>
+    <string name="grant_permission">Grant Permission</string>
+    <string name="go_to_settings">Go to Settings</string>
+    <string name="skip_cloud_only">Skip, Cloud Only</string>
+
+    <!-- Discovery Screen -->
+    <string name="click_to_retry">Click to Retry</string>
+    <string name="no_discovery_content">No content discovered yet</string>
+    <string name="section_people">People</string>
+    <string name="section_scenes">Scenes</string>
+    <string name="section_locations">Locations</string>
+    <string name="photo_count_short">%1$d photos</string>
+
+    <!-- Folder & Categories Screen -->
+    <string name="section_albums">Albums</string>
+    <string name="section_folders">Folders</string>
+    <string name="section_categories">Categories</string>
+    <string name="item_count_short">%1$d items</string>
+    <string name="category_favorites_desc">Favorite media</string>
+    <string name="category_recent_desc">Recently imported media</string>
+    <string name="category_videos_desc">All videos</string>
+    <string name="category_trash_desc">Deleted but not purged</string>
+
+    <!-- Folder Detail Screen -->
+    <string name="folder_empty">Folder is empty</string>
+    <string name="section_subfolders">Subfolders</string>
+
+    <!-- Category File List Screen -->
+    <string name="no_photos">No photos</string>
+    <string name="filter_all">All</string>
+
+    <!-- Gallery & Sync -->
+    <string name="sync_complete_message">Media synced</string>
+    <string name="sync_failed">Sync failed: %1$s</string>
+    <string name="refresh_failed">Refresh failed</string>
+    <string name="addr_summary_format">%1$s and %2$d other places</string>
+    <string name="year_month_format">%1$s-%2$02d</string>
+    <string name="sync_loading_cloud">Loading cloud media…</string>
+    <string name="sync_cloud_indexed_scanning_local">Found %1$d files on cloud, scanning local…</string>
+    <string name="sync_scanned_local_files">Scanned %1$d local files…</string>
+    <string name="sync_writing_cloud_index_progress">Writing cloud index %1$d/%2$d…</string>
+    <string name="sync_writing_cloud_index">Writing cloud index…</string>
+    <string name="sync_cleaning_up">Optimizing database…</string>
+
+    <!-- Selection & Delete -->
+    <string name="cancel_selection">Cancel selection</string>
+    <string name="selected_count_format">Selected %1$d items</string>
+    <string name="share">Share</string>
+    <string name="favorite">Favorite</string>
+    <string name="unfavorite">Unfavorite</string>
+    <string name="delete">Delete</string>
+    <string name="confirm_delete_title">Confirm Delete</string>
+    <string name="delete_confirm_desc_legacy">Are you sure you want to delete the selected %1$d items?\nThey will be moved to the server trash bin.</string>
+    <string name="delete_confirm_desc">Media will be moved to the server trash bin.</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete_failed_format">Delete failed: %1$s</string>
+    <string name="video">Video</string>
+    <string name="selected">Selected</string>
+    <string name="backing_up">Backing up</string>
+    <string name="synced">Synced</string>
+    <string name="cloud_only">Cloud only</string>
+    <string name="pending_backup">Pending backup</string>
+
+    <!-- Viewer Screen -->
+    <string name="load_original">Load Original</string>
+    <string name="favorited">Favorited</string>
+    <string name="info">Info</string>
+    <string name="delete_this_media">Delete this media?</string>
+    <string name="delete_media_confirm_desc">Determine to delete this file permanently from local storage and cloud? This action cannot be undone.</string>
+    <string name="details">Details</string>
+    <string name="file_info">File Info</string>
+    <string name="taken_time">Date taken</string>
+    <string name="file_name">File name</string>
+    <string name="file_size">Size</string>
+    <string name="resolution">Resolution</string>
+    <string name="storage_path">Storage path</string>
+    <string name="shutter_fraction_format">1/%1$d s</string>
+    <string name="shutter_seconds_format">%1$s s</string>
+    <string name="camera_brand_model">Camera</string>
+    <string name="lens_model">Lens</string>
+    <string name="aperture">Aperture</string>
+    <string name="shutter_speed">Shutter speed</string>
+    <string name="iso_speed">ISO speed</string>
+    <string name="focal_length">Focal length</string>
+    <string name="exif_parameters">Exif parameters</string>
+    <string name="photo_location_coords_format">Photo Location (%1$.4f, %2$.4f)</string>
+    <string name="location">Location</string>
+    <string name="open_map_failed">Failed to open map: %1$s</string>
+    <string name="view_in_map">View in map</string>
+    <string name="friendly_date_format">yyyy-MM-dd EEEE hh:mm a</string>
+    <string name="friendly_date_short_format">yyyy-MM-dd HH:mm</string>
+    <string name="pause">Pause</string>
+    <string name="play">Play</string>
+    <string name="unmute">Unmute</string>
+    <string name="mute">Mute</string>
+    <string name="more_options">More options</string>
+    <string name="settings">Settings</string>
+    <string name="op_log">Operation log</string>
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+
+    <!-- Sharing -->
+    <string name="sharing_preparing">Preparing to share…</string>
+    <string name="sharing_preparing_percentage">Preparing to share… %1$d%%</string>
+    <string name="sharing_preparing_progress">Preparing to share: %1$d/%2$d</string>
+    <string name="share_media">Share media</string>
+    <string name="share_failed">Share failed: %1$s</string>
+
+    <!-- Search Overlay -->
+    <string name="search">Search</string>
+    <string name="search_cloud_media">Search cloud media</string>
+    <string name="clear_search">Clear search</string>
+    <string name="filter_panel">Filter panel</string>
+    <string name="search_type">Search type</string>
+    <string name="search_type_visual">Visual</string>
+    <string name="search_type_ocr">OCR</string>
+    <string name="search_type_filename">Filename</string>
+    <string name="search_type_auto">Auto</string>
+    <string name="search_suggestions">Suggestions</string>
+    <string name="search_people">People</string>
+    <string name="search_unlimited">Any</string>
+    <string name="search_locations">Locations</string>
+    <string name="loading_filter_options">Loading filters…</string>
+    <string name="searching_loading">Searching…</string>
+    <string name="server_clip_disabled">Visual search is not enabled on the server</string>
+    <string name="no_matching_cloud_media">No matching cloud media found</string>
+    <string name="search_failed_simple">Search failed</string>
+    <string name="search_unknown">Unknown</string>
+    <string name="search_unnamed">Unnamed</string>
+    <string name="search_results">Search Results</string>
+
+    <!-- Operation Log -->
+    <string name="op_log_title">Operation Log</string>
+    <string name="clear_success_logs">Clear success logs</string>
+    <string name="all_statuses">All Statuses</string>
+    <string name="all_types">All Types</string>
+    <string name="retry">Retry</string>
+    <string name="no_op_logs">No operation logs</string>
+    <string name="op_type_delete">Delete</string>
+    <string name="op_type_favorite">Favorite</string>
+    <string name="op_type_rename_person">Rename Person</string>
+    <string name="op_type_tag">Tag</string>
+    <string name="op_type_hide">Hide</string>
+    <string name="op_type_backup">Upload</string>
+    <string name="status_running_simple">Running</string>
+    <string name="status_error">Error</string>
+    <string name="op_desc_delete">Cloud delete</string>
+    <string name="op_desc_favorite">Favorite</string>
+    <string name="op_desc_unfavorite">Unfavorite</string>
+    <string name="op_desc_rename_person">Rename person</string>
+    <string name="op_desc_tag_add">Add tag</string>
+    <string name="op_desc_tag_remove">Remove tag</string>
+    <string name="op_desc_hide">Hide</string>
+    <string name="op_desc_unhide">Unhide</string>
+    <string name="op_desc_backup">Backup upload</string>
+    <string name="retry_in_hours">%1$d hours later</string>
+    <string name="retry_in_minutes">%1$d minutes later</string>
+    <string name="retry_soon">Retry soon</string>
+    <string name="waiting_retry">Waiting to retry</string>
+    <string name="status_error_format">Error (%1$d attempts) · %2$s</string>
+    <string name="status_failed_format">Failed (%1$d attempts)</string>
+    <string name="status_success">Success</string>
+    <string name="status_pending">Pending</string>
+    <string name="status_running">Running</string>
+    <string name="status_failed">Failed</string>
+
+    <!-- Download Manager -->
+    <string name="download_completed">Download completed</string>
+    <string name="download_failed_format">Download failed: %1$s</string>
+    <string name="download_err_get_url_failed">Failed to get original image URL</string>
+    <string name="download_err_http_failed">Download failed: %1$d</string>
+    <string name="download_err_empty_response">Empty response from server</string>
+    <string name="download_err_mediastore_failed">Failed to create MediaStore entry</string>
+    <string name="download_err_write_failed">Failed to write file</string>
+
+    <!-- Backup Setup and Settings -->
+    <string name="select_backup_destination">Select backup destination</string>
+    <string name="select_backup_folder">Select backup folder</string>
+    <string name="backup_destination">Backup to</string>
+    <string name="next_step">Next Step</string>
+    <string name="backup_folder">Backup folder</string>
+    <string name="complete">Complete</string>
+    <string name="no_folder_selected">No folders selected</string>
+    <string name="folders_selected_some_empty_format">Selected %1$d folders, %2$d of which have no local files</string>
+    <string name="folders_selected_format">Selected %1$d folders</string>
+    <string name="setup_backup">Setup Backup</string>
+    <string name="backup_and_storage">Backup &amp; Storage</string>
+    <string name="scanning_device_files">Scanning device files…</string>
+    <string name="first_scan_takes_time">First scan may take some time, please wait.</string>
+    <string name="server">Server</string>
+    <string name="maintain_server_addresses">Maintain primary/backup access addresses and log in again</string>
+    <string name="auto_backup">Auto Backup</string>
+    <string name="enable_auto_backup">Enable auto backup</string>
+    <string name="auto_backup_desc">Automatically backup device photos and videos to server</string>
+    <string name="backup_on_wifi_only">Backup on Wi-Fi only</string>
+    <string name="backup_on_wifi_only_desc">When disabled, mobile data can also be used for backup</string>
+    <string name="backup_now">Backup Now</string>
+    <string name="pending_backup_count_format">%1$d files pending backup</string>
+    <string name="all_files_backed_up">All files backed up</string>
+    <string name="scan_and_upload_missing">Scan &amp; upload missing files</string>
+    <string name="scan_and_upload_missing_desc">Compare local and cloud completely, backup missing files again</string>
+    <string name="storage_management">Storage Management</string>
+    <string name="cache_management">Cache Management</string>
+    <string name="max_thumbnail_cache_size">Max thumbnail cache size</string>
+    <string name="clear_thumbnail_cache">Clear thumbnail cache</string>
+    <string name="current_used_cache_format">Currently used: %1$s</string>
+    <string name="clear_media_cache">Clear photo &amp; video cache</string>
+    <string name="free_up_storage_space">Free up storage space</string>
+    <string name="free_up_storage_desc">Will delete %1$d backed up local original photos or videos.</string>
+    <string name="can_free_up_format">Can free up about %1$s</string>
+    <string name="free_up_warning_desc">Deleted local original files cannot be recovered, but cloud backup and thumbnail cache are unaffected.</string>
+    <string name="free_up_warning_folder_config">Selected backup folder configuration will be kept, even if local files in those folders are cleared.</string>
+    <string name="confirm_delete_btn">Confirm Delete</string>
+    <string name="max_cache_limit">Max cache size limit</string>
+    <string name="default_label"> (Default)</string>
+    <string name="clear_thumbnail_cache_confirm_desc">Will clear all loaded album thumbnail cache (currently taking about %1$s). After clearing, thumbnails cannot be loaded offline until connected to the internet again. Are you sure you want to clear?</string>
+    <string name="confirm_clear">Confirm Clear</string>
+    <string name="clear_media_cache_confirm_desc">Will clear all high-res photos and videos cached during local viewing (currently taking about %1$s). After clearing, original photos or videos will need to be reloaded from the cloud when offline. Are you sure you want to clear?</string>
+    <string name="sync_summary">Sync Summary</string>
+    <string name="synced_label_format">Synced</string>
+    <string name="uploaded_label_format">Uploaded</string>
+    <string name="pending_backup_label_format">Pending</string>
+    <string name="items_count_suffix_format">%1$s items</string>
+    <string name="backing_up_progress">Backing up…</string>
+    <string name="free_up_storage_desc_simple">There are %1$d backed up files whose local originals can be deleted.</string>
+    <string name="free_up_storage_warning_simple">Will not remove backup folder configurations.</string>
+    <string name="free_up_space_btn">Free up space</string>
+    <string name="no_optimizable_files">No optimizable files found</string>
+    <string name="no_media_folders_found">No selectable media folders found</string>
+    <string name="ok">OK</string>
+    <string name="select_backup_to">Select backup destination</string>
+    <string name="default_destination">Default</string>
+    <string name="custom">Custom</string>
+    <string name="select_server_folder">Select server folder</string>
+    <string name="current_location_format">Current Location: %1$s</string>
+    <string name="select_current_directory">Select current directory</string>
+    <string name="parent_directory">Parent Directory</string>
+    <string name="creating_folder">Creating…</string>
+    <string name="new_folder">New Folder</string>
+    <string name="no_subfolders_in_directory">No subdirectories available in current directory</string>
+    <string name="close_btn">Close</string>
+    <string name="refresh_btn">Refresh</string>
+    <string name="enter_folder_name">Enter folder name</string>
+    <string name="create_btn">Create</string>
+    <string name="enter">Enter</string>
+    <string name="covered_by_parent_folder">Covered by parent folder</string>
+    <string name="files_count_with_subfolders_format">%1$d files, including subfolders</string>
+    <string name="folder_retained_after_clear">Local files cleared, retained as selected backup folder</string>
+    <string name="historical_folder_no_files">Historical folder, no local files found currently</string>
+    <string name="sync_interval">Sync Interval</string>
+    <string name="sync_interval_desc">Scan local media changes periodically to supplement real-time detection</string>
+    <string name="minutes_format">%1$d minutes</string>
+</resources>

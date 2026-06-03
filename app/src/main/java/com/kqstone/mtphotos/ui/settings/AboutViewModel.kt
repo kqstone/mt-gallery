@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,14 +27,14 @@ sealed interface CheckStatus {
     object Checking : CheckStatus
     object UpToDate : CheckStatus
     data class NewVersionAvailable(val latestVersion: String, val downloadUrl: String, val body: String) : CheckStatus
-    data class Error(val message: String) : CheckStatus
+    data class Error(val message: UiText) : CheckStatus
 }
 
 sealed interface DownloadStatus {
     object Idle : DownloadStatus
     data class Downloading(val progress: Float) : DownloadStatus
     data class Success(val apkFile: File) : DownloadStatus
-    data class Error(val message: String) : DownloadStatus
+    data class Error(val message: UiText) : DownloadStatus
 }
 
 data class AboutUiState(
@@ -127,8 +129,14 @@ class AboutViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check for updates", e)
                 withContext(Dispatchers.Main) {
+                    val msg = e.message
+                    val uiMsg = if (msg.isNullOrBlank()) {
+                        UiText.StringResource(R.string.update_error)
+                    } else {
+                        UiText.DynamicString(msg)
+                    }
                     _uiState.update {
-                        it.copy(checkStatus = CheckStatus.Error(e.message ?: "网络连接失败，请稍后重试"))
+                        it.copy(checkStatus = CheckStatus.Error(uiMsg))
                     }
                 }
             }
@@ -186,8 +194,14 @@ class AboutViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
                 withContext(Dispatchers.Main) {
+                    val msg = e.message
+                    val uiMsg = if (msg.isNullOrBlank()) {
+                        UiText.StringResource(R.string.download_failed)
+                    } else {
+                        UiText.DynamicString(msg)
+                    }
                     _uiState.update {
-                        it.copy(downloadStatus = DownloadStatus.Error(e.message ?: "下载更新失败，请重试"))
+                        it.copy(downloadStatus = DownloadStatus.Error(uiMsg))
                     }
                 }
             }

@@ -33,7 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
@@ -123,11 +125,11 @@ fun CategoryFileListScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = uiState.error!!,
+                            text = uiState.error!!.asString(),
                             color = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            text = "点击重试",
+                            text = stringResource(R.string.click_to_retry),
                             modifier = Modifier.clickable {
                                 when (loadType) {
                                     "people" -> viewModel.loadPeopleFiles(loadParam, force = true)
@@ -153,7 +155,7 @@ fun CategoryFileListScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "暂无照片",
+                        text = stringResource(R.string.no_photos),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -199,7 +201,7 @@ fun CategoryFileListScreen(
                         targetDistrict.value = null
                         viewModel.loadLocationFiles(loadParam, null)
                     },
-                    label = { Text("全部") }
+                    label = { Text(stringResource(R.string.filter_all)) }
                 )
                 uiState.locationDistricts.forEach { district ->
                     FilterChip(

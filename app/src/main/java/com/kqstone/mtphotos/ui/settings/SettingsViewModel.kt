@@ -3,7 +3,9 @@ package com.kqstone.mtphotos.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.repository.AuthRepository
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -18,9 +20,9 @@ data class SettingsUiState(
     val credentialsEditable: Boolean = true,
     val isLoading: Boolean = false,
     val testingUrlSlot: ServerUrlSlot? = null,
-    val primaryUrlTestMessage: String? = null,
-    val secondaryUrlTestMessage: String? = null,
-    val error: String? = null,
+    val primaryUrlTestMessage: UiText? = null,
+    val secondaryUrlTestMessage: UiText? = null,
+    val error: UiText? = null,
     val isLoggedIn: Boolean = false
 )
 
@@ -118,7 +120,7 @@ class SettingsViewModel(
             ServerUrlSlot.SECONDARY -> state.secondaryServerUrl
         }.trim()
         if (url.isBlank()) {
-            setTestMessage(slot, "请先填写服务器地址")
+            setTestMessage(slot, UiText.StringResource(R.string.please_fill_server_url))
             return
         }
 
@@ -128,11 +130,17 @@ class SettingsViewModel(
             result.fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(testingUrlSlot = null)
-                    setTestMessage(slot, "连接测试成功")
+                    setTestMessage(slot, UiText.StringResource(R.string.test_connection_success))
                 },
                 onFailure = { e ->
                     _uiState.value = _uiState.value.copy(testingUrlSlot = null)
-                    setTestMessage(slot, e.message ?: "连接测试失败")
+                    val msg = e.message
+                    val uiMsg = if (msg.isNullOrBlank()) {
+                        UiText.StringResource(R.string.test_connection_failed)
+                    } else {
+                        UiText.DynamicString(msg)
+                    }
+                    setTestMessage(slot, uiMsg)
                 }
             )
         }
@@ -144,15 +152,15 @@ class SettingsViewModel(
         val primaryUrl = state.primaryServerUrl.trim()
         val secondaryUrl = state.secondaryServerUrl.trim()
         if (activeUrl.isBlank() || primaryUrl.isBlank()) {
-            _uiState.value = state.copy(error = "请至少填写主服务器地址并选择当前使用地址")
+            _uiState.value = state.copy(error = UiText.StringResource(R.string.please_fill_primary_url))
             return
         }
         if (secondaryUrl.isNotBlank() && primaryUrl.trimEnd('/') == secondaryUrl.trimEnd('/')) {
-            _uiState.value = state.copy(error = "主地址和备用地址不能相同")
+            _uiState.value = state.copy(error = UiText.StringResource(R.string.primary_secondary_cannot_be_same))
             return
         }
         if (state.username.isBlank() || state.password.isBlank()) {
-            _uiState.value = state.copy(error = "请填写用户名和密码")
+            _uiState.value = state.copy(error = UiText.StringResource(R.string.please_fill_username_password))
             return
         }
 
@@ -179,16 +187,22 @@ class SettingsViewModel(
                     _uiState.value = _uiState.value.copy(isLoading = false, isLoggedIn = true)
                 },
                 onFailure = { e ->
+                    val msg = e.message
+                    val uiMsg = if (msg.isNullOrBlank()) {
+                        UiText.StringResource(R.string.connection_failed)
+                    } else {
+                        UiText.DynamicString(msg)
+                    }
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = e.message ?: "连接失败"
+                        error = uiMsg
                     )
                 }
             )
         }
     }
 
-    private fun setTestMessage(slot: ServerUrlSlot, message: String) {
+    private fun setTestMessage(slot: ServerUrlSlot, message: UiText?) {
         _uiState.value = when (slot) {
             ServerUrlSlot.PRIMARY -> _uiState.value.copy(primaryUrlTestMessage = message)
             ServerUrlSlot.SECONDARY -> _uiState.value.copy(secondaryUrlTestMessage = message)

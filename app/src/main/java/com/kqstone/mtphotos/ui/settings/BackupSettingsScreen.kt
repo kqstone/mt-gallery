@@ -2,6 +2,10 @@ package com.kqstone.mtphotos.ui.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
+import android.content.Context
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,18 +88,19 @@ fun BackupSetupScreen(
         }
     }
 
+    val context = LocalContext.current
     val backupDestinationSubtitle = backupDestinationSummary(uiState)
     val defaultBackupDestinationSubtitle = defaultBackupDestinationSummary(uiState)
-    val folderSubtitle = folderSelectionSummary(uiState)
+    val folderSubtitle = folderSelectionSummary(context, uiState)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (step == 0) "选择备份目标" else "选择备份文件夹") },
+                title = { Text(if (step == 0) stringResource(R.string.select_backup_destination) else stringResource(R.string.select_backup_folder)) },
                 navigationIcon = {
                     if (step > 0) {
                         IconButton(onClick = { step-- }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     }
                 }
@@ -112,7 +117,7 @@ fun BackupSetupScreen(
             if (step == 0) {
                 item {
                     SettingActionRow(
-                        title = "备份到",
+                        title = stringResource(R.string.backup_destination),
                         subtitle = backupDestinationSubtitle,
                         icon = Icons.Default.Cloud,
                         onClick = {
@@ -126,7 +131,7 @@ fun BackupSetupScreen(
                         onClick = { step = 1 },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("下一步")
+                        Text(stringResource(R.string.next_step))
                     }
                 }
             } else {
@@ -138,7 +143,7 @@ fun BackupSetupScreen(
                         Icon(Icons.Default.Folder, contentDescription = null)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("备份文件夹", style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.backup_folder), style = MaterialTheme.typography.titleMedium)
                             Text(
                                 text = folderSubtitle,
                                 style = MaterialTheme.typography.bodySmall,
@@ -171,7 +176,7 @@ fun BackupSetupScreen(
                         enabled = uiState.selectedFolderCount > 0,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("完成")
+                        Text(stringResource(R.string.complete))
                     }
                 }
             }
@@ -240,23 +245,18 @@ fun BackupSettingsScreen(
         viewModel.loadCacheStats()
     }
 
-    val folderSubtitle = when {
-        uiState.selectedFolderCount <= 0 -> "未选择任何文件夹"
-        uiState.historicalSelectedFolderCount > 0 ->
-            "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
-        else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
-    }
+    val folderSubtitle = folderSelectionSummary(context, uiState)
     val backupDestinationSubtitle = backupDestinationSummary(uiState)
     val defaultBackupDestinationSubtitle = defaultBackupDestinationSummary(uiState)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (setupMode) "设置备份" else "备份与存储") },
+                title = { Text(if (setupMode) stringResource(R.string.setup_backup) else stringResource(R.string.backup_and_storage)) },
                 navigationIcon = {
                     if (!setupMode) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     }
                 },
@@ -266,7 +266,7 @@ fun BackupSettingsScreen(
                             onClick = { viewModel.completeInitialSetup(onSetupComplete) },
                             enabled = uiState.selectedFolderCount > 0 && !uiState.isSyncing
                         ) {
-                            Text("完成")
+                            Text(stringResource(R.string.complete))
                         }
                     }
                 }
@@ -301,12 +301,12 @@ fun BackupSettingsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
-                                    "正在扫描设备文件...",
+                                    stringResource(R.string.scanning_device_files),
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    "首次扫描可能需要一点时间，请稍候。",
+                                    stringResource(R.string.first_scan_takes_time),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -326,24 +326,24 @@ fun BackupSettingsScreen(
             }
 
             if (!setupMode) {
-                item { SectionTitle("服务器") }
+                item { SectionTitle(stringResource(R.string.server)) }
 
                 item {
                     SettingActionRow(
-                        title = "服务器连接",
-                        subtitle = "维护主/备用访问地址并重新登录",
+                        title = stringResource(R.string.server_connection),
+                        subtitle = stringResource(R.string.maintain_server_addresses),
                         icon = Icons.Default.Link,
                         onClick = onServerConnection
                     )
                 }
             }
 
-            item { SectionTitle("自动备份") }
+            item { SectionTitle(stringResource(R.string.auto_backup)) }
 
             item {
                 SettingSwitchRow(
-                    title = "开启自动备份",
-                    subtitle = "自动将设备照片和视频备份到服务器",
+                    title = stringResource(R.string.enable_auto_backup),
+                    subtitle = stringResource(R.string.auto_backup_desc),
                     icon = Icons.Default.Backup,
                     checked = uiState.backupEnabled,
                     onCheckedChange = { viewModel.setBackupEnabled(it) }
@@ -352,8 +352,8 @@ fun BackupSettingsScreen(
 
             item {
                 SettingSwitchRow(
-                    title = "仅在 Wi-Fi 下备份",
-                    subtitle = "关闭后也可使用移动数据备份",
+                    title = stringResource(R.string.backup_on_wifi_only),
+                    subtitle = stringResource(R.string.backup_on_wifi_only_desc),
                     icon = Icons.Default.Cloud,
                     checked = uiState.wifiOnly,
                     onCheckedChange = { viewModel.setWifiOnly(it) },
@@ -371,11 +371,11 @@ fun BackupSettingsScreen(
 
             item {
                 SettingActionRow(
-                    title = "立即备份",
+                    title = stringResource(R.string.backup_now),
                     subtitle = if (uiState.pendingCount > 0) {
-                        "${uiState.pendingCount} 个文件待备份"
+                        stringResource(R.string.pending_backup_count_format, uiState.pendingCount)
                     } else {
-                        "所有文件已备份"
+                        stringResource(R.string.all_files_backed_up)
                     },
                     icon = Icons.Default.Backup,
                     onClick = { viewModel.triggerBackupNow() },
@@ -385,9 +385,9 @@ fun BackupSettingsScreen(
 
             item {
                 SettingActionRow(
-                    title = "扫描并补传未备份文件",
-                    subtitle = uiState.backupRepairMessage
-                        ?: "全量比对本地与云端，重新备份缺失文件",
+                    title = stringResource(R.string.scan_and_upload_missing),
+                    subtitle = uiState.backupRepairMessage?.asString()
+                        ?: stringResource(R.string.scan_and_upload_missing_desc),
                     icon = Icons.Default.Cloud,
                     onClick = { viewModel.repairMissingBackups() },
                     enabled = uiState.backupEnabled && !uiState.isRepairingBackups
@@ -397,11 +397,11 @@ fun BackupSettingsScreen(
                 }
             }
 
-            item { SectionTitle("备份目标") }
+            item { SectionTitle(stringResource(R.string.backup_destination)) }
 
             item {
                 SettingActionRow(
-                    title = "备份到",
+                    title = stringResource(R.string.backup_destination),
                     subtitle = backupDestinationSubtitle,
                     icon = Icons.Default.Cloud,
                     onClick = {
@@ -411,11 +411,11 @@ fun BackupSettingsScreen(
                 )
             }
 
-            item { SectionTitle("备份文件夹") }
+            item { SectionTitle(stringResource(R.string.backup_folder)) }
 
             item {
                 SettingActionRow(
-                    title = "选择备份文件夹",
+                    title = stringResource(R.string.select_backup_folder),
                     subtitle = folderSubtitle,
                     icon = Icons.Default.Folder,
                     onClick = {
@@ -426,7 +426,7 @@ fun BackupSettingsScreen(
                 )
             }
 
-            item { SectionTitle("存储管理") }
+            item { SectionTitle(stringResource(R.string.storage_management)) }
 
             item {
                 StorageOptimizationCard(
@@ -437,11 +437,11 @@ fun BackupSettingsScreen(
                 )
             }
 
-            item { SectionTitle("缓存管理") }
+            item { SectionTitle(stringResource(R.string.cache_management)) }
 
             item {
                 SettingActionRow(
-                    title = "最大缩略图缓存容量",
+                    title = stringResource(R.string.max_thumbnail_cache_size),
                     subtitle = formatCacheLimitLabel(uiState.coilDiskCacheMb),
                     icon = Icons.Default.Folder,
                     onClick = { showCacheLimitDialog = true }
@@ -450,8 +450,8 @@ fun BackupSettingsScreen(
 
             item {
                 SettingActionRow(
-                    title = "清理缩略图缓存",
-                    subtitle = "当前已用: ${uiState.thumbnailCacheSizeFormatted}",
+                    title = stringResource(R.string.clear_thumbnail_cache),
+                    subtitle = stringResource(R.string.current_used_cache_format, uiState.thumbnailCacheSizeFormatted),
                     icon = Icons.Default.CleaningServices,
                     onClick = { showClearThumbnailCacheConfirm = true }
                 )
@@ -459,8 +459,8 @@ fun BackupSettingsScreen(
 
             item {
                 SettingActionRow(
-                    title = "清理照片与视频缓存",
-                    subtitle = "当前已用: ${uiState.mediaCacheSizeFormatted}",
+                    title = stringResource(R.string.clear_media_cache),
+                    subtitle = stringResource(R.string.current_used_cache_format, uiState.mediaCacheSizeFormatted),
                     icon = Icons.Default.CleaningServices,
                     onClick = { showClearMediaCacheConfirm = true }
                 )
@@ -475,24 +475,24 @@ fun BackupSettingsScreen(
             icon = {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFF9800))
             },
-            title = { Text("释放存储空间") },
+            title = { Text(stringResource(R.string.free_up_storage_space)) },
             text = {
                 Column {
-                    Text("即将删除 ${uiState.optimizableCount} 个已备份的本地原图或视频文件。")
+                    Text(stringResource(R.string.free_up_storage_desc, uiState.optimizableCount))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "可释放约 ${uiState.optimizableSizeFormatted}",
+                        stringResource(R.string.can_free_up_format, uiState.optimizableSizeFormatted),
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "删除后将无法恢复本地原文件，但云端备份和缩略图缓存不受影响。",
+                        stringResource(R.string.free_up_warning_desc),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "已选择的备份文件夹配置会被保留，即使该文件夹中的本地文件已被清理。",
+                        stringResource(R.string.free_up_warning_folder_config),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -507,12 +507,12 @@ fun BackupSettingsScreen(
                         }
                     }
                 ) {
-                    Text("确认删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.confirm_delete_btn), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCleanupConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -567,7 +567,7 @@ fun BackupSettingsScreen(
         val options = listOf(256, 512, 1024, 2048, 5120)
         AlertDialog(
             onDismissRequest = { showCacheLimitDialog = false },
-            title = { Text("最大缓存容量限制") },
+            title = { Text(stringResource(R.string.max_cache_limit)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     options.forEach { limitMb ->
@@ -590,7 +590,7 @@ fun BackupSettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = formatCacheLimitLabel(limitMb) + if (limitMb == 512) " (默认)" else "",
+                                text = formatCacheLimitLabel(limitMb) + if (limitMb == 512) stringResource(R.string.default_label) else "",
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -599,7 +599,7 @@ fun BackupSettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showCacheLimitDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -611,9 +611,9 @@ fun BackupSettingsScreen(
             icon = {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
             },
-            title = { Text("清除缩略图缓存") },
+            title = { Text(stringResource(R.string.clear_thumbnail_cache)) },
             text = {
-                Text("即将清理所有已加载的相册缩略图缓存 (当前占用约 ${uiState.thumbnailCacheSizeFormatted})。清理后，在没有网络连接时将无法加载已离线缓存的缩略图，直到再次联网加载。确定要清除吗？")
+                Text(stringResource(R.string.clear_thumbnail_cache_confirm_desc, uiState.thumbnailCacheSizeFormatted))
             },
             confirmButton = {
                 TextButton(
@@ -622,12 +622,12 @@ fun BackupSettingsScreen(
                         showClearThumbnailCacheConfirm = false
                     }
                 ) {
-                    Text("确认清理", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.confirm_clear), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearThumbnailCacheConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -639,9 +639,9 @@ fun BackupSettingsScreen(
             icon = {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
             },
-            title = { Text("清除照片与视频缓存") },
+            title = { Text(stringResource(R.string.clear_media_cache)) },
             text = {
-                Text("即将清理本地查看时缓存的全部高清照片和大图、视频文件 (当前占用约 ${uiState.mediaCacheSizeFormatted})。清理后，在没有网络连接时将需要重新从云端加载原图或视频。确定要清除吗？")
+                Text(stringResource(R.string.clear_media_cache_confirm_desc, uiState.mediaCacheSizeFormatted))
             },
             confirmButton = {
                 TextButton(
@@ -650,12 +650,12 @@ fun BackupSettingsScreen(
                         showClearMediaCacheConfirm = false
                     }
                 ) {
-                    Text("确认清理", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.confirm_clear), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearMediaCacheConfirm = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -693,7 +693,7 @@ private fun BackupStatusCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "同步概况",
+                    stringResource(R.string.sync_summary),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -703,15 +703,15 @@ private fun BackupStatusCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem(label = "已同步", value = "$syncedCount 项")
-                StatItem(label = "已上传", value = "$backedUpCount 项")
-                StatItem(label = "待备份", value = "$pendingCount 项")
+                StatItem(label = stringResource(R.string.synced_label_format), value = stringResource(R.string.items_count_suffix_format, syncedCount.toString()))
+                StatItem(label = stringResource(R.string.uploaded_label_format), value = stringResource(R.string.items_count_suffix_format, backedUpCount.toString()))
+                StatItem(label = stringResource(R.string.pending_backup_label_format), value = stringResource(R.string.items_count_suffix_format, pendingCount.toString()))
             }
             if (isBackingUp) {
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Text(
-                    "正在备份...",
+                    stringResource(R.string.backing_up_progress),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -736,12 +736,12 @@ private fun StatItem(label: String, value: String) {
     }
 }
 
-private fun folderSelectionSummary(uiState: BackupSettingsUiState): String {
+private fun folderSelectionSummary(context: Context, uiState: BackupSettingsUiState): String {
     return when {
-        uiState.selectedFolderCount <= 0 -> "未选择任何文件夹"
+        uiState.selectedFolderCount <= 0 -> context.getString(R.string.no_folder_selected)
         uiState.historicalSelectedFolderCount > 0 ->
-            "已选择 ${uiState.selectedFolderCount} 个文件夹，其中 ${uiState.historicalSelectedFolderCount} 个已无本地文件"
-        else -> "已选择 ${uiState.selectedFolderCount} 个文件夹"
+            context.getString(R.string.folders_selected_some_empty_format, uiState.selectedFolderCount, uiState.historicalSelectedFolderCount)
+        else -> context.getString(R.string.folders_selected_format, uiState.selectedFolderCount)
     }
 }
 
@@ -788,20 +788,20 @@ private fun StorageOptimizationCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.CleaningServices, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("释放存储空间", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.free_up_storage_space), style = MaterialTheme.typography.titleMedium)
             }
             Spacer(modifier = Modifier.height(8.dp))
 
             if (optimizableCount > 0) {
-                Text("共有 $optimizableCount 个已备份文件可以删除本地原件。")
+                Text(stringResource(R.string.free_up_storage_desc_simple, optimizableCount))
                 Text(
-                    "可释放约 $optimizableSize",
+                    stringResource(R.string.can_free_up_format, optimizableSize),
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "不会移除备份文件夹配置。",
+                    stringResource(R.string.free_up_storage_warning_simple),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -811,12 +811,12 @@ private fun StorageOptimizationCard(
                     CircularProgressIndicator()
                 } else {
                     TextButton(onClick = onOptimize) {
-                        Text("释放空间")
+                        Text(stringResource(R.string.free_up_space_btn))
                     }
                 }
             } else {
                 Text(
-                    "暂无可优化的文件",
+                    stringResource(R.string.no_optimizable_files),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -965,7 +965,7 @@ private fun FolderSelectionList(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = folderStatusText(folder),
+                        text = folderStatusText(LocalContext.current, folder),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (folder.isHistoricalOnly) {
                             MaterialTheme.colorScheme.secondary
@@ -988,7 +988,7 @@ private fun FolderSelectionDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择备份文件夹") },
+        title = { Text(stringResource(R.string.select_backup_folder)) },
         text = {
             if (isLoading) {
                 Box(
@@ -1001,7 +1001,7 @@ private fun FolderSelectionDialog(
                 }
             } else if (folders.isEmpty()) {
                 Text(
-                    text = "未发现可选择的媒体文件夹",
+                    text = stringResource(R.string.no_media_folders_found),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1018,7 +1018,7 @@ private fun FolderSelectionDialog(
                 onClick = onDismiss,
                 enabled = !isLoading
             ) {
-                Text("确定")
+                Text(stringResource(R.string.ok))
             }
         }
     )
@@ -1034,7 +1034,7 @@ private fun BackupDestinationDialog(
     breadcrumbs: List<BackupDestinationBreadcrumb>,
     isLoading: Boolean,
     isCreatingFolder: Boolean,
-    error: String?,
+    error: UiText?,
     onDismiss: () -> Unit,
     onReload: () -> Unit,
     onNavigateUp: () -> Unit,
@@ -1050,11 +1050,11 @@ private fun BackupDestinationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择备份到") },
+        title = { Text(stringResource(R.string.select_backup_to)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BackupDestinationModeRow(
-                    title = "默认",
+                    title = stringResource(R.string.default_destination),
                     subtitle = defaultDestinationSummary,
                     selected = isDefaultSelected && !showCustomPicker,
                     onClick = {
@@ -1063,9 +1063,9 @@ private fun BackupDestinationDialog(
                     }
                 )
                 BackupDestinationModeRow(
-                    title = "自定义",
+                    title = stringResource(R.string.custom),
                     subtitle = if (isDefaultSelected) {
-                        "选择服务端文件夹"
+                        stringResource(R.string.select_server_folder)
                     } else {
                         selectedDestinationSummary
                     },
@@ -1075,24 +1075,24 @@ private fun BackupDestinationDialog(
 
                 if (showCustomPicker) {
                     Text(
-                        text = "当前位置：$currentLocation",
+                        text = stringResource(R.string.current_location_format, currentLocation),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = onSelectCurrent) {
-                            Text("选择当前目录")
+                            Text(stringResource(R.string.select_current_directory))
                         }
                         if (breadcrumbs.size > 1) {
                             TextButton(onClick = onNavigateUp) {
-                                Text("上一级")
+                                Text(stringResource(R.string.parent_directory))
                             }
                         }
                         TextButton(
                             onClick = { showCreateDialog = true },
                             enabled = !isCreatingFolder
                         ) {
-                            Text(if (isCreatingFolder) "创建中…" else "新建文件夹")
+                            Text(if (isCreatingFolder) stringResource(R.string.creating_folder) else stringResource(R.string.new_folder))
                         }
                     }
 
@@ -1110,7 +1110,7 @@ private fun BackupDestinationDialog(
 
                         error != null -> {
                             Text(
-                                text = error,
+                                text = error.asString(),
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -1118,7 +1118,7 @@ private fun BackupDestinationDialog(
 
                         nodes.isEmpty() -> {
                             Text(
-                                text = "当前目录下没有可选子目录",
+                                text = stringResource(R.string.no_subfolders_in_directory),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1142,13 +1142,13 @@ private fun BackupDestinationDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.close_btn))
             }
         },
         dismissButton = {
             if (showCustomPicker) {
                 TextButton(onClick = onReload) {
-                    Text("刷新")
+                    Text(stringResource(R.string.refresh_btn))
                 }
             }
         }
@@ -1158,12 +1158,12 @@ private fun BackupDestinationDialog(
         var folderName by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("新建文件夹") },
+            title = { Text(stringResource(R.string.new_folder)) },
             text = {
                 OutlinedTextField(
                     value = folderName,
                     onValueChange = { folderName = it },
-                    placeholder = { Text("输入文件夹名称") },
+                    placeholder = { Text(stringResource(R.string.enter_folder_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1178,12 +1178,12 @@ private fun BackupDestinationDialog(
                     },
                     enabled = folderName.isNotBlank()
                 ) {
-                    Text("创建")
+                    Text(stringResource(R.string.create_btn))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCreateDialog = false }) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1246,20 +1246,20 @@ private fun BackupDestinationRow(
             )
         }
         TextButton(onClick = onOpen) {
-            Text("进入")
+            Text(stringResource(R.string.enter))
         }
         RadioButton(selected = selected, onClick = onSelect)
     }
 }
 
-private fun folderStatusText(folder: FolderUiItem): String {
+private fun folderStatusText(context: Context, folder: FolderUiItem): String {
     return when {
-        folder.isCoveredBySelectedAncestor -> "已由上级文件夹覆盖"
+        folder.isCoveredBySelectedAncestor -> context.getString(R.string.covered_by_parent_folder)
         folder.hasLocalMedia && folder.directFileCount > 0 && folder.directFileCount != folder.fileCount ->
-            "${folder.fileCount} 个文件，含子文件夹"
-        folder.hasLocalMedia -> "${folder.fileCount} 个文件"
-        folder.isSelected -> "本地文件已清理，仍保留为已选备份文件夹"
-        else -> "历史文件夹，当前未发现本地文件"
+            context.getString(R.string.files_count_with_subfolders_format, folder.fileCount)
+        folder.hasLocalMedia -> context.getString(R.string.files_count_format, folder.fileCount)
+        folder.isSelected -> context.getString(R.string.folder_retained_after_clear)
+        else -> context.getString(R.string.historical_folder_no_files)
     }
 }
 
@@ -1289,7 +1289,7 @@ private fun SyncIntervalSetting(
             .padding(vertical = 4.dp)
     ) {
         Text(
-            text = "同步间隔",
+            text = stringResource(R.string.sync_interval),
             style = MaterialTheme.typography.bodyLarge,
             color = if (enabled) {
                 MaterialTheme.colorScheme.onSurface
@@ -1298,7 +1298,7 @@ private fun SyncIntervalSetting(
             }
         )
         Text(
-            text = "定期扫描本地媒体变化，补充实时检测",
+            text = stringResource(R.string.sync_interval_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                 alpha = if (enabled) 1f else 0.38f
@@ -1310,7 +1310,7 @@ private fun SyncIntervalSetting(
                 FilterChip(
                     selected = currentInterval == minutes,
                     onClick = { onIntervalChange(minutes) },
-                    label = { Text("${minutes} 分钟") },
+                    label = { Text(stringResource(R.string.minutes_format, minutes)) },
                     enabled = enabled
                 )
             }

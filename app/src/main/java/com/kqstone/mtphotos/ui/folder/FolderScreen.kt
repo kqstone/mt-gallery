@@ -33,6 +33,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -93,7 +95,7 @@ fun FolderScreen(
                         if (uiState.albums.isNotEmpty()) {
                             item {
                                 CollectionRowSection(
-                                    title = "相册"
+                                    title = stringResource(R.string.section_albums)
                                 ) {
                                     items(
                                         items = uiState.albums,
@@ -101,7 +103,7 @@ fun FolderScreen(
                                     ) { album ->
                                         CoverCard(
                                             name = album.name,
-                                            subtitle = "${album.fileCount} 项",
+                                            subtitle = stringResource(R.string.item_count_short, album.fileCount),
                                             thumbUrl = album.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Collections,
                                             fallbackGradient = AlbumGradient,
@@ -116,7 +118,7 @@ fun FolderScreen(
                         if (uiState.folders.isNotEmpty()) {
                             item {
                                 CollectionRowSection(
-                                    title = "文件夹"
+                                    title = stringResource(R.string.section_folders)
                                 ) {
                                     items(
                                         items = uiState.folders,
@@ -124,7 +126,7 @@ fun FolderScreen(
                                     ) { folder ->
                                         CoverCard(
                                             name = folder.name,
-                                            subtitle = "${folder.fileCount} 项",
+                                            subtitle = stringResource(R.string.item_count_short, folder.fileCount),
                                             thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Folder,
                                             fallbackGradient = FolderGradient,
@@ -146,7 +148,7 @@ fun FolderScreen(
                         if (uiState.error != null) {
                             item {
                                 Text(
-                                    text = uiState.error!!,
+                                    text = uiState.error!!.asString(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -199,7 +201,7 @@ private fun CategorySection(
 ) {
     Column(modifier = Modifier.padding(top = 12.dp)) {
         Text(
-            text = "类别",
+            text = stringResource(R.string.section_categories),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         )
@@ -248,11 +250,11 @@ private fun CategoryRow(
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = category.title,
+                text = category.title.asString(),
                 style = MaterialTheme.typography.bodyLarge
             )
             Text(
-                text = category.subtitle,
+                text = category.subtitle.asString(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

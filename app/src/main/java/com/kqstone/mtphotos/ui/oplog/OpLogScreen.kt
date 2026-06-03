@@ -75,6 +75,8 @@ import com.kqstone.mtphotos.ui.oplog.OpLogViewModel.Companion.statusDisplayName
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,20 +92,20 @@ fun OpLogScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "操作日志",
+                        stringResource(R.string.op_log_title),
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.clearSuccessLogs() }) {
                         Icon(
                             Icons.Default.CleaningServices,
-                            contentDescription = "清除成功日志",
+                            contentDescription = stringResource(R.string.clear_success_logs),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -170,7 +172,7 @@ private fun FilterSection(
                 FilterChip(
                     selected = statusFilter == null,
                     onClick = { onStatusFilterChange(null) },
-                    label = { Text("全部状态", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text(stringResource(R.string.all_statuses), style = MaterialTheme.typography.labelMedium) },
                     colors = filterChipColors()
                 )
             }
@@ -187,7 +189,7 @@ private fun FilterSection(
                     onClick = {
                         onStatusFilterChange(if (statusFilter == status) null else status)
                     },
-                    label = { Text(statusDisplayName(status), style = MaterialTheme.typography.labelMedium) },
+                    label = { Text(stringResource(statusDisplayName(status)), style = MaterialTheme.typography.labelMedium) },
                     colors = filterChipColors()
                 )
             }
@@ -204,7 +206,7 @@ private fun FilterSection(
                 FilterChip(
                     selected = typeFilter == null,
                     onClick = { onTypeFilterChange(null) },
-                    label = { Text("全部类型", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text(stringResource(R.string.all_types), style = MaterialTheme.typography.labelMedium) },
                     colors = filterChipColors()
                 )
             }
@@ -222,7 +224,7 @@ private fun FilterSection(
                     onClick = {
                         onTypeFilterChange(if (typeFilter == type) null else type)
                     },
-                    label = { Text(opTypeDisplayName(type), style = MaterialTheme.typography.labelMedium) },
+                    label = { Text(stringResource(opTypeDisplayName(type)), style = MaterialTheme.typography.labelMedium) },
                     colors = filterChipColors()
                 )
             }
@@ -299,7 +301,7 @@ private fun OpLogItemCard(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = item.opDescription,
+                    text = item.opDescription.asString(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -310,7 +312,7 @@ private fun OpLogItemCard(
                     StatusIndicator(item.status)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = item.statusText,
+                        text = item.statusText.asString(),
                         style = MaterialTheme.typography.labelSmall,
                         color = statusColor(item.status),
                         maxLines = 1,
@@ -343,12 +345,12 @@ private fun OpLogItemCard(
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = "重试",
+                            contentDescription = stringResource(R.string.retry),
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            "重试",
+                            stringResource(R.string.retry),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium)
                         )
                     }
@@ -363,13 +365,13 @@ private fun StatusIndicator(status: ServerOpStatus) {
     when (status) {
         ServerOpStatus.SUCCESS -> Icon(
             Icons.Default.CheckCircle,
-            contentDescription = "成功",
+            contentDescription = stringResource(R.string.status_success),
             tint = Color(0xFF4CAF50),
             modifier = Modifier.size(14.dp)
         )
         ServerOpStatus.PENDING -> Icon(
             Icons.Default.HourglassEmpty,
-            contentDescription = "待执行",
+            contentDescription = stringResource(R.string.status_pending),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(14.dp)
         )
@@ -386,7 +388,7 @@ private fun StatusIndicator(status: ServerOpStatus) {
             )
             Icon(
                 Icons.Default.Sync,
-                contentDescription = "执行中",
+                contentDescription = stringResource(R.string.status_running_simple),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .size(14.dp)
@@ -395,13 +397,13 @@ private fun StatusIndicator(status: ServerOpStatus) {
         }
         ServerOpStatus.ERROR -> Icon(
             Icons.Default.Schedule,
-            contentDescription = "错误",
+            contentDescription = stringResource(R.string.status_error),
             tint = Color(0xFFFF9800),
             modifier = Modifier.size(14.dp)
         )
         ServerOpStatus.FAILED -> Icon(
             Icons.Default.Error,
-            contentDescription = "失败",
+            contentDescription = stringResource(R.string.status_failed),
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(14.dp)
         )
@@ -445,7 +447,7 @@ private fun EmptyState() {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "暂无操作日志",
+                text = stringResource(R.string.no_op_logs),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )

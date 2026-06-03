@@ -59,20 +59,22 @@ import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import com.kqstone.mtphotos.ui.util.LocalHazeState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.res.stringResource
+import com.kqstone.mtphotos.R
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
 private data class TabItem(
     val route: String,
-    val label: String,
+    val labelResId: Int,
     val icon: ImageVector
 )
 
 private val tabs = listOf(
-    TabItem("photos", "照片", Icons.Default.PhotoLibrary),
-    TabItem("folders", "图集", Icons.Default.Folder),
-    TabItem("map", "足迹", Icons.Default.Map),
-    TabItem("discovery", "发现", Icons.Default.Explore)
+    TabItem("photos", R.string.tab_photos, Icons.Default.PhotoLibrary),
+    TabItem("folders", R.string.tab_albums, Icons.Default.Folder),
+    TabItem("map", R.string.tab_footprints, Icons.Default.Map),
+    TabItem("discovery", R.string.tab_explore, Icons.Default.Explore)
 )
 
 private val topLevelRoutes = setOf("photos", "folders", "map", "discovery")
@@ -160,13 +162,13 @@ fun MainScreen(
                                     icon = {
                                         Icon(
                                             imageVector = tab.icon,
-                                            contentDescription = tab.label,
+                                            contentDescription = stringResource(id = tab.labelResId),
                                             modifier = Modifier.size(20.dp)
                                         )
                                     },
                                     label = {
                                         Text(
-                                            text = tab.label,
+                                            text = stringResource(id = tab.labelResId),
                                             style = MaterialTheme.typography.labelSmall
                                         )
                                     },
@@ -267,7 +269,8 @@ fun MainScreen(
 
                 composable("album/{albumId}/{title}") { backStackEntry ->
                     val albumId = backStackEntry.arguments?.getString("albumId") ?: return@composable
-                    val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode) ?: "相册"
+                    val defaultTitle = stringResource(R.string.default_album_name)
+                    val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode) ?: defaultTitle
                     CategoryFileListScreen(
                         viewModel = categoryFileListViewModel,
                         loadType = "album",
@@ -284,11 +287,12 @@ fun MainScreen(
 
                 composable("collectionCategory/{type}") { backStackEntry ->
                     val type = backStackEntry.arguments?.getString("type") ?: return@composable
+                    val context = LocalContext.current
                     CategoryFileListScreen(
                         viewModel = categoryFileListViewModel,
                         loadType = type,
                         loadParam = "",
-                        title = collectionCategoryTitle(type),
+                        title = collectionCategoryTitle(context, type),
                         onPhotoClick = { photo ->
                             val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
@@ -304,7 +308,7 @@ fun MainScreen(
                         viewModel = categoryFileListViewModel,
                         loadType = "people",
                         loadParam = peopleId,
-                        title = "人物照片",
+                        title = stringResource(R.string.people_photos),
                         onPhotoClick = { photo ->
                             val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
@@ -322,7 +326,7 @@ fun MainScreen(
                         loadType = "scene",
                         loadParam = id,
                         loadParam2 = cid,
-                        title = "场景照片",
+                        title = stringResource(R.string.scene_photos),
                         onPhotoClick = { photo ->
                             val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
@@ -384,12 +388,12 @@ fun MainScreen(
     }
 }
 
-private fun collectionCategoryTitle(type: String): String {
+private fun collectionCategoryTitle(context: android.content.Context, type: String): String {
     return when (type) {
-        "favorites" -> "收藏"
-        "recent" -> "最近添加"
-        "videos" -> "视频"
-        "trash" -> "回收站"
-        else -> "类别"
+        "favorites" -> context.getString(R.string.category_favorites)
+        "recent" -> context.getString(R.string.category_recent)
+        "videos" -> context.getString(R.string.category_videos)
+        "trash" -> context.getString(R.string.category_trash)
+        else -> context.getString(R.string.category_other)
     }
 }

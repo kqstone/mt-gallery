@@ -18,6 +18,8 @@ import com.kqstone.mtphotos.data.repository.BackupDestinationNode
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.worker.BackupScheduler
+import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,7 +32,7 @@ private const val TAG = "BackupSettingsVM"
 private const val DEFAULT_BACKUP_DEST_ID = 1L
 private const val ROOT_BACKUP_DEST_PATH = "/"
 private const val ROOT_BACKUP_DEST_LABEL = "/"
-private val DEFAULT_BACKUP_DEST_LABEL = Build.MODEL
+private const val DEFAULT_BACKUP_DEST_LABEL = "Android"
 private val DEFAULT_BACKUP_DEST_PATH = BackupDestinationDefaults.path("")
 
 data class BackupDestinationBreadcrumb(
@@ -53,7 +55,7 @@ data class BackupSettingsUiState(
     val isSyncing: Boolean = false,
     val isLoadingFolders: Boolean = false,
     val isRepairingBackups: Boolean = false,
-    val backupRepairMessage: String? = null,
+    val backupRepairMessage: UiText? = null,
     val folders: List<FolderUiItem> = emptyList(),
     val selectedFolderCount: Int = 0,
     val historicalSelectedFolderCount: Int = 0,
@@ -67,12 +69,12 @@ data class BackupSettingsUiState(
     val backupDestinationBreadcrumbs: List<BackupDestinationBreadcrumb> = emptyList(),
     val isLoadingBackupDestinations: Boolean = false,
     val isCreatingFolder: Boolean = false,
-    val backupDestinationError: String? = null,
+    val backupDestinationError: UiText? = null,
     val syncInterval: Int = 60,
     val coilDiskCacheMb: Int = 512,
     val thumbnailCacheSizeFormatted: String = "0 MB",
     val mediaCacheSizeFormatted: String = "0 MB",
-    val error: String? = null
+    val error: UiText? = null
 )
 
 private data class BackupSettingsStats(
@@ -200,7 +202,7 @@ class BackupSettingsViewModel(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "loadStats failed", e)
-                _uiState.value = _uiState.value.copy(error = e.message)
+                _uiState.value = _uiState.value.copy(error = UiText.DynamicString(e.message ?: ""))
             }
         }
     }
@@ -316,7 +318,7 @@ class BackupSettingsViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "loadFolders failed", e)
                 _uiState.value = _uiState.value.copy(
-                    error = e.message,
+                    error = UiText.DynamicString(e.message ?: ""),
                     isLoadingFolders = false
                 )
             }
@@ -400,9 +402,9 @@ class BackupSettingsViewModel(
                     pendingCount = pending,
                     isRepairingBackups = false,
                     backupRepairMessage = if (result.resetCount > 0) {
-                        "已扫描 ${result.scannedCount} 个文件，发现 ${result.resetCount} 个需要补传"
+                        UiText.StringResource(R.string.backup_scan_found_missing, result.scannedCount, result.resetCount)
                     } else {
-                        "已扫描 ${result.scannedCount} 个文件，未发现缺失备份"
+                        UiText.StringResource(R.string.backup_scan_no_missing, result.scannedCount)
                     }
                 )
                 if (result.resetCount > 0) {
@@ -417,8 +419,8 @@ class BackupSettingsViewModel(
                 Log.e(TAG, "repairMissingBackups failed", e)
                 _uiState.value = _uiState.value.copy(
                     isRepairingBackups = false,
-                    error = e.message,
-                    backupRepairMessage = "扫描未备份文件失败"
+                    error = UiText.DynamicString(e.message ?: ""),
+                    backupRepairMessage = UiText.StringResource(R.string.backup_scan_failed)
                 )
             }
         }
@@ -491,7 +493,7 @@ class BackupSettingsViewModel(
                 loadFolders()
             } catch (e: Exception) {
                 Log.e(TAG, "Re-sync after folder change failed", e)
-                _uiState.value = _uiState.value.copy(isSyncing = false, error = e.message)
+                _uiState.value = _uiState.value.copy(isSyncing = false, error = UiText.DynamicString(e.message ?: ""))
             }
         }
     }
@@ -641,7 +643,7 @@ class BackupSettingsViewModel(
                 loadStats()
                 loadFolders()
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(error = e.message)
+                _uiState.value = _uiState.value.copy(error = UiText.DynamicString(e.message ?: ""))
             }
             _uiState.value = _uiState.value.copy(isOptimizing = false)
         }
@@ -746,9 +748,15 @@ class BackupSettingsViewModel(
                 ensureDeviceFolder()
             } catch (e: Exception) {
                 Log.e(TAG, "loadBackupDestinationRoot failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_load_directory_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
                     isLoadingBackupDestinations = false,
-                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
@@ -779,10 +787,16 @@ class BackupSettingsViewModel(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "openBackupDestination failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_load_directory_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
                     backupDestinationBreadcrumbs = breadcrumbs.dropLast(1).ifEmpty { listOf(rootBreadcrumb()) },
                     isLoadingBackupDestinations = false,
-                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
@@ -815,9 +829,15 @@ class BackupSettingsViewModel(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "navigateUpBackupDestination failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_load_directory_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
                     isLoadingBackupDestinations = false,
-                    backupDestinationError = e.message ?: "加载服务端目录失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
@@ -853,8 +873,14 @@ class BackupSettingsViewModel(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "selectDefaultBackupDestination failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_save_default_directory_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
-                    backupDestinationError = e.message ?: "保存默认备份目录失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
@@ -885,9 +911,15 @@ class BackupSettingsViewModel(
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "createFolder failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_create_folder_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
                     isCreatingFolder = false,
-                    backupDestinationError = e.message ?: "创建文件夹失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
@@ -905,8 +937,14 @@ class BackupSettingsViewModel(
                 saveBackupDestinationNow(id, label, path)
             } catch (e: Exception) {
                 Log.e(TAG, "saveBackupDestination failed", e)
+                val msg = e.message
+                val uiMsg = if (msg.isNullOrBlank()) {
+                    UiText.StringResource(R.string.backup_save_directory_failed)
+                } else {
+                    UiText.DynamicString(msg)
+                }
                 _uiState.value = _uiState.value.copy(
-                    backupDestinationError = e.message ?: "保存服务端目录失败"
+                    backupDestinationError = uiMsg
                 )
             }
         }
