@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.ui.viewer
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -12,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -32,12 +34,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -47,9 +52,16 @@ import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+private val ViewerPageSpacing = 16.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,7 +116,6 @@ fun ViewerScreen(
     var isUiVisible by remember { mutableStateOf(true) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-
     val hazeState = remember { HazeState() }
 
     Box(
@@ -117,6 +128,7 @@ fun ViewerScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 0,
+            pageSpacing = ViewerPageSpacing,
             userScrollEnabled = !showBottomSheet
         ) { page ->
             val photo = photos[page]
@@ -148,7 +160,8 @@ fun ViewerScreen(
                     photo = photo,
                     imageUrl = viewModel.getFullImageUrl(photo),
                     contentDescription = photo.fileName,
-                    onTap = { isUiVisible = !isUiVisible }
+                    onTap = { isUiVisible = !isUiVisible },
+                    onZoomedChanged = {}
                 )
             }
         }
@@ -474,7 +487,8 @@ private fun ZoomableImage(
     photo: UnifiedPhotoItem,
     imageUrl: String,
     contentDescription: String,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onZoomedChanged: (Boolean) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
@@ -489,8 +503,31 @@ private fun ZoomableImage(
             .build()
     }
 
-    var scale by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember(photo.uniqueKey) { mutableFloatStateOf(MinZoomScale) }
+    var offset by remember(photo.uniqueKey) { mutableStateOf(Offset.Zero) }
+    var containerSize by remember(photo.uniqueKey) { mutableStateOf(IntSize.Zero) }
+    var lastTapTime by remember(photo.uniqueKey) { mutableStateOf(0L) }
+    val tapScope = rememberCoroutineScope()
+    var pendingTapJob by remember(photo.uniqueKey) { mutableStateOf<Job?>(null) }
+    var transformAnimationJob by remember(photo.uniqueKey) { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(scale) {
+        onZoomedChanged(scale > ZoomedThreshold)
+    }
+
+    LaunchedEffect(photo.uniqueKey) {
+        scale = MinZoomScale
+        offset = Offset.Zero
+        onZoomedChanged(false)
+    }
+
+    DisposableEffect(photo.uniqueKey) {
+        onDispose {
+            pendingTapJob?.cancel()
+            transformAnimationJob?.cancel()
+            onZoomedChanged(false)
+        }
+    }
 
     AsyncImage(
         model = imageRequest,
@@ -499,56 +536,276 @@ private fun ZoomableImage(
         contentScale = ContentScale.Fit,
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { containerSize = it }
+            .pointerInput(photo.uniqueKey, containerSize) {
+                awaitEachGesture {
+                    val firstDown = awaitFirstDown(requireUnconsumed = true)
+                    var isTapCandidate = true
+                    var wasTransforming = false
+                    var totalPan = Offset.Zero
+
+                    transformAnimationJob?.cancel()
+
+                    do {
+                        val event = awaitPointerEvent()
+                        val zoom = event.calculateZoom()
+                        val centroid = event.calculateCentroid(useCurrent = true)
+                        val pan = event.calculateAveragePan()
+                        totalPan += pan
+
+                        val isZoomGesture = abs(zoom - 1f) > ZoomChangeSlop
+                        val isPanGesture = pan.getDistanceSquared() > PanSlopSquared
+                        val shouldPanImage = scale > ZoomedThreshold && pan != Offset.Zero
+                        val shouldHandoffToPager = shouldPanImage &&
+                            !isZoomGesture &&
+                            canHandoffToPager(
+                                pan = pan,
+                                offset = offset,
+                                scale = scale,
+                                containerSize = containerSize,
+                                photo = photo
+                            )
+
+                        if (shouldHandoffToPager) {
+                            pendingTapJob?.cancel()
+                            isTapCandidate = false
+                        } else if (isZoomGesture || shouldPanImage) {
+                            pendingTapJob?.cancel()
+                            isTapCandidate = false
+                            wasTransforming = true
+
+                            val oldScale = scale
+                            val newScale = (oldScale * zoom).coerceIn(MinZoomScale, MaxZoomScale)
+                            val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+                            val zoomOffset = if (isZoomGesture && oldScale > 0f) {
+                                (centroid - center - offset) *
+                                    (1f - newScale / oldScale)
+                            } else {
+                                Offset.Zero
+                            }
+
+                            scale = newScale
+                            offset += pan + zoomOffset
+                            event.changes.forEach { it.consume() }
+                        } else if (isPanGesture) {
+                            isTapCandidate = false
+                        }
+                    } while (event.changes.any { it.pressed })
+
+                    val clampedOffset = clampOffset(
+                        offset = offset,
+                        scale = scale,
+                        containerSize = containerSize,
+                        photo = photo
+                    )
+
+                    if (scale <= ZoomedThreshold) {
+                        transformAnimationJob = tapScope.launch {
+                            animateTransform(
+                                startScale = scale,
+                                startOffset = offset,
+                                targetScale = MinZoomScale,
+                                targetOffset = Offset.Zero,
+                                onFrame = { nextScale, nextOffset ->
+                                    scale = nextScale
+                                    offset = nextOffset
+                                }
+                            )
+                        }
+                    } else {
+                        transformAnimationJob = tapScope.launch {
+                            animateTransform(
+                                startScale = scale,
+                                startOffset = offset,
+                                targetScale = scale,
+                                targetOffset = clampedOffset,
+                                onFrame = { nextScale, nextOffset ->
+                                    scale = nextScale
+                                    offset = nextOffset
+                                }
+                            )
+                        }
+                    }
+
+                    if (isTapCandidate && !wasTransforming && totalPan.getDistanceSquared() < TapSlopSquared) {
+                        val now = System.currentTimeMillis()
+                        val isDoubleTap = now - lastTapTime < DoubleTapWindowMillis
+                        lastTapTime = if (isDoubleTap) 0L else now
+
+                        if (isDoubleTap && scale > ZoomedThreshold) {
+                            pendingTapJob?.cancel()
+                            transformAnimationJob?.cancel()
+                            transformAnimationJob = tapScope.launch {
+                                animateTransform(
+                                    startScale = scale,
+                                    startOffset = offset,
+                                    targetScale = MinZoomScale,
+                                    targetOffset = Offset.Zero,
+                                    onFrame = { nextScale, nextOffset ->
+                                        scale = nextScale
+                                        offset = nextOffset
+                                    }
+                                )
+                            }
+                        } else if (isDoubleTap) {
+                            pendingTapJob?.cancel()
+                            transformAnimationJob?.cancel()
+                            val targetScale = DoubleTapZoomScale.coerceAtMost(MaxZoomScale)
+                            val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+                            val tapOffset = firstDown.position - center
+                            val targetOffset = clampOffset(
+                                offset = tapOffset * (1f - targetScale / MinZoomScale),
+                                scale = targetScale,
+                                containerSize = containerSize,
+                                photo = photo
+                            )
+                            transformAnimationJob = tapScope.launch {
+                                animateTransform(
+                                    startScale = scale,
+                                    startOffset = offset,
+                                    targetScale = targetScale,
+                                    targetOffset = targetOffset,
+                                    onFrame = { nextScale, nextOffset ->
+                                        scale = nextScale
+                                        offset = nextOffset
+                                    }
+                                )
+                            }
+                        } else {
+                            pendingTapJob?.cancel()
+                            pendingTapJob = tapScope.launch {
+                                delay(DoubleTapWindowMillis)
+                                onTap()
+                            }
+                        }
+                    }
+                }
+            }
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
                 translationX = offset.x
                 translationY = offset.y
             }
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = true)
-                    var isClick = true
-                    var totalPan = Offset.Zero
-                    do {
-                        val event = awaitPointerEvent()
-                        val zoom = event.calculateZoom()
+    )
+}
 
-                        var panX = 0f
-                        var panY = 0f
-                        var panCount = 0
-                        for (change in event.changes) {
-                            if (change.previousPressed) {
-                                panX += change.position.x - change.previousPosition.x
-                                panY += change.position.y - change.previousPosition.y
-                                panCount++
-                            }
-                        }
-                        val pan = if (panCount > 0) Offset(panX / panCount, panY / panCount) else Offset.Zero
-                        totalPan += pan
+private const val MinZoomScale = 1f
+private const val MaxZoomScale = 5f
+private const val DoubleTapZoomScale = 2.5f
+private const val ZoomedThreshold = 1.01f
+private const val ZoomChangeSlop = 0.01f
+private const val PanSlopSquared = 9f
+private const val TapSlopSquared = 100f
+private const val DoubleTapWindowMillis = 280L
+private const val EdgeHandoffTolerance = 2f
 
-                        if (zoom != 1f || pan.getDistanceSquared() > 10f) {
-                            isClick = false
-                        }
+private suspend fun animateTransform(
+    startScale: Float,
+    startOffset: Offset,
+    targetScale: Float,
+    targetOffset: Offset,
+    onFrame: (Float, Offset) -> Unit
+) {
+    val scaleAnim = Animatable(startScale)
+    val offsetXAnim = Animatable(startOffset.x)
+    val offsetYAnim = Animatable(startOffset.y)
+    val animationSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
 
-                        if (zoom != 1f) {
-                            scale = (scale * zoom).coerceIn(1f, 5f)
-                            if (scale <= 1.01f) {
-                                scale = 1f
-                                offset = Offset.Zero
-                            }
-                            event.changes.forEach { it.consume() }
-                        } else if (scale > 1.01f && pan != Offset.Zero) {
-                            offset += pan
-                            event.changes.forEach { it.consume() }
-                        }
-                    } while (event.changes.any { it.pressed })
-
-                    if (isClick && totalPan.getDistanceSquared() < 100f) {
-                        onTap()
-                    }
-                }
+    kotlinx.coroutines.coroutineScope {
+        launch {
+            scaleAnim.animateTo(targetScale, animationSpec = animationSpec) {
+                onFrame(value, Offset(offsetXAnim.value, offsetYAnim.value))
             }
+        }
+        launch {
+            offsetXAnim.animateTo(targetOffset.x, animationSpec = animationSpec) {
+                onFrame(scaleAnim.value, Offset(value, offsetYAnim.value))
+            }
+        }
+        launch {
+            offsetYAnim.animateTo(targetOffset.y, animationSpec = animationSpec) {
+                onFrame(scaleAnim.value, Offset(offsetXAnim.value, value))
+            }
+        }
+    }
+
+    onFrame(targetScale, targetOffset)
+}
+
+private fun PointerEvent.calculateAveragePan(): Offset {
+    var panX = 0f
+    var panY = 0f
+    var panCount = 0
+
+    for (change in changes) {
+        if (change.previousPressed) {
+            panX += change.position.x - change.previousPosition.x
+            panY += change.position.y - change.previousPosition.y
+            panCount++
+        }
+    }
+
+    return if (panCount > 0) Offset(panX / panCount, panY / panCount) else Offset.Zero
+}
+
+private fun canHandoffToPager(
+    pan: Offset,
+    offset: Offset,
+    scale: Float,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem
+): Boolean {
+    if (scale <= ZoomedThreshold || abs(pan.x) <= abs(pan.y)) {
+        return false
+    }
+
+    val maxOffset = maxOffsetFor(scale, containerSize, photo)
+    if (maxOffset.x <= EdgeHandoffTolerance) {
+        return true
+    }
+
+    val targetX = offset.x + pan.x
+    val draggingPastLeftEdge = pan.x > 0f && targetX >= maxOffset.x - EdgeHandoffTolerance
+    val draggingPastRightEdge = pan.x < 0f && targetX <= -maxOffset.x + EdgeHandoffTolerance
+
+    return draggingPastLeftEdge || draggingPastRightEdge
+}
+
+private fun clampOffset(
+    offset: Offset,
+    scale: Float,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem
+): Offset {
+    val maxOffset = maxOffsetFor(scale, containerSize, photo)
+    return Offset(
+        x = offset.x.coerceIn(-maxOffset.x, maxOffset.x),
+        y = offset.y.coerceIn(-maxOffset.y, maxOffset.y)
+    )
+}
+
+private fun maxOffsetFor(
+    scale: Float,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem
+): Offset {
+    if (containerSize.width <= 0 || containerSize.height <= 0 || scale <= MinZoomScale) {
+        return Offset.Zero
+    }
+
+    val imageWidth = photo.width.toFloat().takeIf { it > 0f } ?: containerSize.width.toFloat()
+    val imageHeight = photo.height.toFloat().takeIf { it > 0f } ?: containerSize.height.toFloat()
+    val fitScale = minOf(
+        containerSize.width / imageWidth,
+        containerSize.height / imageHeight
+    )
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+
+    return Offset(
+        x = max(0f, (fittedWidth * scale - containerSize.width) / 2f),
+        y = max(0f, (fittedHeight * scale - containerSize.height) / 2f)
     )
 }
 
