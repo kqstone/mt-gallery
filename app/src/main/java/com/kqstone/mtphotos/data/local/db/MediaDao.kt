@@ -280,6 +280,26 @@ interface MediaDao {
     @Query("UPDATE media SET thumbCachePath = :path, updatedAt = :now WHERE id = :id")
     suspend fun updateThumbCachePath(id: Long, path: String, now: Long = System.currentTimeMillis())
 
+    @Query("UPDATE media SET isFavorite = :isFavorite, updatedAt = :now WHERE id = :id")
+    suspend fun updateFavoriteById(
+        id: Long,
+        isFavorite: Boolean,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("UPDATE media SET isFavorite = :isFavorite, updatedAt = :now WHERE cloudId = :cloudId")
+    suspend fun updateFavoriteByCloudId(
+        cloudId: Double,
+        isFavorite: Boolean,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("UPDATE media SET isFavorite = 1, updatedAt = :now WHERE cloudId IN (:cloudIds)")
+    suspend fun markFavoritesByCloudIds(
+        cloudIds: List<Double>,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
     // ===== 原图下载后标记 =====
 
     @Query("""

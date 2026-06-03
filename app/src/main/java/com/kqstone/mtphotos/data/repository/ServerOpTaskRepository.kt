@@ -70,11 +70,23 @@ class ServerOpTaskRepository(
      * 提交收藏/取消收藏任务。
      */
     suspend fun enqueueFavorite(
-        fileId: Double,
+        cloudId: Double?,
+        dbId: Long,
         isFavorite: Boolean,
         fileName: String,
         md5: String
     ) = withContext(Dispatchers.IO) {
+        if (cloudId != null) {
+            database.mediaDao().updateFavoriteByCloudId(cloudId, isFavorite)
+        } else if (dbId > 0) {
+            database.mediaDao().updateFavoriteById(dbId, isFavorite)
+        }
+
+        val fileId = cloudId ?: run {
+            Log.d(TAG, "Updated local-only favorite state: $fileName, isFavorite=$isFavorite")
+            return@withContext
+        }
+
         val now = System.currentTimeMillis()
         val params = gson.toJson(mapOf("fileId" to fileId, "isFavorite" to isFavorite))
         dao.insert(

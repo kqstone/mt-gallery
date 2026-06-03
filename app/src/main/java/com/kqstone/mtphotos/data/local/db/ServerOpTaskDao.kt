@@ -112,4 +112,12 @@ interface ServerOpTaskDao {
     /** 下次应执行的时间戳 */
     @Query("SELECT MIN(nextAttemptAt) FROM server_op_tasks WHERE status IN ('PENDING', 'ERROR') AND opType != 'BACKUP_UPLOAD'")
     suspend fun nextAttemptAt(): Long?
+
+    @Query("""
+        SELECT mediaCloudId FROM server_op_tasks
+        WHERE opType = 'FAVORITE'
+        AND status IN ('PENDING', 'ERROR', 'RUNNING')
+        AND mediaCloudId IS NOT NULL
+    """)
+    suspend fun getPendingFavoriteCloudIds(): List<Double>
 }

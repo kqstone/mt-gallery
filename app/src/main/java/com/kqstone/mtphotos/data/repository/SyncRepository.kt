@@ -31,6 +31,7 @@ class SyncRepository(
     private val database: AppDatabase
 ) {
     private val mediaDao: MediaDao get() = database.mediaDao()
+    private val serverOpTaskDao get() = database.serverOpTaskDao()
     private val galleryRepository: GalleryRepository get() = container.galleryRepository
     private val localScanner: LocalMediaScanner by lazy { LocalMediaScanner(container.prefsManager.context) }
     private val localVideoThumbnailGenerator: LocalVideoThumbnailGenerator by lazy {
@@ -44,7 +45,8 @@ class SyncRepository(
             val localMedia = localScanner.scanMedia(localFolders, computeMd5 = true)
             Log.d(TAG, "Local scan found ${localMedia.size} files")
 
-            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
+            val cloudResult = fetchAllCloudPhotos()
+            val fetchedCloudPhotos = cloudResult.entities
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
@@ -53,9 +55,17 @@ class SyncRepository(
             }
 
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
-            val mergedLocal = prepareLocalEntities(localMedia, cloudMd5Map = cloudMd5Map)
+            val mergedLocal = prepareLocalEntities(
+                localMedia,
+                cloudMd5Map = cloudMd5Map,
+                useCloudFavorite = cloudResult.favoriteStateKnown
+            )
             val processedMd5s = mergedLocal.map { it.md5 }.toSet()
-            val mergedCloud = buildCloudEntities(cloudPhotos, processedMd5s)
+            val mergedCloud = buildCloudEntities(
+                cloudPhotos,
+                processedMd5s,
+                useCloudFavorite = cloudResult.favoriteStateKnown
+            )
             val mergedEntities = mergedLocal + mergedCloud
 
             if (mergedEntities.isNotEmpty()) {
@@ -79,7 +89,8 @@ class SyncRepository(
             Log.d(TAG, "Starting initial sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
+            val cloudResult = fetchAllCloudPhotos()
+            val fetchedCloudPhotos = cloudResult.entities
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
@@ -90,6 +101,11 @@ class SyncRepository(
 
             val matchedMd5s = mutableSetOf<String>()
             val seenLocalMd5s = mutableSetOf<String>()
+            val pendingFavoriteCloudIds = if (cloudResult.favoriteStateKnown) {
+                serverOpTaskDao.getPendingFavoriteCloudIds().toSet()
+            } else {
+                emptySet()
+            }
             var scannedCount = 0
 
             localScanner.scanMediaFlow(
@@ -108,7 +124,15 @@ class SyncRepository(
                         matchedMd5s.add(md5)
                     }
                     val existing = findExistingEntity(md5, cloud?.cloudId, local.localMediaStoreId)
-                    mergedBatch.add(mergeMedia(existing, local = local, cloud = cloud))
+                    mergedBatch.add(
+                        mergeMedia(
+                            existing,
+                            local = local,
+                            cloud = cloud,
+                            useCloudFavorite = cloudResult.favoriteStateKnown,
+                            pendingFavoriteCloudIds = pendingFavoriteCloudIds
+                        )
+                    )
                 }
 
                 if (mergedBatch.isNotEmpty()) {
@@ -118,7 +142,11 @@ class SyncRepository(
             }
 
             emit(SyncProgress(scannedCount, 0, "finalizing", cloudPhotos.size))
-            upsertCloudPhotos(cloudPhotos, skipMd5s = matchedMd5s) { written, total ->
+            upsertCloudPhotos(
+                cloudPhotos,
+                skipMd5s = matchedMd5s,
+                useCloudFavorite = cloudResult.favoriteStateKnown
+            ) { written, total ->
                 emit(SyncProgress(written, total, "finalizing", total))
             }
 
@@ -142,7 +170,8 @@ class SyncRepository(
             Log.d(TAG, "Starting incremental sync...")
             emit(SyncProgress(0, 0, "cloud"))
 
-            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
+            val cloudResult = fetchAllCloudPhotos()
+            val fetchedCloudPhotos = cloudResult.entities
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud has ${cloudPhotos.size} files")
@@ -150,7 +179,7 @@ class SyncRepository(
                 Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
             }
 
-            upsertCloudPhotos(cloudPhotos)
+            upsertCloudPhotos(cloudPhotos, useCloudFavorite = cloudResult.favoriteStateKnown)
             emit(SyncProgress(0, 0, "cloud_done", cloudPhotos.size))
 
             val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
@@ -170,7 +199,8 @@ class SyncRepository(
                 val newEntities = prepareLocalEntities(
                     localMedia = batch.filter { it.localMediaStoreId !in existingLocalIds },
                     cloudMd5Map = cloudMd5Map,
-                    seenMd5s = seenLocalMd5s
+                    seenMd5s = seenLocalMd5s,
+                    useCloudFavorite = cloudResult.favoriteStateKnown
                 )
 
                 if (newEntities.isNotEmpty()) {
@@ -295,14 +325,15 @@ class SyncRepository(
 
     suspend fun syncCloudOnly() = withContext(Dispatchers.IO) {
         try {
-            val (fetchedCloudPhotos, _) = fetchAllCloudPhotos()
+            val cloudResult = fetchAllCloudPhotos()
+            val fetchedCloudPhotos = cloudResult.entities
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             Log.d(TAG, "Cloud-only sync: ${cloudPhotos.size} files")
             if (cloudDeleteChanges.changed > 0) {
                 Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
             }
-            upsertCloudPhotos(cloudPhotos)
+            upsertCloudPhotos(cloudPhotos, useCloudFavorite = cloudResult.favoriteStateKnown)
         } catch (e: Exception) {
             Log.e(TAG, "Cloud-only sync failed", e)
             throw e
@@ -314,13 +345,15 @@ class SyncRepository(
      */
     suspend fun refreshCloudState(existingSnapshot: TimelineSnapshot? = null): TimelineSnapshot = withContext(Dispatchers.IO) {
         try {
-            val (fetchedCloudPhotos, snapshot) = fetchAllCloudPhotos(existingSnapshot)
+            val cloudResult = fetchAllCloudPhotos(existingSnapshot)
+            val fetchedCloudPhotos = cloudResult.entities
+            val snapshot = cloudResult.snapshot
             val cloudDeleteChanges = reconcileCloudDeletions(fetchedCloudPhotos)
             val cloudPhotos = normalizeCloudPhotos(fetchedCloudPhotos)
             if (cloudDeleteChanges.changed > 0) {
                 Log.d(TAG, "Cloud deletion reconciliation: $cloudDeleteChanges")
             }
-            upsertCloudPhotos(cloudPhotos)
+            upsertCloudPhotos(cloudPhotos, useCloudFavorite = cloudResult.favoriteStateKnown)
             Log.d(TAG, "Cloud state refresh complete: ${cloudPhotos.size} files")
             snapshot
         } catch (e: Exception) {
@@ -331,7 +364,8 @@ class SyncRepository(
 
     private data class FetchCloudResult(
         val entities: List<MediaEntity>,
-        val snapshot: TimelineSnapshot
+        val snapshot: TimelineSnapshot,
+        val favoriteStateKnown: Boolean
     )
 
     private suspend fun fetchAllCloudPhotos(existingSnapshot: TimelineSnapshot? = null): FetchCloudResult {
@@ -346,16 +380,20 @@ class SyncRepository(
             photosByMonth.putAll(batchResult)
         }
 
-        val result = photosByMonth.values.flatten().map { it.toCloudEntity() }
+        val favoriteFileIds = galleryRepository.getFavoriteFileIds().getOrNull()
+        val result = photosByMonth.values.flatten().map { it.toCloudEntity(favoriteFileIds) }
         if (snapshot.months.sumOf { it.count } > 0 && result.isEmpty()) {
             throw IllegalStateException("Cloud timeline has items, but no cloud file details were parsed")
         }
-        return FetchCloudResult(result, snapshot)
+        return FetchCloudResult(result, snapshot, favoriteFileIds != null)
     }
 
     suspend fun upsertCloudPhotoItems(photos: List<PhotoItem>) = withContext(Dispatchers.IO) {
         val cloudPhotos = normalizeCloudPhotos(photos.map { it.toCloudEntity() })
-        upsertCloudPhotos(cloudPhotos)
+        upsertCloudPhotos(
+            cloudPhotos,
+            useCloudFavorite = photos.isNotEmpty() && photos.all { it.isFavorite }
+        )
     }
 
     suspend fun getAllPhotos(localFolders: Set<String>? = null): List<UnifiedPhotoItem> {
@@ -387,7 +425,8 @@ class SyncRepository(
                 addr = photo.addr ?: localEntity.addr,
                 livePhotosVideoId = photo.livePhotosVideoId,
                 isLivePhotosVideo = photo.isLivePhotosVideo,
-                livePhotoUuid = photo.livePhotoUuid
+                livePhotoUuid = photo.livePhotoUuid,
+                isFavorite = if (photo.isFavorite) true else localEntity.isFavorite
             ) ?: photo.toCloudOnlyUnifiedPhotoItem()
         }
     }
@@ -398,7 +437,7 @@ class SyncRepository(
             .distinctBy { it.md5 }
     }
 
-    private fun PhotoItem.toCloudEntity(): MediaEntity {
+    private fun PhotoItem.toCloudEntity(favoriteFileIds: Set<Double>? = null): MediaEntity {
         return MediaEntity(
             cloudId = id,
             md5 = md5,
@@ -412,6 +451,7 @@ class SyncRepository(
             livePhotosVideoId = livePhotosVideoId,
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid,
+            isFavorite = favoriteFileIds?.contains(id) ?: isFavorite,
             syncStatus = SyncStatus.CLOUD_ONLY,
             backupStatus = BackupStatus.NOT_STARTED
         )
@@ -460,9 +500,15 @@ class SyncRepository(
     private suspend fun prepareLocalEntities(
         localMedia: List<MediaEntity>,
         cloudMd5Map: Map<String, MediaEntity> = emptyMap(),
-        seenMd5s: MutableSet<String> = mutableSetOf()
+        seenMd5s: MutableSet<String> = mutableSetOf(),
+        useCloudFavorite: Boolean = false
     ): List<MediaEntity> {
         val result = mutableListOf<MediaEntity>()
+        val pendingFavoriteCloudIds = if (useCloudFavorite) {
+            serverOpTaskDao.getPendingFavoriteCloudIds().toSet()
+        } else {
+            emptySet()
+        }
 
         for (local in localMedia) {
             val md5 = local.md5.ifEmpty {
@@ -478,7 +524,15 @@ class SyncRepository(
             val normalizedLocal = local.copy(md5 = md5)
             val cloud = cloudMd5Map[md5]
             val existing = findExistingEntity(md5, cloud?.cloudId, normalizedLocal.localMediaStoreId)
-            result.add(mergeMedia(existing, local = normalizedLocal, cloud = cloud))
+            result.add(
+                mergeMedia(
+                    existing,
+                    local = normalizedLocal,
+                    cloud = cloud,
+                    useCloudFavorite = useCloudFavorite,
+                    pendingFavoriteCloudIds = pendingFavoriteCloudIds
+                )
+            )
         }
 
         return result
@@ -486,16 +540,18 @@ class SyncRepository(
 
     private suspend fun buildCloudEntities(
         cloudPhotos: List<MediaEntity>,
-        skipMd5s: Set<String> = emptySet()
+        skipMd5s: Set<String> = emptySet(),
+        useCloudFavorite: Boolean = false
     ): List<MediaEntity> {
         return cloudPhotos
             .filter { it.md5 !in skipMd5s }
             .chunked(500)
-            .flatMap { buildCloudEntitiesChunk(it) }
+            .flatMap { buildCloudEntitiesChunk(it, useCloudFavorite = useCloudFavorite) }
     }
 
     private suspend fun buildCloudEntitiesChunk(
-        cloudPhotos: List<MediaEntity>
+        cloudPhotos: List<MediaEntity>,
+        useCloudFavorite: Boolean = false
     ): List<MediaEntity> {
         if (cloudPhotos.isEmpty()) return emptyList()
         val md5s = cloudPhotos.map { it.md5 }.filter { it.isNotEmpty() }.distinct()
@@ -511,10 +567,22 @@ class SyncRepository(
             mediaDao.findByCloudIds(cloudIds).associateBy { it.cloudId }
         }
 
+        val pendingFavoriteCloudIds = if (useCloudFavorite) {
+            serverOpTaskDao.getPendingFavoriteCloudIds().toSet()
+        } else {
+            emptySet()
+        }
         val result = mutableListOf<MediaEntity>()
         for (cloud in cloudPhotos) {
             val existing = existingByMd5[cloud.md5] ?: existingByCloudId[cloud.cloudId]
-            result.add(mergeMedia(existing, cloud = cloud))
+            result.add(
+                mergeMedia(
+                    existing,
+                    cloud = cloud,
+                    useCloudFavorite = useCloudFavorite,
+                    pendingFavoriteCloudIds = pendingFavoriteCloudIds
+                )
+            )
         }
         return result
     }
@@ -523,12 +591,13 @@ class SyncRepository(
         cloudPhotos: List<MediaEntity>,
         skipMd5s: Set<String> = emptySet(),
         batchSize: Int = 500,
+        useCloudFavorite: Boolean = false,
         onProgress: suspend (written: Int, total: Int) -> Unit = { _, _ -> }
     ) {
         val candidates = cloudPhotos.filter { it.md5 !in skipMd5s }
         var written = 0
         for (chunk in candidates.chunked(batchSize.coerceAtLeast(1))) {
-            val merged = buildCloudEntitiesChunk(chunk)
+            val merged = buildCloudEntitiesChunk(chunk, useCloudFavorite = useCloudFavorite)
             if (merged.isNotEmpty()) {
                 mediaDao.insertAll(merged)
                 written += merged.size
@@ -557,7 +626,9 @@ class SyncRepository(
     private fun mergeMedia(
         existing: MediaEntity?,
         local: MediaEntity? = null,
-        cloud: MediaEntity? = null
+        cloud: MediaEntity? = null,
+        useCloudFavorite: Boolean = false,
+        pendingFavoriteCloudIds: Set<Double> = emptySet()
     ): MediaEntity {
         val base = existing ?: local ?: cloud ?: error("mergeMedia requires at least one source")
         val localSource = local ?: existing.takeIf { it.hasLocalBinding() }
@@ -630,6 +701,14 @@ class SyncRepository(
             },
             thumbCachePath = existing?.thumbCachePath,
             isStorageOptimized = if (hasLocal) false else existing?.isStorageOptimized ?: false,
+            isFavorite = when {
+                useCloudFavorite &&
+                    cloudSource?.cloudId != null &&
+                    cloudSource.cloudId !in pendingFavoriteCloudIds -> cloudSource.isFavorite
+                existing != null -> existing.isFavorite
+                local != null -> local.isFavorite
+                else -> base.isFavorite
+            },
             createdAt = existing?.createdAt ?: base.createdAt,
             updatedAt = System.currentTimeMillis()
         )
@@ -775,12 +854,17 @@ class SyncRepository(
         localFolders: Set<String>? = null,
         includeRemoteDeleted: Boolean = false
     ): BackupRepairResult = withContext(Dispatchers.IO) {
-        val cloudPhotos = normalizeCloudPhotos(fetchAllCloudPhotos().entities)
+        val cloudResult = fetchAllCloudPhotos()
+        val cloudPhotos = normalizeCloudPhotos(cloudResult.entities)
         val cloudMd5Map = cloudPhotos.associateBy { it.md5 }
         val cloudMd5s = cloudMd5Map.keys
 
         val localMedia = localScanner.scanMedia(localFolders, computeMd5 = true)
-        val merged = prepareLocalEntities(localMedia, cloudMd5Map = cloudMd5Map)
+        val merged = prepareLocalEntities(
+            localMedia,
+            cloudMd5Map = cloudMd5Map,
+            useCloudFavorite = cloudResult.favoriteStateKnown
+        )
         if (merged.isNotEmpty()) {
             mediaDao.insertAll(merged)
         }
@@ -1090,6 +1174,7 @@ fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPh
         localUri = if (localVisible) localUri else null,
         thumbCachePath = thumbCachePath,
         isStorageOptimized = if (localVisible) isStorageOptimized else true,
+        isFavorite = isFavorite,
         fileSize = fileSize,
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
@@ -1109,6 +1194,7 @@ fun PhotoItem.toCloudOnlyUnifiedPhotoItem(): UnifiedPhotoItem {
         height = height,
         syncStatus = SyncStatus.CLOUD_ONLY,
         backupStatus = BackupStatus.NOT_STARTED,
+        isFavorite = isFavorite,
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
         isLivePhotosVideo = isLivePhotosVideo,

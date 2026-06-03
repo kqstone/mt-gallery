@@ -47,6 +47,8 @@ data class UnifiedPhotoItem(
     /** 是否已执行存储优化（原图删除，仅保留缩略图） */
     val isStorageOptimized: Boolean = false,
 
+    val isFavorite: Boolean = false,
+
     /** 文件大小（字节） */
     val fileSize: Long = 0,
 

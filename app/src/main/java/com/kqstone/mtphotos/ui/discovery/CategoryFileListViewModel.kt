@@ -75,7 +75,9 @@ class CategoryFileListViewModel(
     }
 
     fun loadFavoritesFiles(force: Boolean = false) {
-        loadAlbumFiles(1.0, force = force)
+        loadFiles(cacheKey = pageKey("favorites", ""), force = force) {
+            galleryRepository.getFavoriteFiles()
+        }
     }
 
     fun loadRecentFiles(force: Boolean = false) {
@@ -168,6 +170,9 @@ class CategoryFileListViewModel(
         loadJob = viewModelScope.launch {
             loader().fold(
                 onSuccess = { photos ->
+                    if (photos.any { it.isFavorite }) {
+                        syncRepository?.upsertCloudPhotoItems(photos)
+                    }
                     val unified = syncRepository?.hydrateCloudPhotos(photos)
                         ?: photos.map { it.toCloudOnlyUnifiedPhotoItem() }
                     val newState = CategoryFileListUiState(

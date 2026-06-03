@@ -45,6 +45,7 @@ enum class BackupStatus {
         Index(value = ["localMediaStoreId"], unique = true),
         Index(value = ["syncStatus"]),
         Index(value = ["backupStatus"]),
+        Index(value = ["isFavorite"]),
         Index(value = ["mtime"])
     ]
 )
@@ -113,6 +114,8 @@ data class MediaEntity(
 
     /** 是否已被标记为「存储优化」（原图已删，仅保留缩略图） */
     val isStorageOptimized: Boolean = false,
+
+    val isFavorite: Boolean = false,
 
     /** 记录创建时间 */
     val createdAt: Long = System.currentTimeMillis(),

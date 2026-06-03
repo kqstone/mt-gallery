@@ -32,7 +32,8 @@ data class PhotoItem(
     val addr: String? = null,
     val livePhotosVideoId: Double? = null,
     val isLivePhotosVideo: Boolean = false,
-    val livePhotoUuid: String? = null
+    val livePhotoUuid: String? = null,
+    val isFavorite: Boolean = false
 )
 
 data class FolderItem(
@@ -508,6 +509,10 @@ class GalleryRepository(private val container: AppContainer) {
             ?: map["livePhotoUUID"] as? String
             ?: map["livePhotoUuid"] as? String
             ?: map["live_photo_uuid"] as? String
+        val isFavorite = parseBoolean(map["isFavorite"])
+            || parseBoolean(map["favorite"])
+            || parseBoolean(map["isFav"])
+            || parseBoolean(map["fav"])
         return PhotoItem(
             id = id,
             md5 = md5,
@@ -519,7 +524,8 @@ class GalleryRepository(private val container: AppContainer) {
             addr = addr,
             livePhotosVideoId = livePhotosVideoId,
             isLivePhotosVideo = isLivePhotosVideo,
-            livePhotoUuid = livePhotoUuid
+            livePhotoUuid = livePhotoUuid,
+            isFavorite = isFavorite
         )
     }
 
@@ -762,6 +768,20 @@ class GalleryRepository(private val container: AppContainer) {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getFavoriteFiles(): Result<List<PhotoItem>> {
+        return try {
+            val albumId = checkOrCreateFavoritesAlbum().getOrThrow()
+            val photos = getAlbumFiles(albumId).getOrThrow()
+            Result.success(photos.map { it.copy(isFavorite = true) })
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getFavoriteFileIds(): Result<Set<Double>> {
+        return getFavoriteFiles().map { photos -> photos.map { it.id }.toSet() }
     }
 
     suspend fun getRecentFiles(): Result<List<PhotoItem>> {
@@ -1138,6 +1158,24 @@ class GalleryRepository(private val container: AppContainer) {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getCachedFavoriteState(
+        dbId: Long,
+        cloudId: Double?,
+        md5: String
+    ): Boolean? = withContext(Dispatchers.IO) {
+        val dao = container.database.mediaDao()
+        if (cloudId != null) {
+            dao.findByCloudId(cloudId)?.let { return@withContext it.isFavorite }
+        }
+        if (dbId > 0) {
+            dao.findById(dbId)?.let { return@withContext it.isFavorite }
+        }
+        if (md5.isNotEmpty()) {
+            dao.findByMd5(md5)?.let { return@withContext it.isFavorite }
+        }
+        null
     }
 
     /**

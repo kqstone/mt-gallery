@@ -90,7 +90,8 @@ class ViewerViewModel(
         val index = initialIndex.coerceIn(0, (photos.size - 1).coerceAtLeast(0))
         _uiState.value = ViewerUiState(
             photos = photos,
-            currentIndex = index
+            currentIndex = index,
+            isFavorite = photos.getOrNull(index)?.isFavorite ?: false
         )
         syncDownloadState()
         loadExifAndFavoriteForCurrent()
@@ -100,7 +101,7 @@ class ViewerViewModel(
         _uiState.update {
             it.copy(
                 currentIndex = index,
-                isFavorite = false,
+                isFavorite = it.photos.getOrNull(index)?.isFavorite ?: false,
                 exifInfo = null,
                 fileDetailInfo = null,
                 originalDownloaded = false,
@@ -118,8 +119,11 @@ class ViewerViewModel(
             _uiState.update { it.copy(isLoadingDetails = true, exifInfo = null, fileDetailInfo = null) }
             
             // 并行/顺序查询收藏状态和 EXIF/详情
-            val favResult = galleryRepository.isFileInFavorites(photo.id)
-            val isFav = favResult.getOrDefault(false)
+            val isFav = galleryRepository.getCachedFavoriteState(
+                dbId = photo.dbId,
+                cloudId = photo.cloudId,
+                md5 = photo.md5
+            ) ?: photo.isFavorite
             
             val exifResult = galleryRepository.getFileExifInfo(photo.id)
             val detailResult = galleryRepository.getFileDetail(photo.id, photo.md5)
@@ -176,16 +180,26 @@ class ViewerViewModel(
         val currentFav = _uiState.value.isFavorite
         val newFav = !currentFav
         // 乐观更新 UI
-        _uiState.update { it.copy(isFavorite = newFav) }
+        _uiState.update { state ->
+            state.copy(
+                isFavorite = newFav,
+                photos = state.photos.mapIndexed { index, item ->
+                    if (index == state.currentIndex) item.copy(isFavorite = newFav) else item
+                }
+            )
+        }
         // 通过任务队列执行，保证有操作日志和重试机制
         viewModelScope.launch {
             serverOpTaskRepository.enqueueFavorite(
-                fileId = photo.id,
+                cloudId = photo.cloudId,
+                dbId = photo.dbId,
                 isFavorite = newFav,
                 fileName = photo.fileName,
                 md5 = photo.md5
             )
-            BackupScheduler.triggerServerOpWork(appContext)
+            if (photo.cloudId != null) {
+                BackupScheduler.triggerServerOpWork(appContext)
+            }
         }
     }
 
