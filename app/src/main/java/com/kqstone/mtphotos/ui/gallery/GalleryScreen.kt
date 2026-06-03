@@ -192,6 +192,7 @@ fun GalleryScreen(
                     onSelectAll = viewModel::selectAll,
                     onDelete = { showDeleteDialog = true },
                     onShare = { viewModel.shareSelected(context) },
+                    onFavorite = { viewModel.favoriteSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )

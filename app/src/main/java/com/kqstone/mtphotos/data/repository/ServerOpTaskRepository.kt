@@ -9,6 +9,8 @@ import com.kqstone.mtphotos.data.local.db.ServerOpStatus
 import com.kqstone.mtphotos.data.local.db.ServerOpTaskDao
 import com.kqstone.mtphotos.data.local.db.ServerOpTaskEntity
 import com.kqstone.mtphotos.data.local.db.ServerOpType
+import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -76,11 +78,13 @@ class ServerOpTaskRepository(
         fileName: String,
         md5: String
     ) = withContext(Dispatchers.IO) {
-        if (cloudId != null) {
-            database.mediaDao().updateFavoriteByCloudId(cloudId, isFavorite)
-        } else if (dbId > 0) {
-            database.mediaDao().updateFavoriteById(dbId, isFavorite)
-        }
+        updateLocalFavorite(
+            cloudId = cloudId,
+            dbId = dbId,
+            md5 = md5,
+            fileName = fileName,
+            isFavorite = isFavorite
+        )
 
         val fileId = cloudId ?: run {
             Log.d(TAG, "Updated local-only favorite state: $fileName, isFavorite=$isFavorite")
@@ -107,6 +111,95 @@ class ServerOpTaskRepository(
     /**
      * 提交修改人物名称任务。
      */
+    suspend fun enqueueFavorites(
+        photos: List<UnifiedPhotoItem>,
+        isFavorite: Boolean
+    ): Int = withContext(Dispatchers.IO) {
+        val distinctPhotos = photos.distinctBy { photo ->
+            photo.cloudId?.let { "cloud:$it" }
+                ?: photo.dbId.takeIf { it > 0 }?.let { "db:$it" }
+                ?: photo.md5.takeIf { it.isNotBlank() }?.let { "md5:$it" }
+                ?: photo.uniqueKey
+        }
+        if (distinctPhotos.isEmpty()) return@withContext 0
+
+        for (photo in distinctPhotos) {
+            updateLocalFavorite(
+                cloudId = photo.cloudId,
+                dbId = photo.dbId,
+                md5 = photo.md5,
+                fileName = photo.fileName,
+                fileType = photo.fileType,
+                mtime = photo.mtime,
+                width = photo.width.toInt(),
+                height = photo.height.toInt(),
+                isFavorite = isFavorite
+            )
+        }
+
+        val now = System.currentTimeMillis()
+        val tasks = distinctPhotos.mapNotNull { photo ->
+            val cloudId = photo.cloudId ?: return@mapNotNull null
+            ServerOpTaskEntity(
+                opType = ServerOpType.FAVORITE,
+                mediaFileName = photo.fileName,
+                mediaMd5 = photo.md5,
+                mediaCloudId = cloudId,
+                params = gson.toJson(mapOf("fileId" to cloudId, "isFavorite" to isFavorite)),
+                nextAttemptAt = now,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        if (tasks.isNotEmpty()) {
+            dao.insertAll(tasks)
+            Log.d(TAG, "Enqueued ${tasks.size} favorite tasks, isFavorite=$isFavorite")
+        }
+        tasks.size
+    }
+
+    private suspend fun updateLocalFavorite(
+        cloudId: Double?,
+        dbId: Long,
+        md5: String,
+        fileName: String,
+        fileType: String = "",
+        mtime: String = "",
+        width: Int = 0,
+        height: Int = 0,
+        isFavorite: Boolean
+    ) {
+        val mediaDao = database.mediaDao()
+        var updated = 0
+        if (cloudId != null) {
+            updated = mediaDao.updateFavoriteByCloudId(cloudId, isFavorite)
+        }
+        if (updated == 0 && dbId > 0) {
+            updated = mediaDao.updateFavoriteById(dbId, isFavorite)
+        }
+        if (updated == 0 && md5.isNotEmpty()) {
+            mediaDao.findByMd5(md5)?.let { existing ->
+                updated = mediaDao.updateFavoriteById(existing.id, isFavorite)
+            }
+        }
+        if (updated == 0 && cloudId != null) {
+            mediaDao.insert(
+                MediaEntity(
+                    cloudId = cloudId,
+                    md5 = md5,
+                    cloudMd5 = md5,
+                    fileName = fileName,
+                    fileType = fileType,
+                    mtime = mtime,
+                    width = width,
+                    height = height,
+                    syncStatus = SyncStatus.CLOUD_ONLY,
+                    isFavorite = isFavorite
+                )
+            )
+        }
+    }
+
     suspend fun enqueueRenamePerson(
         personId: Double,
         newName: String,

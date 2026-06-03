@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.search
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,7 @@ import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SearchFilters
 import com.kqstone.mtphotos.data.repository.SearchRequest
+import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.data.repository.SyncRepository
@@ -20,6 +22,7 @@ import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
+import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +48,9 @@ data class CloudSearchUiState(
 
 class CloudSearchViewModel(
     private val galleryRepository: GalleryRepository,
-    private val syncRepository: SyncRepository? = null
+    private val syncRepository: SyncRepository? = null,
+    private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CloudSearchUiState())
@@ -350,6 +355,44 @@ class CloudSearchViewModel(
         }
     }
 
+    fun favoriteSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            resultMonths = updateFavoriteState(_uiState.value.resultMonths, selectedIds, isFavorite = true)
+        )
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueFavorites(selectedPhotos, isFavorite = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
+    private fun updateFavoriteState(
+        groups: List<MonthGroup>,
+        selectedIds: Set<Double>,
+        isFavorite: Boolean
+    ): List<MonthGroup> {
+        return groups.map { month ->
+            month.copy(
+                days = month.days.map { day ->
+                    day.copy(
+                        photos = day.photos.map { photo ->
+                            if (photo.id in selectedIds) photo.copy(isFavorite = isFavorite) else photo
+                        }
+                    )
+                }
+            )
+        }
+    }
+
     private fun removeSelectedPhotos(
         groups: List<MonthGroup>,
         selectedIds: Set<Double>
@@ -378,11 +421,18 @@ class CloudSearchViewModel(
 
     class Factory(
         private val galleryRepository: GalleryRepository,
-        private val syncRepository: SyncRepository? = null
+        private val syncRepository: SyncRepository? = null,
+        private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+        private val appContext: Context? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CloudSearchViewModel(galleryRepository, syncRepository) as T
+            return CloudSearchViewModel(
+                galleryRepository,
+                syncRepository,
+                serverOpTaskRepository,
+                appContext
+            ) as T
         }
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -92,6 +93,7 @@ fun MainScreen(
     val navBackStackEntry by innerNavController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val currentRoute = currentDestination?.route
+    val appContext = LocalContext.current.applicationContext
 
     val showBottomBar = currentRoute in topLevelRoutes
     val hazeState = rememberHazeState()
@@ -100,16 +102,31 @@ fun MainScreen(
         factory = FolderViewModel.Factory(container.galleryRepository)
     )
     val folderDetailViewModel: FolderDetailViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = FolderDetailViewModel.Factory(container.galleryRepository, container.syncRepository)
+        factory = FolderDetailViewModel.Factory(
+            container.galleryRepository,
+            container.syncRepository,
+            container.serverOpTaskRepository,
+            appContext
+        )
     )
     val discoveryViewModel: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = DiscoveryViewModel.Factory(container.galleryRepository)
     )
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = CategoryFileListViewModel.Factory(container.galleryRepository, container.syncRepository)
+        factory = CategoryFileListViewModel.Factory(
+            container.galleryRepository,
+            container.syncRepository,
+            container.serverOpTaskRepository,
+            appContext
+        )
     )
     val cloudSearchViewModel: CloudSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = CloudSearchViewModel.Factory(container.galleryRepository, container.syncRepository)
+        factory = CloudSearchViewModel.Factory(
+            container.galleryRepository,
+            container.syncRepository,
+            container.serverOpTaskRepository,
+            appContext
+        )
     )
     var isSearchOverlayVisible by remember { mutableStateOf(false) }
 

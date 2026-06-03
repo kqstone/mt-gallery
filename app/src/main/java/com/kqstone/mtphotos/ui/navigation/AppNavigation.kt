@@ -173,7 +173,9 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                 factory = GalleryViewModel.Factory(
                     container.galleryRepository,
                     container.syncRepository,
-                    container.prefsManager
+                    container.prefsManager,
+                    container.serverOpTaskRepository,
+                    viewerContext.applicationContext
                 )
             )
             MainScreen(

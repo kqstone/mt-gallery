@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.gallery
 
 import android.util.Log
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -13,6 +14,7 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.TimelineMonth
 import com.kqstone.mtphotos.data.repository.TimelineSnapshot
@@ -62,7 +64,9 @@ data class GalleryUiState(
 class GalleryViewModel(
     private val galleryRepository: GalleryRepository,
     private val syncRepository: SyncRepository? = null,
-    private val prefsManager: PrefsManager? = null
+    private val prefsManager: PrefsManager? = null,
+    private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GalleryUiState())
@@ -647,6 +651,44 @@ class GalleryViewModel(
         }
     }
 
+    fun favoriteSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            months = updateFavoriteState(_uiState.value.months, selectedIds, isFavorite = true)
+        )
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueFavorites(selectedPhotos, isFavorite = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
+    private fun updateFavoriteState(
+        groups: List<MonthGroup>,
+        selectedIds: Set<Double>,
+        isFavorite: Boolean
+    ): List<MonthGroup> {
+        return groups.map { month ->
+            month.copy(
+                days = month.days.map { day ->
+                    day.copy(
+                        photos = day.photos.map { photo ->
+                            if (photo.id in selectedIds) photo.copy(isFavorite = isFavorite) else photo
+                        }
+                    )
+                }
+            )
+        }
+    }
+
     private fun removeSelectedPhotos(
         groups: List<MonthGroup>,
         selectedIds: Set<Double>
@@ -765,11 +807,19 @@ class GalleryViewModel(
     class Factory(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,
-        private val prefsManager: PrefsManager? = null
+        private val prefsManager: PrefsManager? = null,
+        private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+        private val appContext: Context? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return GalleryViewModel(galleryRepository, syncRepository, prefsManager) as T
+            return GalleryViewModel(
+                galleryRepository,
+                syncRepository,
+                prefsManager,
+                serverOpTaskRepository,
+                appContext
+            ) as T
         }
     }
 }

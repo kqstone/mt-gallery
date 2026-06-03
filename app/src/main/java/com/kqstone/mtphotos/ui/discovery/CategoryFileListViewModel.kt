@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.discovery
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -7,12 +8,14 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
+import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
+import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +34,9 @@ data class CategoryFileListUiState(
 
 class CategoryFileListViewModel(
     private val galleryRepository: GalleryRepository,
-    private val syncRepository: SyncRepository? = null
+    private val syncRepository: SyncRepository? = null,
+    private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+    private val appContext: Context? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CategoryFileListUiState())
@@ -287,13 +292,64 @@ class CategoryFileListViewModel(
         }
     }
 
+    fun favoriteSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = _uiState.value.photos.filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            photos = _uiState.value.photos.map { photo ->
+                if (photo.id in selectedIds) photo.copy(isFavorite = true) else photo
+            }
+        )
+        updateActiveCache(_uiState.value)
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueFavorites(selectedPhotos, isFavorite = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
+    fun unfavoriteSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = _uiState.value.photos.filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            photos = _uiState.value.photos.filter { it.id !in selectedIds }
+        )
+        updateActiveCache(_uiState.value)
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueFavorites(selectedPhotos, isFavorite = false)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
-        private val syncRepository: SyncRepository? = null
+        private val syncRepository: SyncRepository? = null,
+        private val serverOpTaskRepository: ServerOpTaskRepository? = null,
+        private val appContext: Context? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return CategoryFileListViewModel(galleryRepository, syncRepository) as T
+            return CategoryFileListViewModel(
+                galleryRepository,
+                syncRepository,
+                serverOpTaskRepository,
+                appContext
+            ) as T
         }
     }
 

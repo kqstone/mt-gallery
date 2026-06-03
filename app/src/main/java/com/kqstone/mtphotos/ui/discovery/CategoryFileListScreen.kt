@@ -225,6 +225,8 @@ fun CategoryFileListScreen(
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog.value = true },
                     onShare = { viewModel.shareSelected(context) },
+                    onFavorite = if (loadType == "favorites") null else ({ viewModel.favoriteSelected() }),
+                    onUnfavorite = if (loadType == "favorites") ({ viewModel.unfavoriteSelected() }) else null,
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )

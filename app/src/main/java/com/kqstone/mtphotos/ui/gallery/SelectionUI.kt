@@ -5,6 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,6 +27,8 @@ fun SelectionTopBar(
     onSelectAll: () -> Unit,
     onDelete: () -> Unit,
     onShare: (() -> Unit)? = null,
+    onFavorite: (() -> Unit)? = null,
+    onUnfavorite: (() -> Unit)? = null,
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
     scrollAlpha: Float = 1f
@@ -56,6 +60,28 @@ fun SelectionTopBar(
                 Icon(
                     Icons.Default.Share,
                     contentDescription = "分享"
+                )
+            }
+        }
+        if (onFavorite != null) {
+            IconButton(
+                onClick = onFavorite,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = "收藏"
+                )
+            }
+        }
+        if (onUnfavorite != null) {
+            IconButton(
+                onClick = onUnfavorite,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.StarBorder,
+                    contentDescription = "取消收藏"
                 )
             }
         }

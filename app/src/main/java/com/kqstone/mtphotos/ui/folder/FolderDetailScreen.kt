@@ -175,6 +175,7 @@ fun FolderDetailScreen(
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog.value = true },
                     onShare = { viewModel.shareSelected(context) },
+                    onFavorite = { viewModel.favoriteSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )

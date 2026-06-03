@@ -143,6 +143,7 @@ fun CloudSearchOverlay(
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog = true },
                     onShare = { viewModel.shareSelected(context) },
+                    onFavorite = { viewModel.favoriteSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     modifier = Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
                     scrollAlpha = 1f
