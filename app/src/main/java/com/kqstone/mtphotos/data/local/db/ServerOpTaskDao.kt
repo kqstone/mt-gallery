@@ -121,6 +121,14 @@ interface ServerOpTaskDao {
     """)
     suspend fun getPendingFavoriteCloudIds(): List<Double>
 
+    @Query("""
+        SELECT mediaCloudId FROM server_op_tasks
+        WHERE opType = 'CLOUD_DELETE'
+        AND status IN ('PENDING', 'ERROR', 'RUNNING')
+        AND mediaCloudId IS NOT NULL
+    """)
+    suspend fun getPendingCloudDeleteCloudIds(): List<Double>
+
     /** 网络恢复后将可重试任务提前到现在，确保立即恢复执行。 */
     @Query("""
         UPDATE server_op_tasks

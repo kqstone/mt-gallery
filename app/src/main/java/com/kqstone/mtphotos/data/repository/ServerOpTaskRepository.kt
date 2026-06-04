@@ -457,9 +457,10 @@ class ServerOpTaskRepository(
     }
 
     private suspend fun deleteCloudFile(cloudId: Double) {
-        val body: Map<String, Any> = mapOf("fileIds" to listOf(cloudId.toInt()))
+        val fileId = cloudId.toInt()
+        val body: Map<String, Any> = mapOf("fileIds" to listOf(fileId))
         val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-        if (!isDeleteSuccessResponse(response)) {
+        if (!isDeleteSuccessResponse(response, fileId)) {
             val message = response["message"]?.toString()
                 ?: response["msg"]?.toString()
                 ?: response["error"]?.toString()
@@ -468,7 +469,7 @@ class ServerOpTaskRepository(
         }
     }
 
-    private fun isDeleteSuccessResponse(response: Map<String, Any>): Boolean {
+    private fun isDeleteSuccessResponse(response: Map<String, Any>, fileId: Int): Boolean {
         fun Any?.truthy(): Boolean = when (this) {
             is Boolean -> this
             is Number -> this.toInt() != 0
@@ -494,10 +495,24 @@ class ServerOpTaskRepository(
                 value.contains("成功")
         }
 
+        fun Any?.containsFileId(): Boolean {
+            val items = this as? Iterable<*> ?: return false
+            return items.any { item ->
+                when (item) {
+                    is Number -> item.toInt() == fileId
+                    is String -> item.toIntOrNull() == fileId
+                    else -> false
+                }
+            }
+        }
+
         return response["code"].successCode() ||
             response["status"].successCode() ||
             response["success"].truthy() ||
             response["ok"].truthy() ||
+            response["deleteIds"].containsFileId() ||
+            response["deletedIds"].containsFileId() ||
+            ((response.containsKey("deleteIds") || response.containsKey("deletedIds")) && response["identifiers"].truthy()) ||
             response["data"].truthy() ||
             response["message"].successText() ||
             response["msg"].successText()
