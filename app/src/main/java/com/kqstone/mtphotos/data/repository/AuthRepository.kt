@@ -18,14 +18,10 @@ class AuthRepository(private val container: AppContainer) {
     suspend fun login(
         serverUrl: String,
         username: String,
-        password: String,
-        primaryServerUrl: String = serverUrl,
-        secondaryServerUrl: String = ""
+        password: String
     ): Result<Unit> {
         return try {
             val cleanUrl = cleanBaseUrl(serverUrl)
-            val cleanPrimaryUrl = primaryServerUrl.trim().ifBlank { cleanUrl }.let(::cleanBaseUrl)
-            val cleanSecondaryUrl = secondaryServerUrl.trim().takeIf { it.isNotBlank() }?.let(::cleanBaseUrl) ?: ""
 
             // Step 1: Login with plain text password
             Log.d(TAG, "Step 1: Logging in")
@@ -43,10 +39,11 @@ class AuthRepository(private val container: AppContainer) {
 
             val refreshTk = loginResponse["refresh_token"] as? String ?: ""
             Log.d(TAG, "Step 2: Saving credentials, serverUrl=$cleanUrl")
-            prefsManager.saveServerUrls(cleanPrimaryUrl, cleanSecondaryUrl, cleanUrl)
             prefsManager.saveCredentials(cleanUrl, username, password)
             container.retrofitClient.invalidate()
             prefsManager.saveToken(token, refreshTk)
+            prefsManager.setAuthRequired(false)
+            prefsManager.setServerUnreachable(false)
 
             // Step 3: Save auth_code from login response (no separate call needed)
             val authCode = loginResponse["auth_code"] as? String
@@ -67,11 +64,7 @@ class AuthRepository(private val container: AppContainer) {
         }
     }
 
-    suspend fun loginWithSavedCredentials(
-        serverUrl: String,
-        primaryServerUrl: String,
-        secondaryServerUrl: String
-    ): Result<Unit> {
+    suspend fun loginWithSavedCredentials(serverUrl: String): Result<Unit> {
         val username = prefsManager.getUsernameSync()
         val password = prefsManager.getPasswordSync()
         if (username.isBlank() || password.isBlank()) {
@@ -80,9 +73,7 @@ class AuthRepository(private val container: AppContainer) {
         return login(
             serverUrl = serverUrl,
             username = username,
-            password = password,
-            primaryServerUrl = primaryServerUrl,
-            secondaryServerUrl = secondaryServerUrl
+            password = password
         )
     }
 

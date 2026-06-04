@@ -7,6 +7,7 @@
     <string name="server_connection">Server Connection</string>
     <string name="connect_to_private_server">Connect to your private media server</string>
     <string name="update_server_address">Update server access address</string>
+    <string name="server_url">Server URL</string>
     <string name="primary_server_url">Primary Server URL</string>
     <string name="secondary_server_url">Backup Server URL</string>
     <string name="username">Username</string>
@@ -23,6 +24,10 @@
     <string name="primary_secondary_cannot_be_same">Primary and backup addresses cannot be the same</string>
     <string name="please_fill_username_password">Please fill in username and password</string>
     <string name="connection_failed">Connection failed</string>
+    <string name="auth_required_title">Login expired</string>
+    <string name="auth_required_message">Please enter your username and password again.</string>
+    <string name="login_failed">Login failed</string>
+    <string name="server_unreachable_once">Server is unreachable. Check the address or server status.</string>
 
     <!-- About Screen -->
     <string name="about">About</string>
@@ -285,7 +290,7 @@
     <string name="scanning_device_files">Scanning device files…</string>
     <string name="first_scan_takes_time">First scan may take some time, please wait.</string>
     <string name="server">Server</string>
-    <string name="maintain_server_addresses">Maintain primary/backup access addresses and log in again</string>
+    <string name="maintain_server_addresses">Update server address, username, and password</string>
     <string name="auto_backup">Auto Backup</string>
     <string name="enable_auto_backup">Enable auto backup</string>
     <string name="auto_backup_desc">Automatically backup device photos and videos to server</string>

@@ -3,7 +3,6 @@ package com.kqstone.mtphotos.ui.settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,7 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
@@ -162,29 +159,12 @@ fun SettingsScreen(
                 )
 
                 ServerUrlField(
-                    label = stringResource(R.string.primary_server_url),
-                    value = uiState.primaryServerUrl,
-                    onValueChange = viewModel::onPrimaryServerUrlChange,
-                    selected = uiState.activeServerUrl == uiState.primaryServerUrl ||
-                        uiState.activeServerUrl.isBlank(),
-                    onSelect = { viewModel.selectActiveUrl(ServerUrlSlot.PRIMARY) },
-                    testMessage = uiState.primaryUrlTestMessage,
-                    isTesting = uiState.testingUrlSlot == ServerUrlSlot.PRIMARY,
-                    onTest = { viewModel.testUrl(ServerUrlSlot.PRIMARY) }
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ServerUrlField(
-                    label = stringResource(R.string.secondary_server_url),
-                    value = uiState.secondaryServerUrl,
-                    onValueChange = viewModel::onSecondaryServerUrlChange,
-                    selected = uiState.secondaryServerUrl.isNotBlank() &&
-                        uiState.activeServerUrl == uiState.secondaryServerUrl,
-                    onSelect = { viewModel.selectActiveUrl(ServerUrlSlot.SECONDARY) },
-                    testMessage = uiState.secondaryUrlTestMessage,
-                    isTesting = uiState.testingUrlSlot == ServerUrlSlot.SECONDARY,
-                    onTest = { viewModel.testUrl(ServerUrlSlot.SECONDARY) }
+                    label = stringResource(R.string.server_url),
+                    value = uiState.serverUrl,
+                    onValueChange = viewModel::onServerUrlChange,
+                    testMessage = uiState.urlTestMessage,
+                    isTesting = uiState.isTestingUrl,
+                    onTest = viewModel::testUrl
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -193,7 +173,6 @@ fun SettingsScreen(
                     value = uiState.username,
                     onValueChange = viewModel::onUsernameChange,
                     label = { Text(stringResource(R.string.username)) },
-                    enabled = uiState.credentialsEditable,
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Person,
@@ -212,36 +191,27 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (uiState.credentialsEditable) {
-                    OutlinedTextField(
-                        value = uiState.password,
-                        onValueChange = viewModel::onPasswordChange,
-                        label = { Text(stringResource(R.string.password)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                            )
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.saved_password_notice),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                OutlinedTextField(
+                    value = uiState.password,
+                    onValueChange = viewModel::onPasswordChange,
+                    label = { Text(stringResource(R.string.password)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    ),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -293,8 +263,6 @@ private fun ServerUrlField(
     label: String,
     value: String,
     onValueChange: (String) -> Unit,
-    selected: Boolean,
-    onSelect: () -> Unit,
     testMessage: UiText?,
     isTesting: Boolean,
     onTest: () -> Unit
@@ -324,12 +292,7 @@ private fun ServerUrlField(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RadioButton(selected = selected, onClick = onSelect)
-            Text(
-                text = stringResource(R.string.currently_used),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.weight(1f)
-            )
+            Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = onTest, enabled = !isTesting) {
                 if (isTesting) {
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

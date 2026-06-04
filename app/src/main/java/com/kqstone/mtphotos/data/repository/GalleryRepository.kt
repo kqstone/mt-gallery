@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.data.repository
 
 import com.kqstone.mtphotos.AppContainer
 import com.kqstone.mtphotos.data.local.db.toMapPhotoEntity
+import com.kqstone.mtphotos.network.NetworkFailure
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -617,6 +618,23 @@ class GalleryRepository(private val container: AppContainer) {
 
     fun getFileDownloadUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileDownload/$id/$md5${urlSuffix()}"
+    }
+
+    suspend fun refreshAuthCode(): Result<String> {
+        val result = authRepository.refreshAuthCode()
+        if (result.isSuccess) {
+            cachedRawAuth = null
+            cachedSuffix = null
+        }
+        return result
+    }
+
+    suspend fun markRecoverableFailure(error: Throwable) {
+        if (NetworkFailure.isDeviceOffline(prefsManager.context)) {
+            prefsManager.setNetworkRetryPending(true)
+        } else if (NetworkFailure.isServerUnreachable(error)) {
+            prefsManager.setServerUnreachable(true)
+        }
     }
 
     suspend fun markOriginalDownloaded(md5: String, localUri: String, localPath: String) {

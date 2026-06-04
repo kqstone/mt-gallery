@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "BackupScheduler"
@@ -21,6 +22,7 @@ private const val ONE_TIME_SYNC_WORK = "one_time_sync"
 private const val ONE_TIME_BACKUP_WORK = "one_time_backup"
 private const val ONE_TIME_SERVER_OP_WORK = "one_time_server_op"
 private const val DELAYED_SERVER_OP_WORK = "delayed_server_op"
+const val KEY_FORCE_SERVER_OP_RETRY_NOW = "force_server_op_retry_now"
 private const val DEFAULT_SYNC_INTERVAL_MINUTES = 60L
 
 /**
@@ -136,19 +138,24 @@ object BackupScheduler {
     /**
      * 触发一次服务器操作处理（替代原有的 triggerCloudDeleteWork）。
      */
-    fun triggerServerOpWork(context: Context) {
+    fun triggerServerOpWork(
+        context: Context,
+        replaceExisting: Boolean = false,
+        forceRetryNow: Boolean = false
+    ) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val workRequest = OneTimeWorkRequestBuilder<ServerOpWorker>()
             .setConstraints(constraints)
+            .setInputData(workDataOf(KEY_FORCE_SERVER_OP_RETRY_NOW to forceRetryNow))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
             ONE_TIME_SERVER_OP_WORK,
-            ExistingWorkPolicy.KEEP,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             workRequest
         )
         Log.d(TAG, "Triggered server op work")

@@ -7,6 +7,7 @@
     <string name="server_connection">服务器连接</string>
     <string name="connect_to_private_server">连接到您的私有媒体服务器</string>
     <string name="update_server_address">更新服务器访问地址</string>
+    <string name="server_url">服务器地址</string>
     <string name="primary_server_url">主服务器地址</string>
     <string name="secondary_server_url">备用服务器地址</string>
     <string name="username">用户名</string>
@@ -23,6 +24,10 @@
     <string name="primary_secondary_cannot_be_same">主地址和备用地址不能相同</string>
     <string name="please_fill_username_password">请填写用户名和密码</string>
     <string name="connection_failed">连接失败</string>
+    <string name="auth_required_title">登录已失效</string>
+    <string name="auth_required_message">请重新输入用户名和密码。</string>
+    <string name="login_failed">登录失败</string>
+    <string name="server_unreachable_once">服务器无法连接，请检查地址或服务器状态。</string>
 
     <!-- About Screen -->
     <string name="about">关于</string>
@@ -285,7 +290,7 @@
     <string name="scanning_device_files">正在扫描设备文件...</string>
     <string name="first_scan_takes_time">首次扫描可能需要一点时间，请稍候。</string>
     <string name="server">服务器</string>
-    <string name="maintain_server_addresses">维护主/备用访问地址并重新登录</string>
+    <string name="maintain_server_addresses">修改服务器地址、用户名与密码</string>
     <string name="auto_backup">自动备份</string>
     <string name="enable_auto_backup">开启自动备份</string>
     <string name="auto_backup_desc">自动将设备照片和视频备份到服务器</string>

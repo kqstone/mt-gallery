@@ -9,7 +9,8 @@ import java.util.concurrent.TimeUnit
 
 class RetrofitClient(
     private val prefsManager: PrefsManager,
-    private val authInterceptor: AuthInterceptor
+    private val authInterceptor: AuthInterceptor,
+    private val authRecovery: AuthRecovery
 ) {
     private var cachedRetrofit: Retrofit? = null
     private var cachedBaseUrl: String = ""
@@ -31,6 +32,8 @@ class RetrofitClient(
 
         val client = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(AuthRetryInterceptor(prefsManager, authRecovery))
+            .addInterceptor(NetworkIssueInterceptor(prefsManager))
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)

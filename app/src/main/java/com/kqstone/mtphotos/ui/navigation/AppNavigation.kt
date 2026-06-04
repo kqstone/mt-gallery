@@ -1,20 +1,37 @@
 package com.kqstone.mtphotos.ui.navigation
 
+import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
+import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.oplog.OpLogScreen
 import com.kqstone.mtphotos.ui.oplog.OpLogViewModel
@@ -29,6 +46,7 @@ import com.kqstone.mtphotos.ui.util.AppPermissionGate
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import com.kqstone.mtphotos.worker.BackupScheduler
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
@@ -67,6 +85,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
 
     val context = LocalContext.current
     val mainActivity = context as? com.kqstone.mtphotos.MainActivity
+    AppStatusEffects(container)
 
     LaunchedEffect(navController, mainActivity) {
         mainActivity?.let { activity ->
@@ -104,8 +123,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         composable("settings") {
             val settingsViewModel: SettingsViewModel = viewModel(
                 factory = SettingsViewModel.Factory(
-                    container.authRepository,
-                    credentialsEditable = true
+                    container.authRepository
                 )
             )
             SettingsScreen(
@@ -124,8 +142,7 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
         composable("server_connection") {
             val settingsViewModel: SettingsViewModel = viewModel(
                 factory = SettingsViewModel.Factory(
-                    container.authRepository,
-                    credentialsEditable = false
+                    container.authRepository
                 )
             )
             SettingsScreen(
@@ -256,4 +273,138 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             )
         }
     }
+
+    val authRequired by container.prefsManager.authRequired.collectAsState(initial = false)
+    if (authRequired) {
+        ReauthDialog(container = container)
+    }
+}
+
+@Composable
+private fun AppStatusEffects(container: com.kqstone.mtphotos.AppContainer) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+
+    suspend fun showServerUnreachableToastOnce() {
+        val eventAt = container.prefsManager.getPendingServerUnreachableEventSync()
+        if (eventAt == 0L) return
+        Toast.makeText(
+            context,
+            context.getString(R.string.server_unreachable_once),
+            Toast.LENGTH_SHORT
+        ).show()
+        container.prefsManager.markServerUnreachableShown(eventAt)
+    }
+
+    LaunchedEffect(Unit) {
+        showServerUnreachableToastOnce()
+    }
+
+    LaunchedEffect(Unit) {
+        container.prefsManager.serverUnreachableEventAt.collect { eventAt ->
+            if (eventAt > 0L) {
+                showServerUnreachableToastOnce()
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch {
+                    showServerUnreachableToastOnce()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+}
+
+@Composable
+private fun ReauthDialog(container: com.kqstone.mtphotos.AppContainer) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        username = container.prefsManager.getUsernameSync()
+        password = container.prefsManager.getPasswordSync()
+    }
+
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text(context.getString(R.string.auth_required_title)) },
+        text = {
+            Column {
+                Text(context.getString(R.string.auth_required_message))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it
+                        error = null
+                    },
+                    label = { Text(context.getString(R.string.username)) },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        error = null
+                    },
+                    label = { Text(context.getString(R.string.password)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+                error?.let {
+                    Text(it)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !isLoading,
+                onClick = {
+                    scope.launch {
+                        isLoading = true
+                        val result = container.authRepository.login(
+                            serverUrl = container.prefsManager.getServerUrlSync(),
+                            username = username,
+                            password = password
+                        )
+                        isLoading = false
+                        result.fold(
+                            onSuccess = {
+                                container.prefsManager.setAuthRequired(false)
+                                BackupScheduler.triggerServerOpWork(context)
+                                if (container.prefsManager.getBackupEnabledSync()) {
+                                    val wifiOnly = container.prefsManager.getBackupWifiOnlySync()
+                                    BackupScheduler.triggerSyncWork(context)
+                                    BackupScheduler.triggerImmediateBackup(context, wifiOnly)
+                                }
+                            },
+                            onFailure = { e ->
+                                error = e.message?.takeIf { it.isNotBlank() }
+                                    ?: context.getString(R.string.login_failed)
+                            }
+                        )
+                    }
+                }
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator()
+                } else {
+                    Text(context.getString(R.string.save_and_relogin))
+                }
+            }
+        }
+    )
 }
