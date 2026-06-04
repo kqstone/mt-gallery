@@ -113,7 +113,15 @@ fun ViewerScreen(
         }
     }
 
-    val currentPhoto = photos.getOrNull(pagerState.settledPage) ?: photos[initialIndex]
+    LaunchedEffect(uiState.currentIndex, photos.size) {
+        val targetPage = uiState.currentIndex.coerceIn(0, photos.lastIndex)
+        if (pagerState.currentPage != targetPage) {
+            pagerState.scrollToPage(targetPage)
+        }
+    }
+
+    val visiblePage = pagerState.settledPage.coerceIn(0, photos.lastIndex)
+    val currentPhoto = photos[visiblePage]
 
     // UI visibility state for immersive full screen
     var isUiVisible by remember { mutableStateOf(true) }
@@ -135,7 +143,7 @@ fun ViewerScreen(
             userScrollEnabled = !showBottomSheet
         ) { page ->
             val photo = photos[page]
-            val isCurrentPage = pagerState.settledPage == page
+            val isCurrentPage = visiblePage == page
             val isPlayableMedia = photo.isPlayableMedia()
 
             if (isPlayableMedia && isCurrentPage) {
@@ -309,7 +317,7 @@ fun ViewerScreen(
                 ) {
                     // Pager Number Indicator
                     Text(
-                        text = "${pagerState.settledPage + 1} / ${photos.size}",
+                        text = "${visiblePage + 1} / ${photos.size}",
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.85f),
                         modifier = Modifier
@@ -386,8 +394,10 @@ fun ViewerScreen(
             onConfirm = {
                 showDeleteDialog = false
                 if (PermissionHelper.requestManageStoragePermission(context)) {
-                    viewModel.deleteCurrentPhoto(onSuccess = {
-                        stopAndGoBack()
+                    viewModel.deleteCurrentPhoto(onDeleted = { hasRemainingPhotos ->
+                        if (!hasRemainingPhotos) {
+                            stopAndGoBack()
+                        }
                     })
                 }
             },
@@ -422,8 +432,10 @@ fun ViewerScreen(
                     onClick = {
                         showDeleteDialog = false
                         if (PermissionHelper.requestManageStoragePermission(context)) {
-                            viewModel.deleteCurrentPhoto(onSuccess = {
-                                stopAndGoBack()
+                            viewModel.deleteCurrentPhoto(onDeleted = { hasRemainingPhotos ->
+                                if (!hasRemainingPhotos) {
+                                    stopAndGoBack()
+                                }
                             })
                         }
                     },

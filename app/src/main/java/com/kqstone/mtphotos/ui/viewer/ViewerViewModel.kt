@@ -99,9 +99,10 @@ class ViewerViewModel(
 
     fun updateCurrentIndex(index: Int) {
         _uiState.update {
+            val boundedIndex = index.coerceIn(0, (it.photos.size - 1).coerceAtLeast(0))
             it.copy(
-                currentIndex = index,
-                isFavorite = it.photos.getOrNull(index)?.isFavorite ?: false,
+                currentIndex = boundedIndex,
+                isFavorite = it.photos.getOrNull(boundedIndex)?.isFavorite ?: false,
                 exifInfo = null,
                 fileDetailInfo = null,
                 originalDownloaded = false,
@@ -203,14 +204,51 @@ class ViewerViewModel(
         }
     }
 
-    fun deleteCurrentPhoto(onSuccess: () -> Unit) {
+    fun deleteCurrentPhoto(onDeleted: (hasRemainingPhotos: Boolean) -> Unit) {
         val photo = getCurrentPhoto() ?: return
         viewModelScope.launch {
             val result = galleryRepository.deleteFiles(listOf(photo.id))
             if (result.isSuccess) {
-                onSuccess()
+                val hasRemainingPhotos = removeDeletedPhoto(photo)
+                if (hasRemainingPhotos) {
+                    syncDownloadState()
+                    loadExifAndFavoriteForCurrent()
+                }
+                onDeleted(hasRemainingPhotos)
             }
         }
+    }
+
+    private fun removeDeletedPhoto(photo: UnifiedPhotoItem): Boolean {
+        var hasRemainingPhotos = false
+
+        _uiState.update { state ->
+            val deletedIndex = state.photos.indexOfFirst { it.uniqueKey == photo.uniqueKey }
+                .takeIf { it >= 0 }
+                ?: state.currentIndex.takeIf { state.photos.getOrNull(it)?.uniqueKey == photo.uniqueKey }
+                ?: return@update state
+
+            val updatedPhotos = state.photos.toMutableList().also { it.removeAt(deletedIndex) }
+            hasRemainingPhotos = updatedPhotos.isNotEmpty()
+            val updatedIndex = if (updatedPhotos.isEmpty()) {
+                0
+            } else {
+                deletedIndex.coerceAtMost(updatedPhotos.lastIndex)
+            }
+
+            state.copy(
+                photos = updatedPhotos,
+                currentIndex = updatedIndex,
+                isFavorite = updatedPhotos.getOrNull(updatedIndex)?.isFavorite ?: false,
+                exifInfo = null,
+                fileDetailInfo = null,
+                originalDownloaded = false,
+                resolvedVideoUrl = null,
+                isPlayingTranscode = false
+            )
+        }
+
+        return hasRemainingPhotos
     }
 
     fun sharePhoto(context: android.content.Context) {
