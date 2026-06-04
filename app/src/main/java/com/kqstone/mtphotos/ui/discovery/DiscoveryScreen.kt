@@ -30,6 +30,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.kqstone.mtphotos.R
@@ -106,10 +108,19 @@ fun DiscoveryScreen(
                 }
             }
             else -> {
+                val pullRefreshState = rememberPullToRefreshState()
                 PullToRefreshBox(
                     isRefreshing = uiState.isRefreshing,
                     onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize().hazeContentSource()
+                    modifier = Modifier.fillMaxSize().hazeContentSource(),
+                    state = pullRefreshState,
+                    indicator = {
+                        PullToRefreshDefaults.Indicator(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = scrollState.topBarHeight),
+                            isRefreshing = uiState.isRefreshing,
+                            state = pullRefreshState
+                        )
+                    }
                 ) {
                     LazyColumn(
                         state = lazyListState,
