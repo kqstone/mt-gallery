@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import okhttp3.OkHttpClient
+import okhttp3.Response
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.api.AlbumApi
@@ -59,9 +60,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
                 OkHttpClient.Builder()
                     .addNetworkInterceptor { chain ->
                         val response = chain.proceed(chain.request())
-                        response.newBuilder()
-                            .header("Cache-Control", "public, max-age=31536000")
-                            .build()
+                        response.withThumbnailCacheControl()
                     }
                     .build()
             }
@@ -93,9 +92,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
                 OkHttpClient.Builder()
                     .addNetworkInterceptor { chain ->
                         val response = chain.proceed(chain.request())
-                        response.newBuilder()
-                            .header("Cache-Control", "public, max-age=31536000")
-                            .build()
+                        response.withThumbnailCacheControl()
                     }
                     .build()
             }
@@ -138,6 +135,17 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
         }
         BackupScheduler.triggerServerOpWork(this)
     }
+}
+
+private fun Response.withThumbnailCacheControl(): Response {
+    val cacheControl = if (request.url.encodedPath.contains("/gateway/h220/")) {
+        "no-cache, no-store, max-age=0"
+    } else {
+        "public, max-age=31536000"
+    }
+    return newBuilder()
+        .header("Cache-Control", cacheControl)
+        .build()
 }
 
 class AppContainer(context: android.content.Context) {

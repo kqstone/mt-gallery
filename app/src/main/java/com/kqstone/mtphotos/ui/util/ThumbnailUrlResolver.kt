@@ -11,7 +11,9 @@ object ThumbnailUrlResolver {
         imageCloudUrl: (UnifiedPhotoItem) -> String
     ): String {
         photo.thumbCachePath?.let { path ->
-            if (path.isNotEmpty()) return "file://$path"
+            if (path.isNotEmpty() && File(path).let { it.exists() && it.length() > 0 }) {
+                return "file://$path"
+            }
         }
 
         if (photo.isVideo()) {

@@ -27,9 +27,9 @@ fun ThumbnailImage(
             .size(THUMB_SIZE_PX)
             .scale(Scale.FILL)
             .apply {
-                if (!key.isNullOrEmpty()) {
-                    diskCacheKey("${key}_256")
-                    memoryCacheKey("${key}_256")
+                ThumbnailCacheKeys.forUrl(key, url)?.let { cacheKey ->
+                    diskCacheKey(cacheKey)
+                    memoryCacheKey(cacheKey)
                 }
             }
             .crossfade(false)

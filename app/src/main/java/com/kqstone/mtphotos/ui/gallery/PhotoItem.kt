@@ -50,6 +50,7 @@ import coil.size.Scale
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.util.ThumbnailCacheKeys
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -78,9 +79,9 @@ fun PhotoThumbnail(
                 .size(256)
                 .scale(Scale.FILL)
                 .apply {
-                    if (!photo.md5.isNullOrEmpty()) {
-                        diskCacheKey("${photo.md5}_256")
-                        memoryCacheKey("${photo.md5}_256")
+                    ThumbnailCacheKeys.forPhoto(photo, thumbUrl)?.let { cacheKey ->
+                        diskCacheKey(cacheKey)
+                        memoryCacheKey(cacheKey)
                     }
                 }
                 .crossfade(false)
