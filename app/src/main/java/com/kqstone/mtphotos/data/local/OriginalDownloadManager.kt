@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.provider.MediaStore
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.model.MediaTimeParser
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.R
 import kotlinx.coroutines.CoroutineScope
@@ -70,19 +71,7 @@ class OriginalDownloadManager(
                     else -> "image/jpeg"
                 }
 
-                val fileDetailMtime = fileDetailInfo?.get("mtime")
-                val dateTakenMillis = try {
-                    if (fileDetailMtime is Number) {
-                        val mtimeMs = fileDetailMtime.toLong()
-                        if (mtimeMs > 9999999999L) mtimeMs else mtimeMs * 1000L
-                    } else {
-                        val rawMtime = (fileDetailMtime as? String)?.takeIf { it.isNotBlank() } ?: photo.mtime
-                        val clean = rawMtime.replace("T", " ")
-                            .substringBefore("+").substringBefore("Z")
-                        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                            .parse(clean)?.time
-                    }
-                } catch (_: Exception) { null }
+                val dateTakenMillis = resolveDateTakenMillis(photo, fileDetailInfo)
 
                 val idStr = photo.id.toLong().toString()
                 val extRaw = (fileDetailInfo?.get("fileType") as? String)
@@ -176,5 +165,25 @@ class OriginalDownloadManager(
                 }
             }
         }
+    }
+
+    private fun resolveDateTakenMillis(
+        photo: UnifiedPhotoItem,
+        fileDetailInfo: Map<String, Any>?
+    ): Long? {
+        val detailTimeKeys = listOf(
+            "mtime",
+            "createTime",
+            "createdTime",
+            "date",
+            "dateTaken",
+            "takenTime",
+            "shootTime",
+            "captureTime",
+            "DateTimeOriginal",
+            "dateTimeOriginal"
+        )
+        val candidates = detailTimeKeys.mapNotNull { key -> fileDetailInfo?.get(key) } + photo.mtime
+        return candidates.firstNotNullOfOrNull(MediaTimeParser::parseMillis)
     }
 }

@@ -8,6 +8,7 @@ import android.util.Log
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.MediaEntity
 import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.model.MediaTimeParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -16,8 +17,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 private const val TAG = "LocalMediaScanner"
@@ -27,8 +26,6 @@ private const val TAG = "LocalMediaScanner"
  * 使用 MediaStore API 读取设备上的照片和视频文件。
  */
 class LocalMediaScanner(private val context: Context) {
-
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
 
     /**
      * 扫描设备上指定文件夹（或全部）中的照片和视频。
@@ -420,7 +417,7 @@ class LocalMediaScanner(private val context: Context) {
         val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
 
         val timestamp = if (dateTaken > 0) dateTaken else dateModified
-        val mtime = dateFormat.format(Date(timestamp))
+        val mtime = MediaTimeParser.formatTimelineMillis(timestamp)
 
         val contentUri = ContentUris.withAppendedId(
             if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI

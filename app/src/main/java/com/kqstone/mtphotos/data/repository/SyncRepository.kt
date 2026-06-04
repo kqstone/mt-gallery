@@ -664,10 +664,12 @@ class SyncRepository(
                 ?: cloud?.fileType?.takeIf { it.isNotEmpty() }
                 ?: existing?.fileType
                 ?: "",
-            mtime = local?.mtime?.takeIf { it.isNotEmpty() }
-                ?: cloud?.mtime?.takeIf { it.isNotEmpty() }
-                ?: existing?.mtime
-                ?: "",
+            mtime = mergedTimelineMtime(
+                existing = existing,
+                local = local,
+                cloud = cloud,
+                cloudSource = cloudSource
+            ),
             width = when {
                 (local?.width ?: 0) > 0 -> local!!.width
                 (cloud?.width ?: 0) > 0 -> cloud!!.width
@@ -712,6 +714,20 @@ class SyncRepository(
             createdAt = existing?.createdAt ?: base.createdAt,
             updatedAt = System.currentTimeMillis()
         )
+    }
+
+    private fun mergedTimelineMtime(
+        existing: MediaEntity?,
+        local: MediaEntity?,
+        cloud: MediaEntity?,
+        cloudSource: MediaEntity?
+    ): String {
+        return cloud?.mtime?.takeIf { it.isNotEmpty() }
+            ?: cloudSource?.mtime?.takeIf { it.isNotEmpty() }
+            ?: existing?.takeIf { it.hasCloudBinding() }?.mtime?.takeIf { it.isNotEmpty() }
+            ?: local?.mtime?.takeIf { it.isNotEmpty() }
+            ?: existing?.mtime?.takeIf { it.isNotEmpty() }
+            ?: ""
     }
 
     private fun MediaEntity?.hasLocalBinding(): Boolean {

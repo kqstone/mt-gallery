@@ -1,7 +1,8 @@
 package com.kqstone.mtphotos.data.model
 
 val TimelinePhotoComparator: Comparator<UnifiedPhotoItem> =
-    compareByDescending<UnifiedPhotoItem> { it.mtime }
+    compareByDescending<UnifiedPhotoItem> { MediaTimeParser.parseMillis(it.mtime) ?: Long.MIN_VALUE }
+        .thenByDescending { it.mtime }
         .thenByDescending { it.cloudId ?: Double.NEGATIVE_INFINITY }
         .thenByDescending { it.dbId }
         .thenBy { it.md5 }
