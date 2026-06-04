@@ -217,17 +217,17 @@ class AboutViewModel : ViewModel() {
     }
 
     fun isNewerVersion(current: String, latest: String): Boolean {
-        val cleanCurrent = current.trim().lowercase().removePrefix("v")
-        val cleanLatest = latest.trim().lowercase().removePrefix("v")
+        val cleanCurrent = current.trim().lowercase().removePrefix("v").substringBefore(" ")
+        val cleanLatest = latest.trim().lowercase().removePrefix("v").substringBefore(" ")
         if (cleanCurrent == cleanLatest) return false
 
-        val currentParts = cleanCurrent.split(".").mapNotNull { it.toIntOrNull() }
-        val latestParts = cleanLatest.split(".").mapNotNull { it.toIntOrNull() }
+        val currentParts = cleanCurrent.split(".").mapNotNull { it.takeWhile { char -> char.isDigit() }.toLongOrNull() }
+        val latestParts = cleanLatest.split(".").mapNotNull { it.takeWhile { char -> char.isDigit() }.toLongOrNull() }
 
         val size = maxOf(currentParts.size, latestParts.size)
         for (i in 0 until size) {
-            val currVal = currentParts.getOrElse(i) { 0 }
-            val latVal = latestParts.getOrElse(i) { 0 }
+            val currVal = currentParts.getOrElse(i) { 0L }
+            val latVal = latestParts.getOrElse(i) { 0L }
             if (latVal > currVal) return true
             if (currVal > latVal) return false
         }
