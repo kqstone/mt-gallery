@@ -405,7 +405,10 @@ class SyncRepository(
                     FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
             }
         }
-        return entities.map { it.toUnifiedPhotoItem(localFolders) }
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        return entities
+            .filterNot { entity -> entity.cloudId in pendingCloudDeleteIds }
+            .map { it.toUnifiedPhotoItem(localFolders) }
     }
 
     suspend fun hydrateCloudPhotos(
@@ -414,12 +417,16 @@ class SyncRepository(
     ): List<UnifiedPhotoItem> = withContext(Dispatchers.IO) {
         if (photos.isEmpty()) return@withContext emptyList()
 
-        val byCloudId = mediaDao.findByCloudIds(photos.map { it.id }.distinct())
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        val visiblePhotos = photos.filter { it.id !in pendingCloudDeleteIds }
+        if (visiblePhotos.isEmpty()) return@withContext emptyList()
+
+        val byCloudId = mediaDao.findByCloudIds(visiblePhotos.map { it.id }.distinct())
             .associateBy { it.cloudId }
-        val byMd5 = mediaDao.findByMd5List(photos.map { it.md5 }.filter { it.isNotEmpty() }.distinct())
+        val byMd5 = mediaDao.findByMd5List(visiblePhotos.map { it.md5 }.filter { it.isNotEmpty() }.distinct())
             .associateBy { it.md5.ifEmpty { it.cloudMd5 ?: "" } }
 
-        photos.map { photo ->
+        visiblePhotos.map { photo ->
             val localEntity = byCloudId[photo.id] ?: byMd5[photo.md5]
             localEntity?.toUnifiedPhotoItem(localFolders)?.copy(
                 addr = photo.addr ?: localEntity.addr,
@@ -431,10 +438,16 @@ class SyncRepository(
         }
     }
 
-    private fun normalizeCloudPhotos(cloudPhotos: List<MediaEntity>): List<MediaEntity> {
+    private suspend fun normalizeCloudPhotos(cloudPhotos: List<MediaEntity>): List<MediaEntity> {
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
         return cloudPhotos
+            .filterNot { it.cloudId in pendingCloudDeleteIds }
             .filter { it.md5.isNotEmpty() }
             .distinctBy { it.md5 }
+    }
+
+    private suspend fun getPendingCloudDeleteCloudIds(): Set<Double> {
+        return serverOpTaskDao.getPendingCloudDeleteCloudIds().toSet()
     }
 
     private fun PhotoItem.toCloudEntity(favoriteFileIds: Set<Double>? = null): MediaEntity {

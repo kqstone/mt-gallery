@@ -40,6 +40,11 @@ class PrefsManager(val context: Context) {
         private val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         private val KEY_AUTH_CODE = stringPreferencesKey("auth_code")
         private val KEY_AUTH_CODE_EXPIRY = longPreferencesKey("auth_code_expiry")
+        private val KEY_AUTH_REQUIRED = booleanPreferencesKey("auth_required")
+        private val KEY_SERVER_UNREACHABLE = booleanPreferencesKey("server_unreachable")
+        private val KEY_SERVER_UNREACHABLE_EVENT_AT = longPreferencesKey("server_unreachable_event_at")
+        private val KEY_SERVER_UNREACHABLE_SHOWN_AT = longPreferencesKey("server_unreachable_shown_at")
+        private val KEY_NETWORK_RETRY_PENDING = booleanPreferencesKey("network_retry_pending")
 
         // 备份相关
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
@@ -64,6 +69,12 @@ class PrefsManager(val context: Context) {
     val password: Flow<String> = context.dataStore.data.map { it[KEY_PASSWORD] ?: "" }
     val token: Flow<String> = context.dataStore.data.map { it[KEY_TOKEN] ?: "" }
     val refreshToken: Flow<String> = context.dataStore.data.map { it[KEY_REFRESH_TOKEN] ?: "" }
+    val authRequired: Flow<Boolean> = context.dataStore.data.map { it[KEY_AUTH_REQUIRED] ?: false }
+    val serverUnreachable: Flow<Boolean> = context.dataStore.data.map { it[KEY_SERVER_UNREACHABLE] ?: false }
+    val serverUnreachableEventAt: Flow<Long> = context.dataStore.data.map {
+        it[KEY_SERVER_UNREACHABLE_EVENT_AT] ?: 0L
+    }
+    val networkRetryPending: Flow<Boolean> = context.dataStore.data.map { it[KEY_NETWORK_RETRY_PENDING] ?: false }
     val backupEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
     val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
@@ -88,7 +99,9 @@ class PrefsManager(val context: Context) {
     val coilDiskCacheMb: Flow<Int> = context.dataStore.data.map { it[KEY_COIL_DISK_CACHE_MB] ?: 512 }
 
     fun getServerUrlSync(): String = runBlocking {
-        serverUrl.first().replace(Regex("[\\p{Cf}\\p{Cc}]"), "").trimEnd('/')
+        val prefs = context.dataStore.data.first()
+        (prefs[KEY_SERVER_URL] ?: prefs[KEY_PRIMARY_SERVER_URL] ?: "")
+            .sanitizeUrl()
     }
     fun getPrimaryServerUrlSync(): String = runBlocking {
         primaryServerUrl.first().sanitizeUrl()
@@ -111,6 +124,15 @@ class PrefsManager(val context: Context) {
         }
     }
     fun getBackupEnabledSync(): Boolean = runBlocking { backupEnabled.first() }
+    fun getAuthRequiredSync(): Boolean = runBlocking { authRequired.first() }
+    fun getServerUnreachableSync(): Boolean = runBlocking { serverUnreachable.first() }
+    fun getPendingServerUnreachableEventSync(): Long = runBlocking {
+        val prefs = context.dataStore.data.first()
+        val eventAt = prefs[KEY_SERVER_UNREACHABLE_EVENT_AT] ?: 0L
+        val shownAt = prefs[KEY_SERVER_UNREACHABLE_SHOWN_AT] ?: 0L
+        if (eventAt > shownAt) eventAt else 0L
+    }
+    fun getNetworkRetryPendingSync(): Boolean = runBlocking { networkRetryPending.first() }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
     fun getBackupFolderHistorySync(): Set<String> = runBlocking {
@@ -135,19 +157,20 @@ class PrefsManager(val context: Context) {
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
             prefs[KEY_SERVER_URL] = serverUrl.sanitizeUrl()
-            if ((prefs[KEY_PRIMARY_SERVER_URL] ?: "").isBlank()) {
-                prefs[KEY_PRIMARY_SERVER_URL] = serverUrl.sanitizeUrl()
-            }
+            prefs.remove(KEY_PRIMARY_SERVER_URL)
+            prefs.remove(KEY_SECONDARY_SERVER_URL)
             prefs[KEY_USERNAME] = username.trim()
             prefs[KEY_PASSWORD] = password.trim()
         }
     }
 
+    @Deprecated("Only one server address is supported. Use saveCredentials instead.")
     suspend fun saveServerUrls(primaryUrl: String, secondaryUrl: String, activeUrl: String) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_PRIMARY_SERVER_URL] = primaryUrl.sanitizeUrl()
-            prefs[KEY_SECONDARY_SERVER_URL] = secondaryUrl.sanitizeUrl()
-            prefs[KEY_SERVER_URL] = activeUrl.sanitizeUrl()
+            val nextUrl = activeUrl.ifBlank { primaryUrl }.ifBlank { secondaryUrl }
+            prefs[KEY_SERVER_URL] = nextUrl.sanitizeUrl()
+            prefs.remove(KEY_PRIMARY_SERVER_URL)
+            prefs.remove(KEY_SECONDARY_SERVER_URL)
         }
     }
 
@@ -164,6 +187,37 @@ class PrefsManager(val context: Context) {
             if (refreshToken.isNotEmpty()) {
                 prefs[KEY_REFRESH_TOKEN] = refreshToken
             }
+            prefs[KEY_AUTH_REQUIRED] = false
+        }
+    }
+
+    suspend fun setAuthRequired(required: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_AUTH_REQUIRED] = required
+        }
+    }
+
+    suspend fun setServerUnreachable(unreachable: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SERVER_UNREACHABLE] = unreachable
+            if (unreachable) {
+                prefs[KEY_SERVER_UNREACHABLE_EVENT_AT] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    suspend fun markServerUnreachableShown(eventAt: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SERVER_UNREACHABLE_SHOWN_AT] = eventAt
+            if ((prefs[KEY_SERVER_UNREACHABLE_EVENT_AT] ?: 0L) <= eventAt) {
+                prefs[KEY_SERVER_UNREACHABLE] = false
+            }
+        }
+    }
+
+    suspend fun setNetworkRetryPending(pending: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_NETWORK_RETRY_PENDING] = pending
         }
     }
 

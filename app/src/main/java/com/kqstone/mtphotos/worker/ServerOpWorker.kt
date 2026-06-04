@@ -25,6 +25,11 @@ class ServerOpWorker(
             val app = applicationContext as MTPhotosApp
             val repo = app.container.serverOpTaskRepository
 
+            if (inputData.getBoolean(KEY_FORCE_SERVER_OP_RETRY_NOW, false)) {
+                val reset = repo.markRetryableTasksDueNow()
+                Log.d(TAG, "Forced $reset server op tasks due after network recovery")
+            }
+
             val result = repo.processPendingTasks()
             Log.d(
                 TAG,
@@ -45,6 +50,7 @@ class ServerOpWorker(
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Server op worker failed", e)
+            (applicationContext as? MTPhotosApp)?.container?.prefsManager?.markRecoverableFailure(e)
             Result.retry()
         }
     }

@@ -54,6 +54,7 @@ class SyncWorker(
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
+            (applicationContext as? MTPhotosApp)?.container?.prefsManager?.markRecoverableFailure(e)
             Result.retry()
         }
     }

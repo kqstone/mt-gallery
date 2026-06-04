@@ -11,6 +11,7 @@ import com.kqstone.mtphotos.data.local.db.ServerOpTaskEntity
 import com.kqstone.mtphotos.data.local.db.ServerOpType
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.network.NetworkFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -337,6 +338,10 @@ class ServerOpTaskRepository(
         ServerOpProcessResult(processed = succeeded + failed, succeeded = succeeded, failed = failed)
     }
 
+    suspend fun markRetryableTasksDueNow(): Int = withContext(Dispatchers.IO) {
+        dao.markRetryableDueNow()
+    }
+
     /**
      * 执行单个任务，包含立即重试逻辑。
      * @return true 如果最终成功
@@ -353,6 +358,7 @@ class ServerOpTaskRepository(
                 return true
             } catch (e: Exception) {
                 currentAttempt++
+                markRecoverableFailure(e)
 
                 // 对于 "已删除" 类的错误，视为成功
                 if (task.opType == ServerOpType.CLOUD_DELETE && isAlreadyDeletedError(e)) {
@@ -407,6 +413,15 @@ class ServerOpTaskRepository(
 
     // ===== 任务执行路由 =====
 
+    private suspend fun markRecoverableFailure(error: Throwable) {
+        val prefsManager = container.prefsManager
+        if (NetworkFailure.isDeviceOffline(prefsManager.context)) {
+            prefsManager.setNetworkRetryPending(true)
+        } else if (NetworkFailure.isServerUnreachable(error)) {
+            prefsManager.setServerUnreachable(true)
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private suspend fun executeTask(task: ServerOpTaskEntity) {
         val params = gson.fromJson(task.params, Map::class.java) as? Map<String, Any> ?: emptyMap()
@@ -442,15 +457,65 @@ class ServerOpTaskRepository(
     }
 
     private suspend fun deleteCloudFile(cloudId: Double) {
-        val body: Map<String, Any> = mapOf("fileIds" to listOf(cloudId.toInt()))
+        val fileId = cloudId.toInt()
+        val body: Map<String, Any> = mapOf("fileIds" to listOf(fileId))
         val response = container.gatewayApi.GatewayControllerPart3DeleteFiles(body)
-        val code = response["code"]?.toString()
-        if (!code.isNullOrBlank() && code !in setOf("0", "OK", "SUCCESS", "success")) {
+        if (!isDeleteSuccessResponse(response, fileId)) {
             val message = response["message"]?.toString()
                 ?: response["msg"]?.toString()
-                ?: code
+                ?: response["error"]?.toString()
+                ?: "Delete response did not confirm success: $response"
             throw IllegalStateException(message)
         }
+    }
+
+    private fun isDeleteSuccessResponse(response: Map<String, Any>, fileId: Int): Boolean {
+        fun Any?.truthy(): Boolean = when (this) {
+            is Boolean -> this
+            is Number -> this.toInt() != 0
+            is String -> this.equals("true", ignoreCase = true) ||
+                this == "1" ||
+                this.equals("yes", ignoreCase = true)
+            else -> false
+        }
+
+        fun Any?.successCode(): Boolean {
+            if (this is Number) return this.toInt() in setOf(0, 200)
+            val value = this?.toString()?.trim() ?: return false
+            return value in setOf("0", "200") ||
+                value.equals("OK", ignoreCase = true) ||
+                value.equals("SUCCESS", ignoreCase = true) ||
+                value.equals("SUCCEEDED", ignoreCase = true)
+        }
+
+        fun Any?.successText(): Boolean {
+            val value = this?.toString()?.trim()?.lowercase() ?: return false
+            return value in setOf("ok", "success", "succeeded") ||
+                value.contains("success") ||
+                value.contains("成功")
+        }
+
+        fun Any?.containsFileId(): Boolean {
+            val items = this as? Iterable<*> ?: return false
+            return items.any { item ->
+                when (item) {
+                    is Number -> item.toInt() == fileId
+                    is String -> item.toIntOrNull() == fileId
+                    else -> false
+                }
+            }
+        }
+
+        return response["code"].successCode() ||
+            response["status"].successCode() ||
+            response["success"].truthy() ||
+            response["ok"].truthy() ||
+            response["deleteIds"].containsFileId() ||
+            response["deletedIds"].containsFileId() ||
+            ((response.containsKey("deleteIds") || response.containsKey("deletedIds")) && response["identifiers"].truthy()) ||
+            response["data"].truthy() ||
+            response["message"].successText() ||
+            response["msg"].successText()
     }
 
     // ===== 重试策略 =====

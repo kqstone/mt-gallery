@@ -117,8 +117,6 @@ class BackupWorker(
                 Log.w(TAG, "Failed to set foreground, continuing in background", e)
             }
 
-            val serverUrl = prefsManager.getServerUrlSync()
-            val token = prefsManager.getTokenSync()
             var successCount = 0
             var failCount = 0
             val existingServerRecordSuccessIds = mutableListOf<Long>()
@@ -154,8 +152,6 @@ class BackupWorker(
 
                     val uploadResult = uploadFile(
                         media = media,
-                        serverUrl = serverUrl,
-                        token = token,
                         client = uploadClient,
                         backupDestinationId = backupDestinationId,
                         sourceFolderDevicePrefix = sourceFolderDevicePrefix
@@ -190,8 +186,12 @@ class BackupWorker(
                             success = false,
                             error = "Upload returned null"
                         )
+                        if (prefsManager.getAuthRequiredSync() || prefsManager.getNetworkRetryPendingSync()) {
+                            break
+                        }
                     }
                 } catch (e: Exception) {
+                    prefsManager.markRecoverableFailure(e)
                     container.database.mediaDao().updateBackupStatus(media.id, BackupStatus.FAILED)
                     failCount++
                     Log.e(TAG, "Upload error: ${media.fileName}", e)
@@ -245,14 +245,13 @@ class BackupWorker(
             }
         } catch (e: Exception) {
             Log.e(TAG, "BackupWorker failed", e)
+            (applicationContext as? MTPhotosApp)?.container?.prefsManager?.markRecoverableFailure(e)
             if (runAttemptCount + 1 < MAX_RETRY_ATTEMPTS) Result.retry() else Result.success()
         }
     }
 
     private suspend fun uploadFile(
         media: MediaEntity,
-        serverUrl: String,
-        token: String,
         client: okhttp3.OkHttpClient,
         backupDestinationId: Long,
         sourceFolderDevicePrefix: String?
@@ -310,14 +309,6 @@ class BackupWorker(
         }
 
         try {
-            val mimeType = media.fileType.ifEmpty { "application/octet-stream" }
-            val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
-            val body = MultipartBody.Builder()
-                .setType(MultipartBody.FORM)
-                .addFormDataPart("file", media.fileName, requestFile)
-                .addFormDataPart("c_time", ctimeMs)
-                .build()
-
             val encodedFileName = URLEncoder.encode(media.fileName, "UTF-8").replace("+", "%20")
             val mtextra = Gson().toJson(
                 mapOf(
@@ -329,54 +320,77 @@ class BackupWorker(
             )
             val encodedMtextra = URLEncoder.encode(mtextra, "UTF-8")
 
-            val request = okhttp3.Request.Builder()
-                .url("$serverUrl/gateway/upload")
-                .addHeader("jwt", token)
-                .addHeader("filename", encodedFileName)
-                .addHeader("devicename", deviceName)
-                .addHeader("ctime", ctimeMs)
-                .addHeader("mtextra", encodedMtextra)
-                .post(body)
-                .build()
+            var authRetryUsed = false
+            while (true) {
+                val serverUrl = container.prefsManager.getServerUrlSync()
+                val token = container.prefsManager.getTokenSync()
+                val mimeType = media.fileType.ifEmpty { "application/octet-stream" }
+                val requestFile = file.asRequestBody(mimeType.toMediaTypeOrNull())
+                val body = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", media.fileName, requestFile)
+                    .addFormDataPart("c_time", ctimeMs)
+                    .build()
 
-            Log.d(TAG, "Uploading ${media.fileName} (${media.fileSize} bytes) to $serverUrl/gateway/upload")
+                val request = okhttp3.Request.Builder()
+                    .url("$serverUrl/gateway/upload")
+                    .addHeader("jwt", token)
+                    .addHeader("filename", encodedFileName)
+                    .addHeader("devicename", deviceName)
+                    .addHeader("ctime", ctimeMs)
+                    .addHeader("mtextra", encodedMtextra)
+                    .post(body)
+                    .build()
 
-            val response = client.newCall(request).execute()
-            val respBody = response.body?.string() ?: ""
+                Log.d(TAG, "Uploading ${media.fileName} (${media.fileSize} bytes) to $serverUrl/gateway/upload")
 
-            Log.d(TAG, "Upload response [${response.code}]: $respBody")
+                val response = client.newCall(request).execute()
+                val respBody = response.body?.string() ?: ""
 
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Upload HTTP error: ${response.code} ${response.message} - body: $respBody")
-                return null
+                Log.d(TAG, "Upload response [${response.code}]: $respBody")
+
+                if (response.code in setOf(401, 403) && !authRetryUsed) {
+                    authRetryUsed = true
+                    if (container.authRecovery.recover()) {
+                        Log.d(TAG, "Retrying upload after auth recovery: ${media.fileName}")
+                        continue
+                    }
+                    return null
+                }
+
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Upload HTTP error: ${response.code} ${response.message} - body: $respBody")
+                    return null
+                }
+
+                val gson = Gson()
+                @Suppress("UNCHECKED_CAST")
+                val map = gson.fromJson(respBody, Map::class.java) as? Map<String, Any>
+
+                val msg = map?.get("msg") as? String
+                if (!msg.isNullOrEmpty()) {
+                    Log.w(TAG, "Upload server error: $msg for ${media.fileName}")
+                    return null
+                }
+
+                val fileId = (map?.get("id") as? Number)?.toDouble()
+                    ?: (map?.get("fileId") as? Number)?.toDouble()
+                    ?: 0.0
+                if (fileId <= 0) {
+                    Log.w(TAG, "Upload returned invalid fileId=$fileId for ${media.fileName}, response: $respBody")
+                    return null
+                }
+
+                Log.d(TAG, "Upload success: ${media.fileName}, cloudId=$fileId")
+                return UploadResult(
+                    cloudId = fileId,
+                    cloudMd5 = media.md5,
+                    fromExistingServerRecord = false
+                )
             }
-
-            val gson = Gson()
-            @Suppress("UNCHECKED_CAST")
-            val map = gson.fromJson(respBody, Map::class.java) as? Map<String, Any>
-
-            val msg = map?.get("msg") as? String
-            if (!msg.isNullOrEmpty()) {
-                Log.w(TAG, "Upload server error: $msg for ${media.fileName}")
-                return null
-            }
-
-            val fileId = (map?.get("id") as? Number)?.toDouble()
-                ?: (map?.get("fileId") as? Number)?.toDouble()
-                ?: 0.0
-            if (fileId <= 0) {
-                Log.w(TAG, "Upload returned invalid fileId=$fileId for ${media.fileName}, response: $respBody")
-                return null
-            }
-
-            Log.d(TAG, "Upload success: ${media.fileName}, cloudId=$fileId")
-            return UploadResult(
-                cloudId = fileId,
-                cloudMd5 = media.md5,
-                fromExistingServerRecord = false
-            )
         } catch (e: Exception) {
             Log.e(TAG, "Upload exception for ${media.fileName}", e)
+            container.prefsManager.markRecoverableFailure(e)
             return null
         }
     }

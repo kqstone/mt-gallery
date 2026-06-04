@@ -48,12 +48,25 @@ class OriginalDownloadManager(
         scope.launch {
             try {
                 val cloudId = photo.cloudId ?: throw Exception("Invalid cloudId")
-                val downloadUrl = galleryRepository.getFileDownloadUrl(cloudId, md5)
-                if (downloadUrl.isEmpty()) throw Exception(context.getString(R.string.download_err_get_url_failed))
+                var authCodeRetryUsed = false
+                var response: okhttp3.Response
+                while (true) {
+                    val downloadUrl = galleryRepository.getFileDownloadUrl(cloudId, md5)
+                    if (downloadUrl.isEmpty()) throw Exception(context.getString(R.string.download_err_get_url_failed))
 
-                val request = Request.Builder().url(downloadUrl).build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) throw Exception(context.getString(R.string.download_err_http_failed, response.code))
+                    val request = Request.Builder().url(downloadUrl).build()
+                    response = client.newCall(request).execute()
+                    if (response.code in setOf(401, 403) && !authCodeRetryUsed) {
+                        authCodeRetryUsed = true
+                        response.close()
+                        galleryRepository.refreshAuthCode()
+                        continue
+                    }
+                    if (!response.isSuccessful) {
+                        throw Exception(context.getString(R.string.download_err_http_failed, response.code))
+                    }
+                    break
+                }
                 
                 val body = response.body ?: throw Exception(context.getString(R.string.download_err_empty_response))
                 val totalBytes = body.contentLength()
@@ -159,6 +172,7 @@ class OriginalDownloadManager(
                 }
 
             } catch (e: Exception) {
+                galleryRepository.markRecoverableFailure(e)
                 _downloadStates.update { it + (md5 to DownloadState(isDownloading = false, error = e.message)) }
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(context, context.getString(R.string.download_failed_format, e.message.orEmpty()), android.widget.Toast.LENGTH_SHORT).show()

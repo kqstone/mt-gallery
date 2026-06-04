@@ -24,6 +24,8 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
+import com.kqstone.mtphotos.network.AuthRecovery
+import com.kqstone.mtphotos.network.NetworkResumeMonitor
 import com.kqstone.mtphotos.network.RetrofitClient
 import com.kqstone.mtphotos.worker.BackupScheduler
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -43,6 +45,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
     private var mediaChangeObserver: MediaChangeObserver? = null
+    private var networkResumeMonitor: NetworkResumeMonitor? = null
 
     lateinit var fullImageLoader: ImageLoader
         private set
@@ -123,6 +126,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
         mediaChangeObserver = MediaChangeObserver(this) {
             container.prefsManager.getBackupEnabledSync()
         }.also { it.register() }
+        networkResumeMonitor = NetworkResumeMonitor(this, container.prefsManager).also { it.register() }
 
         // 启动时自动恢复调度（备份已启用的情况下）
         if (container.prefsManager.getBackupEnabledSync()) {
@@ -139,7 +143,8 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
 class AppContainer(context: android.content.Context) {
     val prefsManager = PrefsManager(context)
     val authInterceptor = AuthInterceptor(prefsManager)
-    val retrofitClient = RetrofitClient(prefsManager, authInterceptor)
+    val authRecovery = AuthRecovery(prefsManager)
+    val retrofitClient = RetrofitClient(prefsManager, authInterceptor, authRecovery)
 
     // API instances are derived from current Retrofit (rebuilt on URL change)
     val authApi: AuthApi get() = retrofitClient.create()
