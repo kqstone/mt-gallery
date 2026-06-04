@@ -39,6 +39,7 @@ import kotlinx.coroutines.yield
 private const val TAG = "GalleryVM"
 private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
 private const val INITIAL_PREVIEW_LIMIT = 160
+private const val TIMELINE_EXPAND_BATCH_MONTHS = 3
 
 data class DayGroup(
     val date: String,
@@ -339,19 +340,29 @@ class GalleryViewModel(
             }
             applyRoomTimelineSkeleton(monthCounts)
 
+            val pendingLoadedMonths = mutableListOf<LoadedMonth>()
             for (monthCount in remainingMonthCounts) {
                 yield()
                 val photos = repo.getMonthPhotos(monthCount.yearMonth, folders)
                 val days = withContext(Dispatchers.Default) { buildDayGroups(photos) }
-                _uiState.value = _uiState.value.copy(
-                    months = replaceLoadedMonth(_uiState.value.months, monthCount, days, photos.size),
-                    isLoading = false,
-                    isHybridMode = true
+                pendingLoadedMonths.add(
+                    LoadedMonth(
+                        monthCount = monthCount,
+                        days = days,
+                        loadedCount = photos.size
+                    )
                 )
                 if (!warmedVideoThumbnails && photos.isNotEmpty()) {
                     warmLocalVideoThumbnails(photos)
                     warmedVideoThumbnails = true
                 }
+                if (pendingLoadedMonths.size >= TIMELINE_EXPAND_BATCH_MONTHS) {
+                    applyLoadedMonthBatch(pendingLoadedMonths)
+                    pendingLoadedMonths.clear()
+                }
+            }
+            if (pendingLoadedMonths.isNotEmpty()) {
+                applyLoadedMonthBatch(pendingLoadedMonths)
             }
         } catch (e: CancellationException) {
             throw e
@@ -365,6 +376,29 @@ class GalleryViewModel(
                 )
             }
         }
+    }
+
+    private data class LoadedMonth(
+        val monthCount: TimelineMonthCount,
+        val days: List<DayGroup>,
+        val loadedCount: Int
+    )
+
+    private fun applyLoadedMonthBatch(loadedMonths: List<LoadedMonth>) {
+        if (loadedMonths.isEmpty()) return
+        val updatedMonths = loadedMonths.fold(_uiState.value.months) { months, loaded ->
+            replaceLoadedMonth(
+                months = months,
+                monthCount = loaded.monthCount,
+                days = loaded.days,
+                loadedCount = loaded.loadedCount
+            )
+        }
+        _uiState.value = _uiState.value.copy(
+            months = updatedMonths,
+            isLoading = false,
+            isHybridMode = true
+        )
     }
 
     private suspend fun applyRoomTimelineSkeleton(monthCounts: List<TimelineMonthCount>) {
