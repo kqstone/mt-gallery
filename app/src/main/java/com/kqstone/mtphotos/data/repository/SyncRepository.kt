@@ -396,17 +396,14 @@ class SyncRepository(
         )
     }
 
-    suspend fun getAllPhotos(localFolders: Set<String>? = null): List<UnifiedPhotoItem> {
+    suspend fun getAllPhotos(localFolders: Set<String>? = null): List<UnifiedPhotoItem> = withContext(Dispatchers.IO) {
         val entities = when {
             localFolders == null -> mediaDao.getAllMedia()
             localFolders.isEmpty() -> mediaDao.getAllCloudMedia()
-            else -> mediaDao.getAllMedia().filter { entity ->
-                entity.cloudId != null ||
-                    FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
-            }
+            else -> mediaDao.getAllVisibleMediaByFolders(localFolders.toList())
         }
         val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
-        return entities
+        entities
             .filterNot { entity -> entity.cloudId in pendingCloudDeleteIds }
             .map { it.toUnifiedPhotoItem(localFolders) }
     }
@@ -418,15 +415,35 @@ class SyncRepository(
         if (photos.isEmpty()) return@withContext emptyList()
 
         val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        hydrateCloudPhotos(photos, localFolders, pendingCloudDeleteIds)
+    }
+
+    suspend fun hydrateCloudPhotosByMonth(
+        photosByMonth: Map<String, List<PhotoItem>>,
+        localFolders: Set<String>? = null
+    ): Map<String, List<UnifiedPhotoItem>> = withContext(Dispatchers.IO) {
+        if (photosByMonth.isEmpty()) return@withContext emptyMap()
+
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        photosByMonth.mapValues { (_, photos) ->
+            hydrateCloudPhotos(photos, localFolders, pendingCloudDeleteIds)
+        }
+    }
+
+    private suspend fun hydrateCloudPhotos(
+        photos: List<PhotoItem>,
+        localFolders: Set<String>?,
+        pendingCloudDeleteIds: Set<Double>
+    ): List<UnifiedPhotoItem> {
         val visiblePhotos = photos.filter { it.id !in pendingCloudDeleteIds }
-        if (visiblePhotos.isEmpty()) return@withContext emptyList()
+        if (visiblePhotos.isEmpty()) return emptyList()
 
         val byCloudId = mediaDao.findByCloudIds(visiblePhotos.map { it.id }.distinct())
             .associateBy { it.cloudId }
         val byMd5 = mediaDao.findByMd5List(visiblePhotos.map { it.md5 }.filter { it.isNotEmpty() }.distinct())
             .associateBy { it.md5.ifEmpty { it.cloudMd5 ?: "" } }
 
-        visiblePhotos.map { photo ->
+        return visiblePhotos.map { photo ->
             val localEntity = byCloudId[photo.id] ?: byMd5[photo.md5]
             localEntity?.toUnifiedPhotoItem(localFolders)?.copy(
                 addr = photo.addr ?: localEntity.addr,

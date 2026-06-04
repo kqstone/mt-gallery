@@ -24,6 +24,7 @@ import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.UiText
@@ -246,9 +247,12 @@ class GalleryViewModel(
     private suspend fun loadFromRoom(folders: Set<String>?) {
         try {
             currentLocalFolders = folders
-            val photos = syncRepository?.getAllPhotos(folders).orEmpty()
+            val (photos, months) = withContext(Dispatchers.Default) {
+                val loadedPhotos = syncRepository?.getAllPhotos(folders).orEmpty()
+                loadedPhotos to buildMonthGroups(loadedPhotos)
+            }
             _uiState.value = _uiState.value.copy(
-                months = buildMonthGroups(photos),
+                months = months,
                 isLoading = false,
                 isHybridMode = true
             )
@@ -298,44 +302,48 @@ class GalleryViewModel(
         if (prefetchedCloudPhotos.isNotEmpty()) {
             syncRepository?.upsertCloudPhotoItems(prefetchedCloudPhotos)
         }
-        val prefetched = mutableMapOf<String, List<UnifiedPhotoItem>>()
-        for ((yearMonth, photos) in snapshot.photosByMonth) {
-            prefetched[yearMonth] = syncRepository?.hydrateCloudPhotos(photos, folders)
-                ?: photos.map { it.toUnifiedPhotoItem() }
-        }
-
-        val existingByMonth = _uiState.value.months.associateBy { it.yearMonth }
-        val cloudYearMonths = snapshot.months.map { it.yearMonth }.toSet()
-        val mergedCloudMonths = snapshot.months.map { month ->
-            val existing = existingByMonth[month.yearMonth]
-            val preloaded = prefetched[month.yearMonth]
-            when {
-                preloaded != null -> MonthGroup(
-                    yearMonth = month.yearMonth,
-                    displayTitle = formatYearMonth(month.yearMonth),
-                    totalCount = maxOf(
-                        month.count,
-                        preloaded.size,
-                        existing?.totalCount ?: 0
-                    ),
-                    days = buildDayGroups(mergePhotos(existing, preloaded)),
-                    isLoaded = true
-                )
-                existing != null && existing.days.isNotEmpty() -> existing.copy(
-                    totalCount = maxOf(existing.totalCount, month.count),
-                    isLoaded = true,
-                    isLoading = false,
-                    loadError = null
-                )
-                else -> MonthGroup(
-                    yearMonth = month.yearMonth,
-                    displayTitle = formatYearMonth(month.yearMonth),
-                    totalCount = month.count,
-                    isLoaded = month.count == 0
-                )
+        val prefetched = syncRepository?.hydrateCloudPhotosByMonth(snapshot.photosByMonth, folders)
+            ?: withContext(Dispatchers.Default) {
+                snapshot.photosByMonth.mapValues { (_, photos) ->
+                    photos.map { it.toUnifiedPhotoItem() }
+                }
             }
+
+        val currentMonths = _uiState.value.months
+        val (mergedCloudMonths, localOnlyMonths) = withContext(Dispatchers.Default) {
+            val existingByMonth = currentMonths.associateBy { it.yearMonth }
+            val cloudYearMonths = snapshot.months.map { it.yearMonth }.toSet()
+            val merged = snapshot.months.map { month ->
+                val existing = existingByMonth[month.yearMonth]
+                val preloaded = prefetched[month.yearMonth]
+                when {
+                    preloaded != null -> MonthGroup(
+                        yearMonth = month.yearMonth,
+                        displayTitle = formatYearMonth(month.yearMonth),
+                        totalCount = maxOf(
+                            month.count,
+                            preloaded.size,
+                            existing?.totalCount ?: 0
+                        ),
+                        days = buildDayGroups(mergePhotos(existing, preloaded)),
+                        isLoaded = true
+                    )
+                    existing != null && existing.days.isNotEmpty() -> existing.copy(
+                        totalCount = maxOf(existing.totalCount, month.count),
+                        isLoaded = true,
+                        isLoading = false,
+                        loadError = null
+                    )
+                    else -> MonthGroup(
+                        yearMonth = month.yearMonth,
+                        displayTitle = formatYearMonth(month.yearMonth),
+                        totalCount = month.count,
+                        isLoaded = month.count == 0
+                    )
+                }
+            }
+            merged to currentMonths.filter { it.yearMonth !in cloudYearMonths }
         }
-        val localOnlyMonths = _uiState.value.months.filter { it.yearMonth !in cloudYearMonths }
         _uiState.value = _uiState.value.copy(
             months = (mergedCloudMonths + localOnlyMonths).sortedByDescending { it.yearMonth }
         )
@@ -441,24 +449,17 @@ class GalleryViewModel(
                     }
                     val folders = folderSelection.effectiveFolders
 
-                    // Step 1: 从 Room 加载已有数据（刷新动画保持显示）
-                    loadFromRoom(folders)
-
-                    // Step 2: 后台静默同步云端
-                    // Step 2a: 获取 snapshot（轻量，只拉索引 + 服务端预取的最近几个月数据）
                     syncRepository.reconcileFolderSelection(folders)
                     val snapshot = galleryRepository.getTimelineSnapshot().getOrElse { throw it }
 
-                    // Step 2b: 用 snapshot 中已预取的最近月份数据更新 UI，然后收起刷新动画
                     if (snapshot.photosByMonth.isNotEmpty()) {
                         applyCloudTimelineSnapshot(snapshot, folders)
                     }
                     _uiState.value = _uiState.value.copy(isRefreshing = false)
 
-                    // Step 2c: 全量拉取并同步到 Room（复用已有 snapshot 避免重复请求）
-                    val fullSnapshot = syncRepository.refreshCloudState(existingSnapshot = snapshot)
-                    loadFromRoom(folders)
-                    applyCloudTimelineSnapshot(fullSnapshot, folders)
+                    // Keep the expensive full cloud sync off the visible refresh path.
+                    // It updates Room, but avoids rebuilding the whole timeline during the gesture.
+                    syncRepository.refreshCloudState(existingSnapshot = snapshot)
                     _uiState.value = _uiState.value.copy(
                         syncCompleteMessage = UiText.StringResource(R.string.sync_complete_message)
                     )
