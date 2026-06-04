@@ -138,13 +138,8 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
 }
 
 private fun Response.withThumbnailCacheControl(): Response {
-    val cacheControl = if (request.url.encodedPath.contains("/gateway/h220/")) {
-        "no-cache, no-store, max-age=0"
-    } else {
-        "public, max-age=31536000"
-    }
     return newBuilder()
-        .header("Cache-Control", cacheControl)
+        .header("Cache-Control", "public, max-age=31536000")
         .build()
 }
 
