@@ -23,6 +23,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -130,10 +132,19 @@ fun GalleryScreen(
                 val hasSyncProgress = uiState.isSyncing && progressText != null
                 
                 Box(modifier = Modifier.fillMaxSize()) {
+                    val pullRefreshState = rememberPullToRefreshState()
                     PullToRefreshBox(
                         isRefreshing = uiState.isRefreshing,
                         onRefresh = { viewModel.refresh() },
-                        modifier = Modifier.fillMaxSize().hazeContentSource()
+                        modifier = Modifier.fillMaxSize().hazeContentSource(),
+                        state = pullRefreshState,
+                        indicator = {
+                            PullToRefreshDefaults.Indicator(
+                                modifier = Modifier.align(Alignment.TopCenter).padding(top = scrollState.topBarHeight),
+                                isRefreshing = uiState.isRefreshing,
+                                state = pullRefreshState
+                            )
+                        }
                     ) {
                         TimelinePhotoGrid(
                             months = uiState.months,
