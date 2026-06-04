@@ -25,6 +25,11 @@ private const val STALE_RUNNING_MINUTES = 30L
 
 /** 前 N 次立即重试（在同一 Worker 执行周期内） */
 private const val IMMEDIATE_RETRY_COUNT = 3
+private const val NOT_FOUND_VERIFY_FIRST_DELAY_MS = 60_000L
+private val NOT_FOUND_VERIFY_FINAL_DELAY_MS = TimeUnit.HOURS.toMillis(1)
+private const val CLOUD_DELETE_NOT_FOUND_VERIFY_PREFIX = "CLOUD_DELETE_NOT_FOUND_VERIFY"
+private const val CLOUD_DELETE_NOT_FOUND_VERIFY_FIRST = "FIRST"
+private const val CLOUD_DELETE_NOT_FOUND_VERIFY_FINAL = "FINAL"
 
 data class ServerOpProcessResult(
     val processed: Int,
@@ -347,6 +352,10 @@ class ServerOpTaskRepository(
      * @return true 如果最终成功
      */
     private suspend fun executeWithRetry(task: ServerOpTaskEntity): Boolean {
+        if (task.opType == ServerOpType.CLOUD_DELETE) {
+            return executeCloudDeleteWithRetry(task)
+        }
+
         var currentAttempt = task.attemptCount
 
         // 包含立即重试的循环
@@ -361,12 +370,6 @@ class ServerOpTaskRepository(
                 markRecoverableFailure(e)
 
                 // 对于 "已删除" 类的错误，视为成功
-                if (task.opType == ServerOpType.CLOUD_DELETE && isAlreadyDeletedError(e)) {
-                    dao.markSuccess(task.id)
-                    Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) already deleted, marking success")
-                    return true
-                }
-
                 if (currentAttempt >= task.maxAttempts) {
                     // 超过最大重试次数 → FAILED
                     dao.markError(
@@ -412,6 +415,170 @@ class ServerOpTaskRepository(
     }
 
     // ===== 任务执行路由 =====
+
+    private suspend fun executeCloudDeleteWithRetry(task: ServerOpTaskEntity): Boolean {
+        val cloudId = task.mediaCloudId ?: run {
+            dao.markError(
+                id = task.id,
+                status = ServerOpStatus.FAILED,
+                attemptCount = task.attemptCount + 1,
+                nextAttemptAt = System.currentTimeMillis(),
+                lastError = "Missing cloudId for CLOUD_DELETE"
+            )
+            return false
+        }
+        val md5 = task.mediaMd5
+        var currentAttempt = task.attemptCount
+
+        val pendingVerify = parseCloudDeleteNotFoundVerify(task.lastError)
+        if (pendingVerify != null) {
+            val now = System.currentTimeMillis()
+            if (now < pendingVerify.notBefore) {
+                dao.markError(
+                    id = task.id,
+                    status = ServerOpStatus.ERROR,
+                    attemptCount = currentAttempt,
+                    nextAttemptAt = pendingVerify.notBefore,
+                    lastError = task.lastError ?: ""
+                )
+                Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) delayed confirmation not due yet")
+                return false
+            }
+            try {
+                if (isCloudFileStatNotFound(cloudId, md5)) {
+                    if (pendingVerify.stage == CLOUD_DELETE_NOT_FOUND_VERIFY_FIRST) {
+                        scheduleCloudDeleteNotFoundVerify(
+                            task = task,
+                            attemptCount = currentAttempt,
+                            stage = CLOUD_DELETE_NOT_FOUND_VERIFY_FINAL,
+                            delayMillis = NOT_FOUND_VERIFY_FINAL_DELAY_MS
+                        )
+                        Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) confirmed missing after 1 minute, scheduled 1 hour confirmation")
+                        return false
+                    } else {
+                        dao.markSuccess(task.id)
+                        Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) confirmed missing after 1 hour")
+                        return true
+                    }
+                }
+                Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) file exists on delayed check, retrying delete")
+            } catch (e: Exception) {
+                currentAttempt++
+                markRecoverableFailure(e)
+                return markCloudDeleteRetry(task, currentAttempt, e)
+            }
+        }
+
+        while (true) {
+            try {
+                deleteCloudFile(cloudId)
+                dao.markSuccess(task.id)
+                Log.d(TAG, "Task ${task.id} (${task.opType}) succeeded")
+                return true
+            } catch (deleteError: Exception) {
+                markRecoverableFailure(deleteError)
+
+                if (md5.isNotBlank()) {
+                    try {
+                        if (isCloudFileStatNotFound(cloudId, md5)) {
+                            currentAttempt++
+                            scheduleCloudDeleteNotFoundVerify(
+                                task = task,
+                                attemptCount = currentAttempt,
+                                stage = CLOUD_DELETE_NOT_FOUND_VERIFY_FIRST,
+                                delayMillis = NOT_FOUND_VERIFY_FIRST_DELAY_MS
+                            )
+                            Log.d(TAG, "Task ${task.id} (CLOUD_DELETE) not found, scheduled 1 minute confirmation")
+                            return false
+                        }
+                    } catch (statError: Exception) {
+                        markRecoverableFailure(statError)
+                    }
+                }
+
+                currentAttempt++
+                val shouldRetryImmediately = markCloudDeleteRetry(task, currentAttempt, deleteError)
+                if (!shouldRetryImmediately) return false
+
+                val reclaimed = dao.claim(task.id)
+                if (reclaimed == 0) return false
+            }
+        }
+    }
+
+    private data class NotFoundVerifyState(
+        val stage: String,
+        val notBefore: Long
+    )
+
+    private suspend fun scheduleCloudDeleteNotFoundVerify(
+        task: ServerOpTaskEntity,
+        attemptCount: Int,
+        stage: String,
+        delayMillis: Long
+    ) {
+        val notBefore = System.currentTimeMillis() + delayMillis
+        dao.markError(
+            id = task.id,
+            status = ServerOpStatus.ERROR,
+            attemptCount = attemptCount,
+            nextAttemptAt = notBefore,
+            lastError = formatCloudDeleteNotFoundVerify(stage, notBefore)
+        )
+    }
+
+    private fun formatCloudDeleteNotFoundVerify(stage: String, notBefore: Long): String {
+        return "$CLOUD_DELETE_NOT_FOUND_VERIFY_PREFIX:$stage:$notBefore"
+    }
+
+    private fun parseCloudDeleteNotFoundVerify(lastError: String?): NotFoundVerifyState? {
+        val parts = lastError?.split(":") ?: return null
+        if (parts.size != 3 || parts[0] != CLOUD_DELETE_NOT_FOUND_VERIFY_PREFIX) return null
+        val stage = parts[1]
+        if (stage != CLOUD_DELETE_NOT_FOUND_VERIFY_FIRST &&
+            stage != CLOUD_DELETE_NOT_FOUND_VERIFY_FINAL
+        ) {
+            return null
+        }
+        val notBefore = parts[2].toLongOrNull() ?: return null
+        return NotFoundVerifyState(stage, notBefore)
+    }
+
+    private suspend fun markCloudDeleteRetry(
+        task: ServerOpTaskEntity,
+        attemptCount: Int,
+        error: Exception
+    ): Boolean {
+        if (attemptCount >= task.maxAttempts) {
+            dao.markError(
+                id = task.id,
+                status = ServerOpStatus.FAILED,
+                attemptCount = attemptCount,
+                nextAttemptAt = System.currentTimeMillis(),
+                lastError = error.message ?: error::class.java.simpleName
+            )
+            Log.w(TAG, "Task ${task.id} (${task.opType}) permanently failed after $attemptCount attempts", error)
+            return false
+        }
+
+        val delay = retryDelayMillis(attemptCount)
+        val shouldRetryImmediately = delay == 0L && attemptCount <= IMMEDIATE_RETRY_COUNT
+        dao.markError(
+            id = task.id,
+            status = if (shouldRetryImmediately) ServerOpStatus.PENDING else ServerOpStatus.ERROR,
+            attemptCount = attemptCount,
+            nextAttemptAt = System.currentTimeMillis() + delay,
+            lastError = error.message ?: error::class.java.simpleName
+        )
+
+        return if (shouldRetryImmediately) {
+            Log.d(TAG, "Task ${task.id} (${task.opType}) immediate retry #$attemptCount")
+            true
+        } else {
+            Log.w(TAG, "Task ${task.id} (${task.opType}) error #$attemptCount, retry in ${delay}ms", error)
+            false
+        }
+    }
 
     private suspend fun markRecoverableFailure(error: Throwable) {
         val prefsManager = container.prefsManager
@@ -470,30 +637,6 @@ class ServerOpTaskRepository(
     }
 
     private fun isDeleteSuccessResponse(response: Map<String, Any>, fileId: Int): Boolean {
-        fun Any?.truthy(): Boolean = when (this) {
-            is Boolean -> this
-            is Number -> this.toInt() != 0
-            is String -> this.equals("true", ignoreCase = true) ||
-                this == "1" ||
-                this.equals("yes", ignoreCase = true)
-            else -> false
-        }
-
-        fun Any?.successCode(): Boolean {
-            if (this is Number) return this.toInt() in setOf(0, 200)
-            val value = this?.toString()?.trim() ?: return false
-            return value in setOf("0", "200") ||
-                value.equals("OK", ignoreCase = true) ||
-                value.equals("SUCCESS", ignoreCase = true) ||
-                value.equals("SUCCEEDED", ignoreCase = true)
-        }
-
-        fun Any?.successText(): Boolean {
-            val value = this?.toString()?.trim()?.lowercase() ?: return false
-            return value in setOf("ok", "success", "succeeded") ||
-                value.contains("success") ||
-                value.contains("成功")
-        }
 
         fun Any?.containsFileId(): Boolean {
             val items = this as? Iterable<*> ?: return false
@@ -506,16 +649,8 @@ class ServerOpTaskRepository(
             }
         }
 
-        return response["code"].successCode() ||
-            response["status"].successCode() ||
-            response["success"].truthy() ||
-            response["ok"].truthy() ||
-            response["deleteIds"].containsFileId() ||
-            response["deletedIds"].containsFileId() ||
-            ((response.containsKey("deleteIds") || response.containsKey("deletedIds")) && response["identifiers"].truthy()) ||
-            response["data"].truthy() ||
-            response["message"].successText() ||
-            response["msg"].successText()
+        return response["deleteIds"].containsFileId() ||
+            response["deletedIds"].containsFileId()
     }
 
     // ===== 重试策略 =====
@@ -524,6 +659,41 @@ class ServerOpTaskRepository(
      * 计算重试延迟。
      * 前 3 次立即重试（返回 0），之后按指数退避。
      */
+    private suspend fun isCloudFileStatNotFound(cloudId: Double, md5: String): Boolean {
+        if (md5.isBlank()) return false
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2StatOneFile(
+                cloudId.toInt().toString(),
+                md5
+            )
+            isFileStatNotFoundBody(response)
+        } catch (e: HttpException) {
+            if (isFileStatNotFoundError(e)) true else throw e
+        }
+    }
+
+    private fun isFileStatNotFoundBody(response: Map<String, Any>): Boolean {
+        val statusCode = (response["statusCode"] as? Number)?.toInt()
+            ?: response["statusCode"]?.toString()?.toIntOrNull()
+        val msg = response["msg"]?.toString()
+        val message = response["message"]?.toString()
+        return statusCode == 404 &&
+            (msg.equals("Not Found", ignoreCase = true) ||
+                message.equals("Not Found", ignoreCase = true))
+    }
+
+    private fun isFileStatNotFoundError(error: HttpException): Boolean {
+        if (error.code() != 404) return false
+        val body = error.response()?.errorBody()?.string() ?: return false
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            val response = gson.fromJson(body, Map::class.java) as? Map<String, Any>
+            response != null && isFileStatNotFoundBody(response)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun retryDelayMillis(attemptCount: Int): Long {
         if (attemptCount <= IMMEDIATE_RETRY_COUNT) return 0L
         val minutes = when (attemptCount) {
@@ -535,22 +705,6 @@ class ServerOpTaskRepository(
             else -> 24 * 60L
         }
         return TimeUnit.MINUTES.toMillis(minutes)
-    }
-
-    private fun isAlreadyDeletedError(error: Throwable): Boolean {
-        if ((error as? HttpException)?.code() == 404) return true
-        val text = listOfNotNull(error.message, error.cause?.message)
-            .joinToString(" ")
-            .lowercase()
-        return listOf(
-            "not found",
-            "not exist",
-            "notfound",
-            "already deleted",
-            "不存在",
-            "未找到",
-            "已删除"
-        ).any { it in text }
     }
 
     // ===== 日志观察 =====
