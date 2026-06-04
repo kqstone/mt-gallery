@@ -408,6 +408,30 @@ class SyncRepository(
             .map { it.toUnifiedPhotoItem(localFolders) }
     }
 
+    suspend fun getInitialPreviewPhotos(
+        localFolders: Set<String>? = null,
+        limit: Int = 160
+    ): List<UnifiedPhotoItem> = withContext(Dispatchers.IO) {
+        val safeLimit = limit.coerceAtLeast(1)
+        val queryLimit = when {
+            localFolders == null || localFolders.isEmpty() -> safeLimit
+            else -> safeLimit * 4
+        }
+        val entities = when {
+            localFolders == null -> mediaDao.getRecentMedia(queryLimit)
+            localFolders.isEmpty() -> mediaDao.getRecentCloudMedia(queryLimit)
+            else -> mediaDao.getRecentMedia(queryLimit).filter { entity ->
+                entity.cloudId != null ||
+                    FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
+            }
+        }
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        entities
+            .filterNot { entity -> entity.cloudId in pendingCloudDeleteIds }
+            .take(safeLimit)
+            .map { it.toUnifiedPhotoItem(localFolders) }
+    }
+
     suspend fun hydrateCloudPhotos(
         photos: List<PhotoItem>,
         localFolders: Set<String>? = null
@@ -811,31 +835,51 @@ class SyncRepository(
         )
     }
 
-    suspend fun getTimelineMonths(localFolders: Set<String>? = null): List<TimelineMonthCount> {
-        return when {
-            localFolders == null -> mediaDao.getTimelineMonths()
-            localFolders.isEmpty() -> mediaDao.getCloudTimelineMonths()
-            else -> getAllPhotos(localFolders)
-                .groupBy { it.mtime.take(7) }
-                .map { (yearMonth, photos) -> TimelineMonthCount(yearMonth, photos.size) }
-                .sortedByDescending { it.yearMonth }
+    suspend fun getTimelineMonths(localFolders: Set<String>? = null): List<TimelineMonthCount> = withContext(Dispatchers.IO) {
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        if (pendingCloudDeleteIds.isEmpty() && localFolders == null) {
+            return@withContext mediaDao.getTimelineMonths()
         }
+        if (pendingCloudDeleteIds.isEmpty() && localFolders?.isEmpty() == true) {
+            return@withContext mediaDao.getCloudTimelineMonths()
+        }
+
+        val entities = when {
+            localFolders == null -> mediaDao.getAllMedia()
+            localFolders.isEmpty() -> mediaDao.getAllCloudMedia()
+            else -> mediaDao.getAllMedia().filter { entity ->
+                entity.cloudId != null ||
+                    FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
+            }
+        }
+        return@withContext entities
+            .filterNot { entity -> entity.cloudId in pendingCloudDeleteIds }
+            .toTimelineMonthCounts()
     }
 
     suspend fun getMonthPhotos(
         yearMonth: String,
         localFolders: Set<String>? = null
-    ): List<UnifiedPhotoItem> {
+    ): List<UnifiedPhotoItem> = withContext(Dispatchers.IO) {
         val entities = when {
             localFolders == null -> mediaDao.getMediaByMonth(yearMonth)
             localFolders.isEmpty() -> mediaDao.getCloudMediaByMonth(yearMonth)
-            else -> mediaDao.getAllMedia().filter { entity ->
-                entity.mtime.startsWith(yearMonth) &&
-                    (entity.cloudId != null ||
-                        FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders))
+            else -> mediaDao.getMediaByMonth(yearMonth).filter { entity ->
+                entity.cloudId != null ||
+                    FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
             }
         }
-        return entities.map { it.toUnifiedPhotoItem(localFolders) }
+        val pendingCloudDeleteIds = getPendingCloudDeleteCloudIds()
+        return@withContext entities
+            .filterNot { entity -> entity.cloudId in pendingCloudDeleteIds }
+            .map { it.toUnifiedPhotoItem(localFolders) }
+    }
+
+    private fun List<MediaEntity>.toTimelineMonthCounts(): List<TimelineMonthCount> {
+        return groupBy { it.mtime.take(7) }
+            .filterKeys { it.length == 7 }
+            .map { (yearMonth, entities) -> TimelineMonthCount(yearMonth, entities.size) }
+            .sortedByDescending { it.yearMonth }
     }
 
     fun getMonthPhotosFlow(yearMonth: String): Flow<List<UnifiedPhotoItem>> {

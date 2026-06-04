@@ -64,6 +64,12 @@ interface MediaDao {
     @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getAllCloudMedia(): List<MediaEntity>
 
+    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
+    suspend fun getRecentMedia(limit: Int): List<MediaEntity>
+
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
+    suspend fun getRecentCloudMedia(limit: Int): List<MediaEntity>
+
     @Query("""
         SELECT * FROM media
         WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)

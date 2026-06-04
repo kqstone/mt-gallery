@@ -10,6 +10,7 @@ import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.local.db.TimelineMonthCount
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
@@ -26,15 +27,18 @@ import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 
 private const val TAG = "GalleryVM"
 private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
+private const val INITIAL_PREVIEW_LIMIT = 160
 
 data class DayGroup(
     val date: String,
@@ -77,6 +81,7 @@ class GalleryViewModel(
 
     private var localVideoThumbJob: Job? = null
     private var initialSyncJob: Job? = null
+    private var roomTimelineExpandJob: Job? = null
     private val monthLoadJobs = mutableMapOf<String, Job>()
     private var timelineMonthsByYearMonth: Map<String, TimelineMonth> = emptyMap()
     private var currentLocalFolders: Set<String>? = null
@@ -130,9 +135,20 @@ class GalleryViewModel(
                         return@launch
                     }
                     if (syncRepository.hasData()) {
-                        syncRepository.reconcileFolderSelection(folderSelection.effectiveFolders)
-                        loadFromRoom(folderSelection.effectiveFolders)
-                        refreshCloudTimelineIndex(folderSelection.effectiveFolders)
+                        val folders = folderSelection.effectiveFolders
+                        loadInitialRoomPreview(folders)
+                        launch {
+                            syncRepository.reconcileFolderSelection(folders)
+                            startRoomTimelineExpansion(folders)
+                        }
+                        launch {
+                            val snapshot = galleryRepository.getTimelineSnapshot().getOrNull()
+                            if (snapshot != null && snapshot.photosByMonth.isNotEmpty()) {
+                                applyCloudTimelineSnapshot(snapshot, folders)
+                            } else if (_uiState.value.months.isEmpty()) {
+                                _uiState.value = _uiState.value.copy(isLoading = false, isHybridMode = true)
+                            }
+                        }
                         return@launch
                     }
                     // 首启无缓存：先获取 snapshot 构建月份骨架
@@ -156,7 +172,7 @@ class GalleryViewModel(
                     if (snapshot.photosByMonth.isNotEmpty()) {
                         applyCloudTimelineSnapshot(snapshot, folders)
                     }
-                    // triggerInitialSync 中 "cloud_ready" 阶段会调用 loadFromRoom 展开所有月份
+                    // triggerInitialSync expands the remaining months progressively from Room.
                     currentLocalFolders = folders
                     triggerInitialSync(folders)
                 } catch (e: Exception) {
@@ -210,17 +226,14 @@ class GalleryViewModel(
                             )
                         }
                         "cloud_ready" -> {
-                            // 云端数据已入库，立刻展开所有月份
-                            loadFromRoom(folders)
+                            startRoomTimelineExpansion(folders)
                         }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(isSyncing = false, syncProgressText = null)
-                            loadFromRoom(folders)
+                            startRoomTimelineExpansion(folders)
                             launch {
-                                syncRepository.computeMd5InBackground {
-                                    loadFromRoom(folders)
-                                }
-                                loadFromRoom(folders)
+                                syncRepository.computeMd5InBackground()
+                                startRoomTimelineExpansion(folders)
                                 if (prefsManager?.getBackupEnabledSync() == true &&
                                     syncRepository.getPendingBackupMedia(folders).isNotEmpty()
                                 ) {
@@ -263,6 +276,155 @@ class GalleryViewModel(
                 error = e.message?.let { UiText.DynamicString(it) } ?: UiText.StringResource(R.string.load_failed)
             )
         }
+    }
+
+    private suspend fun loadInitialRoomPreview(folders: Set<String>?) {
+        try {
+            currentLocalFolders = folders
+            val photos = syncRepository?.getInitialPreviewPhotos(folders, INITIAL_PREVIEW_LIMIT).orEmpty()
+            if (photos.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isHybridMode = true
+                )
+                return
+            }
+            val months = withContext(Dispatchers.Default) { buildMonthGroups(photos) }
+            _uiState.value = _uiState.value.copy(
+                months = months,
+                isLoading = false,
+                isHybridMode = true
+            )
+            warmLocalVideoThumbnails(photos)
+        } catch (e: Exception) {
+            Log.w(TAG, "Initial Room preview failed", e)
+            _uiState.value = _uiState.value.copy(isLoading = false, isHybridMode = true)
+        }
+    }
+
+    private fun startRoomTimelineExpansion(folders: Set<String>?) {
+        val repo = syncRepository ?: return
+        currentLocalFolders = folders
+        roomTimelineExpandJob?.cancel()
+        roomTimelineExpandJob = viewModelScope.launch {
+            expandRoomTimelineIncrementally(repo, folders)
+        }
+    }
+
+    private suspend fun expandRoomTimelineIncrementally(
+        repo: SyncRepository,
+        folders: Set<String>?
+    ) {
+        try {
+            currentLocalFolders = folders
+            val monthCounts = repo.getTimelineMonths(folders)
+            val loadedPhotoCount = _uiState.value.months.sumOf { month ->
+                month.days.sumOf { it.photos.size }
+            }
+            var warmedVideoThumbnails = false
+            val remainingMonthCounts = monthCounts.toMutableList()
+            if (loadedPhotoCount == 0 && remainingMonthCounts.isNotEmpty()) {
+                val firstMonth = remainingMonthCounts.removeAt(0)
+                val photos = repo.getMonthPhotos(firstMonth.yearMonth, folders)
+                val days = withContext(Dispatchers.Default) { buildDayGroups(photos) }
+                _uiState.value = _uiState.value.copy(
+                    months = replaceLoadedMonth(_uiState.value.months, firstMonth, days, photos.size),
+                    isLoading = false,
+                    isHybridMode = true
+                )
+                if (photos.isNotEmpty()) {
+                    warmLocalVideoThumbnails(photos)
+                    warmedVideoThumbnails = true
+                }
+            }
+            applyRoomTimelineSkeleton(monthCounts)
+
+            for (monthCount in remainingMonthCounts) {
+                yield()
+                val photos = repo.getMonthPhotos(monthCount.yearMonth, folders)
+                val days = withContext(Dispatchers.Default) { buildDayGroups(photos) }
+                _uiState.value = _uiState.value.copy(
+                    months = replaceLoadedMonth(_uiState.value.months, monthCount, days, photos.size),
+                    isLoading = false,
+                    isHybridMode = true
+                )
+                if (!warmedVideoThumbnails && photos.isNotEmpty()) {
+                    warmLocalVideoThumbnails(photos)
+                    warmedVideoThumbnails = true
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Incremental timeline expansion failed", e)
+            if (_uiState.value.months.isEmpty()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = e.message?.let { UiText.DynamicString(it) }
+                        ?: UiText.StringResource(R.string.load_failed)
+                )
+            }
+        }
+    }
+
+    private suspend fun applyRoomTimelineSkeleton(monthCounts: List<TimelineMonthCount>) {
+        val currentMonths = _uiState.value.months
+        val mergedMonths = withContext(Dispatchers.Default) {
+            val existingByMonth = currentMonths.associateBy { it.yearMonth }
+            val roomYearMonths = monthCounts.map { it.yearMonth }.toSet()
+            val roomMonths = monthCounts.map { count ->
+                val existing = existingByMonth[count.yearMonth]
+                existing?.copy(
+                    totalCount = maxOf(existing.totalCount, count.count),
+                    isLoaded = existing.isLoaded && existing.days.isNotEmpty(),
+                    isLoading = false,
+                    loadError = null
+                ) ?: MonthGroup(
+                    yearMonth = count.yearMonth,
+                    displayTitle = formatYearMonth(count.yearMonth),
+                    totalCount = count.count,
+                    isLoaded = count.count == 0
+                )
+            }
+            val cloudOnlyMonths = currentMonths.filter { it.yearMonth !in roomYearMonths }
+            (roomMonths + cloudOnlyMonths).sortedByDescending { it.yearMonth }
+        }
+        _uiState.value = _uiState.value.copy(
+            months = mergedMonths,
+            isLoading = false,
+            isHybridMode = true
+        )
+    }
+
+    private fun replaceLoadedMonth(
+        months: List<MonthGroup>,
+        monthCount: TimelineMonthCount,
+        days: List<DayGroup>,
+        loadedCount: Int
+    ): List<MonthGroup> {
+        var replaced = false
+        val updated = months.map { current ->
+            if (current.yearMonth == monthCount.yearMonth) {
+                replaced = true
+                current.copy(
+                    totalCount = maxOf(monthCount.count, loadedCount),
+                    days = days,
+                    isLoaded = true,
+                    isLoading = false,
+                    loadError = null
+                )
+            } else {
+                current
+            }
+        }
+        if (replaced) return updated
+        return (updated + MonthGroup(
+            yearMonth = monthCount.yearMonth,
+            displayTitle = formatYearMonth(monthCount.yearMonth),
+            totalCount = maxOf(monthCount.count, loadedCount),
+            days = days,
+            isLoaded = true
+        )).sortedByDescending { it.yearMonth }
     }
 
     private suspend fun loadFromCloud() {
@@ -383,7 +545,7 @@ class GalleryViewModel(
     fun loadTimelineMonth(yearMonth: String) {
         val group = _uiState.value.months.firstOrNull { it.yearMonth == yearMonth } ?: return
         if (group.isLoaded || group.isLoading) return
-        val month = timelineMonthsByYearMonth[yearMonth] ?: return
+        val month = timelineMonthsByYearMonth[yearMonth]
         if (monthLoadJobs[yearMonth]?.isActive == true) return
 
         _uiState.value = _uiState.value.copy(
@@ -393,6 +555,46 @@ class GalleryViewModel(
         )
 
         monthLoadJobs[yearMonth] = viewModelScope.launch {
+            if (syncRepository != null) {
+                val roomPhotos = syncRepository.getMonthPhotos(yearMonth, currentLocalFolders)
+                if (roomPhotos.isNotEmpty() || group.totalCount == 0) {
+                    _uiState.value = _uiState.value.copy(
+                        months = _uiState.value.months.map { current ->
+                            if (current.yearMonth == yearMonth) {
+                                current.copy(
+                                    totalCount = maxOf(current.totalCount, roomPhotos.size),
+                                    days = withContext(Dispatchers.Default) { buildDayGroups(roomPhotos) },
+                                    isLoaded = true,
+                                    isLoading = false,
+                                    loadError = null
+                                )
+                            } else {
+                                current
+                            }
+                        }
+                    )
+                    monthLoadJobs.remove(yearMonth)
+                    return@launch
+                }
+            }
+
+            if (month == null) {
+                _uiState.value = _uiState.value.copy(
+                    months = _uiState.value.months.map { current ->
+                        if (current.yearMonth == yearMonth) {
+                            current.copy(
+                                isLoading = false,
+                                loadError = UiText.StringResource(R.string.load_failed)
+                            )
+                        } else {
+                            current
+                        }
+                    }
+                )
+                monthLoadJobs.remove(yearMonth)
+                return@launch
+            }
+
             galleryRepository.getTimelineMonthFiles(month).fold(
                 onSuccess = { photos ->
                     syncRepository?.upsertCloudPhotoItems(photos)
@@ -460,6 +662,7 @@ class GalleryViewModel(
                     // Keep the expensive full cloud sync off the visible refresh path.
                     // It updates Room, but avoids rebuilding the whole timeline during the gesture.
                     syncRepository.refreshCloudState(existingSnapshot = snapshot)
+                    startRoomTimelineExpansion(folders)
                     _uiState.value = _uiState.value.copy(
                         syncCompleteMessage = UiText.StringResource(R.string.sync_complete_message)
                     )
@@ -536,7 +739,7 @@ class GalleryViewModel(
                 if (mediaChanged) {
                     syncRepository.syncLocalMedia(folders)
                 }
-                loadFromRoom(folders)
+                startRoomTimelineExpansion(folders)
             } catch (e: Exception) {
                 Log.w(TAG, "Quick refresh failed", e)
             }
@@ -646,7 +849,7 @@ class GalleryViewModel(
                 }
                 syncRepository.reconcileFolderSelection(folders)
                 syncRepository.performFullSync(folders)
-                loadFromRoom(folders)
+                startRoomTimelineExpansion(folders)
                 _uiState.value = _uiState.value.copy(isSyncing = false)
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
