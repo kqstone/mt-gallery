@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.data.repository
 
 import android.util.Log
+import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.kqstone.mtphotos.AppContainer
 import com.kqstone.mtphotos.data.local.db.AppDatabase
@@ -69,8 +70,20 @@ class ServerOpTaskRepository(
             .distinctBy { it.mediaCloudId }
 
         if (tasks.isNotEmpty()) {
-            dao.insertAll(tasks)
-            Log.d(TAG, "Enqueued ${tasks.size} cloud delete tasks")
+            var inserted = 0
+            var skipped = 0
+            database.withTransaction {
+                for (task in tasks) {
+                    val cloudId = task.mediaCloudId ?: continue
+                    if (dao.countActiveTasksForCloudId(ServerOpType.CLOUD_DELETE, cloudId) > 0) {
+                        skipped++
+                    } else {
+                        dao.insert(task)
+                        inserted++
+                    }
+                }
+            }
+            Log.d(TAG, "Enqueued $inserted cloud delete tasks, skipped $skipped active duplicates")
         }
     }
 
@@ -99,18 +112,21 @@ class ServerOpTaskRepository(
 
         val now = System.currentTimeMillis()
         val params = gson.toJson(mapOf("fileId" to fileId, "isFavorite" to isFavorite))
-        dao.insert(
-            ServerOpTaskEntity(
-                opType = ServerOpType.FAVORITE,
-                mediaFileName = fileName,
-                mediaMd5 = md5,
-                mediaCloudId = fileId,
-                params = params,
-                nextAttemptAt = now,
-                createdAt = now,
-                updatedAt = now
+        database.withTransaction {
+            dao.deleteUnfinishedTasksForCloudId(ServerOpType.FAVORITE, fileId)
+            dao.insert(
+                ServerOpTaskEntity(
+                    opType = ServerOpType.FAVORITE,
+                    mediaFileName = fileName,
+                    mediaMd5 = md5,
+                    mediaCloudId = fileId,
+                    params = params,
+                    nextAttemptAt = now,
+                    createdAt = now,
+                    updatedAt = now
+                )
             )
-        )
+        }
         Log.d(TAG, "Enqueued favorite task: $fileName, isFavorite=$isFavorite")
     }
 
@@ -158,7 +174,13 @@ class ServerOpTaskRepository(
             )
         }
         if (tasks.isNotEmpty()) {
-            dao.insertAll(tasks)
+            database.withTransaction {
+                for (task in tasks) {
+                    val cloudId = task.mediaCloudId ?: continue
+                    dao.deleteUnfinishedTasksForCloudId(ServerOpType.FAVORITE, cloudId)
+                    dao.insert(task)
+                }
+            }
             Log.d(TAG, "Enqueued ${tasks.size} favorite tasks, isFavorite=$isFavorite")
         }
         tasks.size
@@ -332,11 +354,10 @@ class ServerOpTaskRepository(
             val claimed = dao.claim(task.id)
             if (claimed == 0) continue
 
-            val result = executeWithRetry(task)
-            if (result) {
-                succeeded++
-            } else {
-                failed++
+            when (executeWithRetry(task)) {
+                true -> succeeded++
+                false -> failed++
+                null -> Unit
             }
         }
 
@@ -351,7 +372,7 @@ class ServerOpTaskRepository(
      * 执行单个任务，包含立即重试逻辑。
      * @return true 如果最终成功
      */
-    private suspend fun executeWithRetry(task: ServerOpTaskEntity): Boolean {
+    private suspend fun executeWithRetry(task: ServerOpTaskEntity): Boolean? {
         if (task.opType == ServerOpType.CLOUD_DELETE) {
             return executeCloudDeleteWithRetry(task)
         }
@@ -360,6 +381,9 @@ class ServerOpTaskRepository(
 
         // 包含立即重试的循环
         while (true) {
+            if (cancelIfObsolete(task)) {
+                return null
+            }
             try {
                 executeTask(task)
                 dao.markSuccess(task.id)
@@ -411,6 +435,34 @@ class ServerOpTaskRepository(
                     return false
                 }
             }
+        }
+    }
+
+    private suspend fun cancelIfObsolete(task: ServerOpTaskEntity): Boolean {
+        if (task.opType != ServerOpType.FAVORITE) return false
+
+        if (dao.countById(task.id) == 0) {
+            Log.d(TAG, "Drop obsolete FAVORITE task ${task.id}: task row was replaced")
+            return true
+        }
+
+        val target = favoriteTargetFromParams(task.params) ?: return false
+        val cloudId = task.mediaCloudId ?: return false
+        val current = database.mediaDao().findByCloudId(cloudId)?.isFavorite ?: return false
+        if (current == target) return false
+
+        dao.deleteById(task.id)
+        Log.d(TAG, "Drop obsolete FAVORITE task ${task.id}: local=$current, taskTarget=$target")
+        return true
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun favoriteTargetFromParams(params: String): Boolean? {
+        return try {
+            val map = gson.fromJson(params, Map::class.java) as? Map<String, Any>
+            map?.get("isFavorite") as? Boolean
+        } catch (_: Exception) {
+            null
         }
     }
 
