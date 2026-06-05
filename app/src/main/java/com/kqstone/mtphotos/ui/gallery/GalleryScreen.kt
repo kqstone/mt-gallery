@@ -18,16 +18,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +41,7 @@ import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import androidx.compose.ui.res.stringResource
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 
@@ -67,16 +64,12 @@ fun GalleryScreen(
     }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val snackbarHostState = remember { SnackbarHostState() }
 
-    // 后台同步完成后显示 Snackbar 轻量提示
-    val syncCompleteMessage = uiState.syncCompleteMessage
-    LaunchedEffect(syncCompleteMessage) {
-        if (syncCompleteMessage != null) {
-            snackbarHostState.showSnackbar(syncCompleteMessage.asString(context))
-            viewModel.clearSyncCompleteMessage()
-        }
-    }
+    // 后台同步和刷新结果使用轻量 Toast 提示
+    ToastMessageEffect(
+        message = uiState.toastMessage,
+        onConsumed = viewModel::clearToastMessage
+    )
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -220,17 +213,6 @@ fun GalleryScreen(
             }
         }
 
-        // Snackbar 显示在底部
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)
-        ) { data ->
-            Snackbar(
-                snackbarData = data,
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                contentColor = MaterialTheme.colorScheme.inverseOnSurface
-            )
-        }
     }
 
     if (showDeleteDialog) {

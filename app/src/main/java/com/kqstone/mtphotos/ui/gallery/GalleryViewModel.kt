@@ -21,6 +21,7 @@ import com.kqstone.mtphotos.data.repository.TimelineMonth
 import com.kqstone.mtphotos.data.repository.TimelineSnapshot
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
+import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
@@ -66,7 +67,7 @@ data class GalleryUiState(
     val isHybridMode: Boolean = false,
     val isSyncing: Boolean = false,
     val syncProgressText: UiText? = null,
-    val syncCompleteMessage: UiText? = null
+    val toastMessage: UiText? = null
 )
 
 class GalleryViewModel(
@@ -88,6 +89,7 @@ class GalleryViewModel(
     private var currentLocalFolders: Set<String>? = null
     private var lastFolderSelectionKey: String? = null
     private var skipNextResumeRefresh = false
+    private var refreshJob: Job? = null
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -672,8 +674,18 @@ class GalleryViewModel(
 
 
     fun refresh() {
-        _uiState.value = _uiState.value.copy(isRefreshing = true)
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true || _uiState.value.isRefreshing) return
+
+        _uiState.value = _uiState.value.copy(
+            isRefreshing = true,
+            error = null,
+            toastMessage = null
+        )
+        refreshJob = viewModelScope.launch {
+            val refreshError = PullRefreshSupport.run(
+                isDeviceOffline = { galleryRepository.isDeviceOffline() },
+                onOffline = { galleryRepository.markNetworkRetryPending() }
+            ) {
             if (_uiState.value.isHybridMode && syncRepository != null) {
                 try {
                     val folderSelection = getFolderSelectionState()
@@ -681,7 +693,7 @@ class GalleryViewModel(
                         Log.w(TAG, "Refresh skipped local scope because folder selection is missing")
                         loadFromCloud()
                         _uiState.value = _uiState.value.copy(isRefreshing = false)
-                        return@launch
+                        return@run
                     }
                     val folders = folderSelection.effectiveFolders
 
@@ -695,21 +707,26 @@ class GalleryViewModel(
 
                     // Keep the expensive full cloud sync off the visible refresh path.
                     // It updates Room, but avoids rebuilding the whole timeline during the gesture.
-                    syncRepository.refreshCloudState(existingSnapshot = snapshot)
-                    startRoomTimelineExpansion(folders)
-                    _uiState.value = _uiState.value.copy(
-                        syncCompleteMessage = UiText.StringResource(R.string.sync_complete_message)
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Background sync failed after refresh", e)
-                    // 不覆盖已展示的数据，仅记录错误
-                    if (_uiState.value.months.isEmpty()) {
-                        _uiState.value = _uiState.value.copy(
-                            isRefreshing = false,
-                            error = e.message?.let { UiText.DynamicString(it) }
-                                ?: UiText.StringResource(R.string.sync_failed, "")
-                        )
+                    viewModelScope.launch {
+                        try {
+                            syncRepository.refreshCloudState(existingSnapshot = snapshot)
+                            startRoomTimelineExpansion(folders)
+                            _uiState.value = _uiState.value.copy(
+                                toastMessage = UiText.StringResource(R.string.sync_complete_message)
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Background sync failed after refresh", e)
+                            _uiState.value = _uiState.value.copy(
+                                toastMessage = UiText.StringResource(R.string.sync_failed, e.message.orEmpty())
+                            )
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Refresh failed", e)
+                    throw e
+                    // 不覆盖已展示的数据，仅记录错误
                 }
             } else {
                 galleryRepository.getTimelineSnapshot().fold(
@@ -721,19 +738,26 @@ class GalleryViewModel(
                         )
                     },
                     onFailure = { e ->
-                        _uiState.value = _uiState.value.copy(
-                            isRefreshing = false,
-                            error = e.message?.let { UiText.DynamicString(it) }
-                                ?: UiText.StringResource(R.string.refresh_failed)
-                        )
+                        throw e
                     }
                 )
             }
+
+            }
+
+            if (refreshError != null) {
+                val hasContent = _uiState.value.months.isNotEmpty()
+                _uiState.value = _uiState.value.copy(
+                    error = if (hasContent) _uiState.value.error else refreshError,
+                    toastMessage = refreshError
+                )
+            }
+            _uiState.value = _uiState.value.copy(isRefreshing = false)
         }
     }
 
-    fun clearSyncCompleteMessage() {
-        _uiState.value = _uiState.value.copy(syncCompleteMessage = null)
+    fun clearToastMessage() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
     fun quickRefresh() {
@@ -901,7 +925,11 @@ class GalleryViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
-        selectionManager.deleteSelected {
+        val allPhotos = _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
+        selectionManager.deleteSelected(
+            photos = allPhotos,
+            onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
+        ) {
             _uiState.value = _uiState.value.copy(
                 months = removeSelectedPhotos(_uiState.value.months, selectedIds)
             )

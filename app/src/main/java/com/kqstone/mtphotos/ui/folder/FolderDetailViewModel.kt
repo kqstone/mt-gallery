@@ -188,7 +188,10 @@ class FolderDetailViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
-        selectionManager.deleteSelected {
+        selectionManager.deleteSelected(
+            photos = _uiState.value.photos,
+            onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
+        ) {
             val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
             _uiState.value = _uiState.value.copy(photos = remaining)
             updateActiveCache(_uiState.value)

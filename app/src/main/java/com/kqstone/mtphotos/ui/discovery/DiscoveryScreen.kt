@@ -51,6 +51,7 @@ import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
+import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 
@@ -68,6 +69,11 @@ fun DiscoveryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
+
+    ToastMessageEffect(
+        message = uiState.toastMessage,
+        onConsumed = viewModel::clearToastMessage
+    )
 
     val scrollState = rememberScrollAlpha(
         firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },

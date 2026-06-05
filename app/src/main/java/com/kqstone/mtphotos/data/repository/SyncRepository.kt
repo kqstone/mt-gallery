@@ -1082,6 +1082,21 @@ class SyncRepository(
         return (mediaDao.findByCloudIds(cloudIds) + mediaDao.findByIds(dbIds)).distinctBy { it.id }
     }
 
+    suspend fun findMediaEntitiesForPhotos(photos: List<UnifiedPhotoItem>): List<MediaEntity> {
+        if (photos.isEmpty()) return emptyList()
+        val dbIds = photos.map { it.dbId }.filter { it > 0 }.distinct()
+        val cloudIds = photos.mapNotNull { it.cloudId?.takeIf { id -> id > 0 } }.distinct()
+        val byDbId = if (dbIds.isEmpty()) emptyMap() else mediaDao.findByIds(dbIds).associateBy { it.id }
+        val byCloudId = if (cloudIds.isEmpty()) {
+            emptyMap()
+        } else {
+            mediaDao.findByCloudIds(cloudIds).associateBy { it.cloudId }
+        }
+        return photos.mapNotNull { photo ->
+            byDbId[photo.dbId] ?: photo.cloudId?.let { byCloudId[it] }
+        }.distinctBy { it.id }
+    }
+
     fun ensureLocalDeleteAllowed(entities: List<MediaEntity>) {
         val localEntities = entities.filter { it.localMediaStoreId != null }
         if (localEntities.isNotEmpty() && !isManageStorageGranted()) {
