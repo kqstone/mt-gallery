@@ -162,6 +162,17 @@ class BackupWorker(
                             cloudId = uploadResult.cloudId,
                             cloudMd5 = uploadResult.cloudMd5
                         )
+                        container.database.mediaDao().findById(media.id)?.let { latest ->
+                            if (latest.isFavorite) {
+                                container.serverOpTaskRepository.enqueueFavorite(
+                                    cloudId = uploadResult.cloudId,
+                                    dbId = latest.id,
+                                    isFavorite = true,
+                                    fileName = latest.fileName,
+                                    md5 = latest.md5
+                                )
+                            }
+                        }
                         if (uploadResult.fromExistingServerRecord) {
                             existingServerRecordSuccessIds += media.id
                         }

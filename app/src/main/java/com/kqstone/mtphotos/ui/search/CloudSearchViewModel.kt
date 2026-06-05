@@ -345,7 +345,10 @@ class CloudSearchViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
-        selectionManager.deleteSelected {
+        selectionManager.deleteSelected(
+            photos = getAllLoadedPhotos(),
+            onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
+        ) {
             _uiState.value = _uiState.value.copy(
                 resultMonths = removeSelectedPhotos(_uiState.value.resultMonths, selectedIds)
             )

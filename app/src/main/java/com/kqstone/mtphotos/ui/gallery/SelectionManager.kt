@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos.ui.gallery
 
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +53,30 @@ class SelectionManager(
 
         scope.launch {
             onDelete(ids).fold(
+                onSuccess = {
+                    _selectedPhotoIds.value = emptySet()
+                    onSuccess()
+                },
+                onFailure = { e ->
+                    onError(UiText.StringResource(R.string.delete_failed_format, e.message.orEmpty()))
+                }
+            )
+        }
+    }
+
+    fun deleteSelected(
+        photos: List<UnifiedPhotoItem>,
+        onDeletePhotos: suspend (List<UnifiedPhotoItem>) -> Result<Unit>,
+        onSuccess: () -> Unit
+    ) {
+        val ids = _selectedPhotoIds.value
+        if (ids.isEmpty()) return
+
+        val selectedPhotos = photos.filter { it.id in ids }
+        if (selectedPhotos.isEmpty()) return
+
+        scope.launch {
+            onDeletePhotos(selectedPhotos).fold(
                 onSuccess = {
                     _selectedPhotoIds.value = emptySet()
                     onSuccess()

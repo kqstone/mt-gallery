@@ -207,7 +207,7 @@ class ViewerViewModel(
     fun deleteCurrentPhoto(onDeleted: (hasRemainingPhotos: Boolean) -> Unit) {
         val photo = getCurrentPhoto() ?: return
         viewModelScope.launch {
-            val result = galleryRepository.deleteFiles(listOf(photo.id))
+            val result = galleryRepository.deletePhotos(listOf(photo))
             if (result.isSuccess) {
                 val hasRemainingPhotos = removeDeletedPhoto(photo)
                 if (hasRemainingPhotos) {

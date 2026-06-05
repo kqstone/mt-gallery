@@ -38,6 +38,12 @@ data class ServerOpProcessResult(
     val failed: Int
 )
 
+data class CloudDeleteRequest(
+    val cloudId: Double,
+    val md5: String = "",
+    val fileName: String = ""
+)
+
 class ServerOpTaskRepository(
     private val container: AppContainer,
     private val database: AppDatabase
@@ -52,22 +58,35 @@ class ServerOpTaskRepository(
      * 调用方应已先完成本地 DB 变更和 UI 更新。
      */
     suspend fun enqueueCloudDelete(entities: List<MediaEntity>) = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        val tasks = entities
-            .mapNotNull { entity ->
+        enqueueCloudDeleteRequests(
+            entities.mapNotNull { entity ->
                 val cloudId = entity.cloudId?.takeIf { it > 0 } ?: return@mapNotNull null
+                CloudDeleteRequest(
+                    cloudId = cloudId,
+                    md5 = entity.cloudMd5 ?: entity.md5,
+                    fileName = entity.fileName
+                )
+            }
+        )
+    }
+
+    suspend fun enqueueCloudDeleteRequests(requests: List<CloudDeleteRequest>) = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val tasks = requests
+            .filter { it.cloudId > 0 }
+            .distinctBy { it.cloudId }
+            .map { request ->
                 ServerOpTaskEntity(
                     opType = ServerOpType.CLOUD_DELETE,
-                    mediaFileName = entity.fileName,
-                    mediaMd5 = entity.cloudMd5 ?: entity.md5,
-                    mediaCloudId = cloudId,
+                    mediaFileName = request.fileName,
+                    mediaMd5 = request.md5,
+                    mediaCloudId = request.cloudId,
                     params = "{}",
                     nextAttemptAt = now,
                     createdAt = now,
                     updatedAt = now
                 )
             }
-            .distinctBy { it.mediaCloudId }
 
         if (tasks.isNotEmpty()) {
             var inserted = 0
@@ -78,6 +97,7 @@ class ServerOpTaskRepository(
                     if (dao.countActiveTasksForCloudId(ServerOpType.CLOUD_DELETE, cloudId) > 0) {
                         skipped++
                     } else {
+                        deleteFileMutationTasks(cloudId)
                         dao.insert(task)
                         inserted++
                     }
@@ -97,6 +117,11 @@ class ServerOpTaskRepository(
         fileName: String,
         md5: String
     ) = withContext(Dispatchers.IO) {
+        if (cloudId != null && isCloudDeleteActive(cloudId)) {
+            Log.d(TAG, "Skip favorite task while cloud delete is pending: $fileName")
+            return@withContext
+        }
+
         updateLocalFavorite(
             cloudId = cloudId,
             dbId = dbId,
@@ -145,7 +170,16 @@ class ServerOpTaskRepository(
         }
         if (distinctPhotos.isEmpty()) return@withContext 0
 
-        for (photo in distinctPhotos) {
+        val activeDeleteIds = mutableSetOf<Double>()
+        for (cloudId in distinctPhotos.mapNotNull { it.cloudId?.takeIf { id -> id > 0 } }.distinct()) {
+            if (isCloudDeleteActive(cloudId)) {
+                activeDeleteIds += cloudId
+            }
+        }
+        val actionablePhotos = distinctPhotos.filterNot { it.cloudId in activeDeleteIds }
+        if (actionablePhotos.isEmpty()) return@withContext 0
+
+        for (photo in actionablePhotos) {
             updateLocalFavorite(
                 cloudId = photo.cloudId,
                 dbId = photo.dbId,
@@ -160,7 +194,7 @@ class ServerOpTaskRepository(
         }
 
         val now = System.currentTimeMillis()
-        val tasks = distinctPhotos.mapNotNull { photo ->
+        val tasks = actionablePhotos.mapNotNull { photo ->
             val cloudId = photo.cloudId ?: return@mapNotNull null
             ServerOpTaskEntity(
                 opType = ServerOpType.FAVORITE,
@@ -260,6 +294,10 @@ class ServerOpTaskRepository(
         fileName: String,
         md5: String
     ) = withContext(Dispatchers.IO) {
+        if (isCloudDeleteActive(fileId)) {
+            Log.d(TAG, "Skip tag task while cloud delete is pending: $fileName")
+            return@withContext
+        }
         val now = System.currentTimeMillis()
         val params = gson.toJson(mapOf("fileId" to fileId, "tagName" to tagName, "isAdd" to isAdd))
         dao.insert(
@@ -286,14 +324,25 @@ class ServerOpTaskRepository(
         fileName: String,
         md5: String
     ) = withContext(Dispatchers.IO) {
+        val activeDeleteIds = mutableSetOf<Double>()
+        for (fileId in fileIds.distinct()) {
+            if (isCloudDeleteActive(fileId)) {
+                activeDeleteIds += fileId
+            }
+        }
+        val actionableFileIds = fileIds.filterNot { it in activeDeleteIds }
+        if (actionableFileIds.isEmpty()) {
+            Log.d(TAG, "Skip hide task while cloud delete is pending: $fileName")
+            return@withContext
+        }
         val now = System.currentTimeMillis()
-        val params = gson.toJson(mapOf("fileIds" to fileIds, "isHide" to isHide))
+        val params = gson.toJson(mapOf("fileIds" to actionableFileIds, "isHide" to isHide))
         dao.insert(
             ServerOpTaskEntity(
                 opType = ServerOpType.HIDE,
                 mediaFileName = fileName,
                 mediaMd5 = md5,
-                mediaCloudId = fileIds.firstOrNull(),
+                mediaCloudId = actionableFileIds.firstOrNull(),
                 params = params,
                 nextAttemptAt = now,
                 createdAt = now,
@@ -381,6 +430,9 @@ class ServerOpTaskRepository(
 
         // 包含立即重试的循环
         while (true) {
+            if (cancelIfCloudDeletePending(task)) {
+                return null
+            }
             if (cancelIfObsolete(task)) {
                 return null
             }
@@ -435,6 +487,49 @@ class ServerOpTaskRepository(
                     return false
                 }
             }
+        }
+    }
+
+    private suspend fun deleteFileMutationTasks(cloudId: Double) {
+        dao.deleteUnfinishedTasksForCloudId(ServerOpType.FAVORITE, cloudId)
+        dao.deleteUnfinishedTasksForCloudId(ServerOpType.TAG, cloudId)
+        dao.deleteUnfinishedTasksForCloudId(ServerOpType.HIDE, cloudId)
+    }
+
+    private suspend fun isCloudDeleteActive(cloudId: Double): Boolean {
+        return dao.countActiveTasksForCloudId(ServerOpType.CLOUD_DELETE, cloudId) > 0
+    }
+
+    private suspend fun cancelIfCloudDeletePending(task: ServerOpTaskEntity): Boolean {
+        if (task.opType !in setOf(ServerOpType.FAVORITE, ServerOpType.TAG, ServerOpType.HIDE)) {
+            return false
+        }
+        val cloudIds = fileMutationCloudIds(task)
+        if (cloudIds.isEmpty()) return false
+        val blockedCloudId = cloudIds.firstOrNull { isCloudDeleteActive(it) } ?: return false
+
+        dao.deleteById(task.id)
+        Log.d(TAG, "Drop ${task.opType} task ${task.id}: cloud delete is pending for $blockedCloudId")
+        return true
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun fileMutationCloudIds(task: ServerOpTaskEntity): List<Double> {
+        if (task.opType != ServerOpType.HIDE) {
+            return listOfNotNull(task.mediaCloudId)
+        }
+        return try {
+            val params = gson.fromJson(task.params, Map::class.java) as? Map<String, Any>
+            val fileIds = params?.get("fileIds") as? List<*> ?: return listOfNotNull(task.mediaCloudId)
+            fileIds.mapNotNull { item ->
+                when (item) {
+                    is Number -> item.toDouble()
+                    is String -> item.toDoubleOrNull()
+                    else -> null
+                }
+            }
+        } catch (_: Exception) {
+            listOfNotNull(task.mediaCloudId)
         }
     }
 

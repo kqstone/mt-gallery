@@ -1,7 +1,9 @@
 package com.kqstone.mtphotos.data.repository
 
 import com.kqstone.mtphotos.AppContainer
+import com.kqstone.mtphotos.data.local.db.MediaEntity
 import com.kqstone.mtphotos.data.local.db.toMapPhotoEntity
+import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.network.NetworkFailure
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Dispatchers
@@ -652,17 +654,74 @@ class GalleryRepository(private val container: AppContainer) {
             // 查找 Room 中的实体（按 cloudId 和 dbId 查询，覆盖所有同步状态）
             val entities = syncRepo.findMediaEntitiesByIds(ids)
             syncRepo.ensureLocalDeleteAllowed(entities)
-            syncRepo.enqueueCloudDeleteTasks(entities)
             syncRepo.deleteLocalMediaFiles(entities)
+            val cloudRequests = entities.toCloudDeleteRequests()
 
-            // 仅将有 cloudId 的文件发送到云端 API 删除
-            // 清理本地文件和 Room 记录
+            container.serverOpTaskRepository.enqueueCloudDeleteRequests(cloudRequests)
             syncRepo.deleteMediaRecords(entities)
-            BackupScheduler.triggerServerOpWork(container.prefsManager.context)
+            if (cloudRequests.isNotEmpty()) {
+                BackupScheduler.triggerServerOpWork(container.prefsManager.context)
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun deletePhotos(photos: List<UnifiedPhotoItem>): Result<Unit> {
+        return try {
+            if (photos.isEmpty()) return Result.success(Unit)
+
+            val syncRepo = container.syncRepository
+            val entities = syncRepo.findMediaEntitiesForPhotos(photos)
+            val cloudRequests = buildCloudDeleteRequests(photos, entities)
+
+            if (entities.isEmpty() && cloudRequests.isEmpty()) {
+                return Result.failure(IllegalArgumentException("No deletable media found"))
+            }
+
+            syncRepo.ensureLocalDeleteAllowed(entities)
+            syncRepo.deleteLocalMediaFiles(entities)
+            container.serverOpTaskRepository.enqueueCloudDeleteRequests(cloudRequests)
+            syncRepo.deleteMediaRecords(entities)
+            if (cloudRequests.isNotEmpty()) {
+                BackupScheduler.triggerServerOpWork(container.prefsManager.context)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun buildCloudDeleteRequests(
+        photos: List<UnifiedPhotoItem>,
+        entities: List<MediaEntity>
+    ): List<CloudDeleteRequest> {
+        val entityByCloudId = entities.mapNotNull { entity ->
+            entity.cloudId?.let { it to entity }
+        }.toMap()
+        val entityRequests = entities.toCloudDeleteRequests()
+        val cloudOnlyRequests = photos.mapNotNull { photo ->
+            val cloudId = photo.cloudId?.takeIf { it > 0 } ?: return@mapNotNull null
+            if (cloudId in entityByCloudId) return@mapNotNull null
+            CloudDeleteRequest(
+                cloudId = cloudId,
+                md5 = photo.md5,
+                fileName = photo.fileName
+            )
+        }
+        return (entityRequests + cloudOnlyRequests).distinctBy { it.cloudId }
+    }
+
+    private fun List<MediaEntity>.toCloudDeleteRequests(): List<CloudDeleteRequest> {
+        return mapNotNull { entity ->
+            val cloudId = entity.cloudId?.takeIf { it > 0 } ?: return@mapNotNull null
+            CloudDeleteRequest(
+                cloudId = cloudId,
+                md5 = entity.cloudMd5 ?: entity.md5,
+                fileName = entity.fileName
+            )
+        }.distinctBy { it.cloudId }
     }
 
     fun getServerUrl(): String = prefsManager.getServerUrlSync()

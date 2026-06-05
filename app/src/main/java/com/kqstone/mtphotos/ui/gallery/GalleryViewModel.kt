@@ -901,7 +901,11 @@ class GalleryViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
-        selectionManager.deleteSelected {
+        val allPhotos = _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
+        selectionManager.deleteSelected(
+            photos = allPhotos,
+            onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
+        ) {
             _uiState.value = _uiState.value.copy(
                 months = removeSelectedPhotos(_uiState.value.months, selectedIds)
             )
