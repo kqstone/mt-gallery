@@ -952,6 +952,41 @@ class GalleryViewModel(
         }
     }
 
+    fun hideSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+        )
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueHides(selectedPhotos, isHide = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
+    fun restoreHiddenPhotos(photos: List<UnifiedPhotoItem>) {
+        if (photos.isEmpty()) return
+        val visiblePhotos = photos.map { it.copy(isHide = false) }
+        val merged = linkedMapOf<String, UnifiedPhotoItem>()
+        for (photo in getAllLoadedPhotos()) {
+            merged[photo.mergeKey()] = photo
+        }
+        for (photo in visiblePhotos) {
+            merged[photo.mergeKey()] = photo
+        }
+        _uiState.value = _uiState.value.copy(
+            months = buildMonthGroups(merged.values.toList())
+        )
+    }
+
     private fun updateFavoriteState(
         groups: List<MonthGroup>,
         selectedIds: Set<Double>,

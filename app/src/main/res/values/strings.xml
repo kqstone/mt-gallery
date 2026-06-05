@@ -153,6 +153,8 @@
     <string name="share">Share</string>
     <string name="favorite">Favorite</string>
     <string name="unfavorite">Unfavorite</string>
+    <string name="hide">Hide</string>
+    <string name="unhide">Unhide</string>
     <string name="delete">Delete</string>
     <string name="confirm_delete_title">Confirm Delete</string>
     <string name="delete_confirm_desc_legacy">Are you sure you want to delete the selected %1$d items?\nThey will be moved to the server trash bin.</string>
@@ -333,6 +335,17 @@
     <string name="no_optimizable_files">No optimizable files found</string>
     <string name="no_media_folders_found">No selectable media folders found</string>
     <string name="ok">OK</string>
+    <string name="private_album_title">Private Album</string>
+    <string name="private_album_keep_pulling">Keep pulling for private album</string>
+    <string name="private_album_release_to_open">Release to open private album</string>
+    <string name="private_album_intro_title">Private album</string>
+    <string name="private_album_intro_message">Private album requires verification with the current user password before hidden media can be viewed.</string>
+    <string name="private_album_password_prompt">Enter the current user password</string>
+    <string name="private_album_password_required">Please enter the current user password</string>
+    <string name="private_album_unlock">Unlock</string>
+    <string name="private_album_unlock_failed">Unable to unlock private album: %1$s</string>
+    <string name="private_album_empty">No hidden media</string>
+    <string name="private_album_use_current_password">Use your current account password</string>
     <string name="select_backup_to">Select backup destination</string>
     <string name="default_destination">Default</string>
     <string name="custom">Custom</string>

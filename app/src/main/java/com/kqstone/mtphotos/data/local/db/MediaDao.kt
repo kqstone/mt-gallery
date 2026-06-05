@@ -55,24 +55,25 @@ interface MediaDao {
     // ===== 查询全部 =====
 
     /** 获取所有媒体（按拍摄时间降序），返回 Flow 以实时观察变化 */
-    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE isHide = 0 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     fun getAllMediaFlow(): Flow<List<MediaEntity>>
 
-    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE isHide = 0 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getAllMedia(): List<MediaEntity>
 
-    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL AND isHide = 0 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getAllCloudMedia(): List<MediaEntity>
 
-    @Query("SELECT * FROM media ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
+    @Query("SELECT * FROM media WHERE isHide = 0 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
     suspend fun getRecentMedia(limit: Int): List<MediaEntity>
 
-    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
+    @Query("SELECT * FROM media WHERE cloudId IS NOT NULL AND isHide = 0 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC LIMIT :limit")
     suspend fun getRecentCloudMedia(limit: Int): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
-        WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)
+        WHERE isHide = 0
+        AND (cloudId IS NOT NULL OR localFolderPath IN (:folderPaths))
         ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getAllVisibleMediaByFolders(folderPaths: List<String>): List<MediaEntity>
@@ -82,7 +83,8 @@ interface MediaDao {
     /** 获取月份分组统计 (返回 yearMonth 和 count) */
     @Query("""
         SELECT SUBSTR(mtime, 1, 7) AS yearMonth, COUNT(*) AS count 
-        FROM media 
+        FROM media
+        WHERE isHide = 0
         GROUP BY SUBSTR(mtime, 1, 7) 
         ORDER BY yearMonth DESC
     """)
@@ -92,6 +94,7 @@ interface MediaDao {
         SELECT SUBSTR(mtime, 1, 7) AS yearMonth, COUNT(*) AS count
         FROM media
         WHERE cloudId IS NOT NULL
+        AND isHide = 0
         GROUP BY SUBSTR(mtime, 1, 7)
         ORDER BY yearMonth DESC
     """)
@@ -100,20 +103,22 @@ interface MediaDao {
     @Query("""
         SELECT SUBSTR(mtime, 1, 7) AS yearMonth, COUNT(*) AS count
         FROM media
-        WHERE cloudId IS NOT NULL OR localFolderPath IN (:folderPaths)
+        WHERE isHide = 0
+        AND (cloudId IS NOT NULL OR localFolderPath IN (:folderPaths))
         GROUP BY SUBSTR(mtime, 1, 7)
         ORDER BY yearMonth DESC
     """)
     suspend fun getTimelineMonthsByVisibleFolders(folderPaths: List<String>): List<TimelineMonthCount>
 
     /** 获取指定月份的所有媒体 */
-    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE isHide = 0 AND mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getMediaByMonth(yearMonth: String): List<MediaEntity>
 
     @Query("""
         SELECT * FROM media
         WHERE mtime LIKE :yearMonth || '%'
         AND cloudId IS NOT NULL
+        AND isHide = 0
         ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
     suspend fun getCloudMediaByMonth(yearMonth: String): List<MediaEntity>
@@ -121,6 +126,7 @@ interface MediaDao {
     @Query("""
         SELECT * FROM media
         WHERE mtime LIKE :yearMonth || '%'
+        AND isHide = 0
         AND (cloudId IS NOT NULL OR localFolderPath IN (:folderPaths))
         ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC
     """)
@@ -130,8 +136,11 @@ interface MediaDao {
     ): List<MediaEntity>
 
     /** 获取指定月份的所有媒体（Flow） */
-    @Query("SELECT * FROM media WHERE mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE isHide = 0 AND mtime LIKE :yearMonth || '%' ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     fun getMediaByMonthFlow(yearMonth: String): Flow<List<MediaEntity>>
+
+    @Query("SELECT * FROM media WHERE isHide = 1 ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    suspend fun getHiddenMedia(): List<MediaEntity>
 
     // ===== 按 MD5 查找（去重匹配） =====
 
@@ -306,6 +315,27 @@ interface MediaDao {
         now: Long = System.currentTimeMillis()
     ): Int
 
+    @Query("UPDATE media SET isHide = :isHide, updatedAt = :now WHERE id = :id")
+    suspend fun updateHideById(
+        id: Long,
+        isHide: Boolean,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("UPDATE media SET isHide = :isHide, updatedAt = :now WHERE cloudId = :cloudId")
+    suspend fun updateHideByCloudId(
+        cloudId: Double,
+        isHide: Boolean,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("UPDATE media SET isHide = :isHide, updatedAt = :now WHERE cloudId IN (:cloudIds)")
+    suspend fun updateHideByCloudIds(
+        cloudIds: List<Double>,
+        isHide: Boolean,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
     // ===== 原图下载后标记 =====
 
     @Query("""
@@ -355,7 +385,7 @@ interface MediaDao {
     @Query("SELECT DISTINCT localFolderPath FROM media WHERE localFolderPath IS NOT NULL ORDER BY localFolderPath")
     suspend fun getAllLocalFolders(): List<String>
 
-    @Query("SELECT * FROM media WHERE localFolderPath = :folderPath ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
+    @Query("SELECT * FROM media WHERE isHide = 0 AND localFolderPath = :folderPath ORDER BY mtime DESC, cloudId DESC, localMediaStoreId DESC, id DESC")
     suspend fun getMediaByFolder(folderPath: String): List<MediaEntity>
 
     // ===== 孤立记录清理 =====

@@ -474,7 +474,8 @@ class SyncRepository(
                 livePhotosVideoId = photo.livePhotosVideoId,
                 isLivePhotosVideo = photo.isLivePhotosVideo,
                 livePhotoUuid = photo.livePhotoUuid,
-                isFavorite = if (photo.isFavorite) true else localEntity.isFavorite
+                isFavorite = if (photo.isFavorite) true else localEntity.isFavorite,
+                isHide = if (photo.isHide) true else localEntity.isHide
             ) ?: photo.toCloudOnlyUnifiedPhotoItem()
         }
     }
@@ -506,6 +507,7 @@ class SyncRepository(
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid,
             isFavorite = favoriteFileIds?.contains(id) ?: isFavorite,
+            isHide = isHide,
             syncStatus = SyncStatus.CLOUD_ONLY,
             backupStatus = BackupStatus.NOT_STARTED
         )
@@ -764,6 +766,12 @@ class SyncRepository(
                 existing != null -> existing.isFavorite
                 local != null -> local.isFavorite
                 else -> base.isFavorite
+            },
+            isHide = when {
+                cloudSource != null -> cloudSource.isHide
+                existing != null -> existing.isHide
+                local != null -> local.isHide
+                else -> base.isHide
             },
             createdAt = existing?.createdAt ?: base.createdAt,
             updatedAt = System.currentTimeMillis()
@@ -1265,6 +1273,7 @@ fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPh
         thumbCachePath = thumbCachePath,
         isStorageOptimized = if (localVisible) isStorageOptimized else true,
         isFavorite = isFavorite,
+        isHide = isHide,
         fileSize = fileSize,
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
@@ -1285,6 +1294,7 @@ fun PhotoItem.toCloudOnlyUnifiedPhotoItem(): UnifiedPhotoItem {
         syncStatus = SyncStatus.CLOUD_ONLY,
         backupStatus = BackupStatus.NOT_STARTED,
         isFavorite = isFavorite,
+        isHide = isHide,
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
         isLivePhotosVideo = isLivePhotosVideo,

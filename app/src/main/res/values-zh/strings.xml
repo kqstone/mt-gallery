@@ -153,6 +153,8 @@
     <string name="share">分享</string>
     <string name="favorite">收藏</string>
     <string name="unfavorite">取消收藏</string>
+    <string name="hide">隐藏</string>
+    <string name="unhide">取消隐藏</string>
     <string name="delete">删除</string>
     <string name="confirm_delete_title">确认删除</string>
     <string name="delete_confirm_desc_legacy">确定要删除选中的 %1$d 张照片吗？\n照片将移入服务端回收站。</string>
@@ -333,6 +335,17 @@
     <string name="no_optimizable_files">暂无可优化的文件</string>
     <string name="no_media_folders_found">未发现可选择的媒体文件夹</string>
     <string name="ok">确定</string>
+    <string name="private_album_title">隐私相册</string>
+    <string name="private_album_keep_pulling">继续下拉进入隐私相册</string>
+    <string name="private_album_release_to_open">松手进入隐私相册</string>
+    <string name="private_album_intro_title">隐私相册</string>
+    <string name="private_album_intro_message">隐私相册需要使用当前用户密码验证后才能查看隐藏媒体。</string>
+    <string name="private_album_password_prompt">输入当前用户密码</string>
+    <string name="private_album_password_required">请输入当前用户密码</string>
+    <string name="private_album_unlock">解锁</string>
+    <string name="private_album_unlock_failed">无法解锁隐私相册：%1$s</string>
+    <string name="private_album_empty">暂无隐藏媒体</string>
+    <string name="private_album_use_current_password">使用当前账号密码</string>
     <string name="select_backup_to">选择备份到</string>
     <string name="default_destination">默认</string>
     <string name="custom">自定义</string>

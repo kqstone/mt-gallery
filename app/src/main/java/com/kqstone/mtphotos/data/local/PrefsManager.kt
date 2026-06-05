@@ -45,6 +45,7 @@ class PrefsManager(val context: Context) {
         private val KEY_SERVER_UNREACHABLE_EVENT_AT = longPreferencesKey("server_unreachable_event_at")
         private val KEY_SERVER_UNREACHABLE_SHOWN_AT = longPreferencesKey("server_unreachable_shown_at")
         private val KEY_NETWORK_RETRY_PENDING = booleanPreferencesKey("network_retry_pending")
+        private val KEY_PRIVACY_INTRO_SHOWN = booleanPreferencesKey("privacy_intro_shown")
 
         // 备份相关
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
@@ -133,6 +134,10 @@ class PrefsManager(val context: Context) {
         if (eventAt > shownAt) eventAt else 0L
     }
     fun getNetworkRetryPendingSync(): Boolean = runBlocking { networkRetryPending.first() }
+    fun getPrivacyIntroShownSync(): Boolean = runBlocking {
+        val prefs = context.dataStore.data.first()
+        prefs[KEY_PRIVACY_INTRO_SHOWN] ?: false
+    }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
     fun getBackupFolderHistorySync(): Set<String> = runBlocking {
@@ -218,6 +223,12 @@ class PrefsManager(val context: Context) {
     suspend fun setNetworkRetryPending(pending: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_NETWORK_RETRY_PENDING] = pending
+        }
+    }
+
+    suspend fun setPrivacyIntroShown(shown: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PRIVACY_INTRO_SHOWN] = shown
         }
     }
 

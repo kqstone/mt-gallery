@@ -287,7 +287,7 @@ interface GatewayApi {
 
     /** 隐私相册中的照片 */
     @POST("/gateway/filesInHide")
-    suspend fun GatewayControllerPart3FilesInHide(@Body body: Map<String, @JvmSuppressWildcards Any>): List<Map<String, Any>>
+    suspend fun GatewayControllerPart3FilesInHide(@Body body: Map<String, @JvmSuppressWildcards Any>): Any
 
     /** 最近添加的文件 */
     @GET("/gateway/recentFiles")

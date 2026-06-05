@@ -49,6 +49,8 @@ data class UnifiedPhotoItem(
 
     val isFavorite: Boolean = false,
 
+    val isHide: Boolean = false,
+
     /** 文件大小（字节） */
     val fileSize: Long = 0,
 
