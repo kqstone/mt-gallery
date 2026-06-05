@@ -15,6 +15,36 @@ interface ServerOpTaskDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(tasks: List<ServerOpTaskEntity>)
 
+    @Query("""
+        SELECT COUNT(*) FROM server_op_tasks
+        WHERE opType = :opType
+        AND mediaCloudId = :cloudId
+        AND status IN ('PENDING', 'ERROR', 'RUNNING')
+    """)
+    suspend fun countActiveTasksForCloudId(opType: ServerOpType, cloudId: Double): Int
+
+    @Query("""
+        DELETE FROM server_op_tasks
+        WHERE opType = :opType
+        AND mediaCloudId = :cloudId
+        AND status IN ('PENDING', 'ERROR', 'RUNNING')
+    """)
+    suspend fun deleteActiveTasksForCloudId(opType: ServerOpType, cloudId: Double): Int
+
+    @Query("""
+        DELETE FROM server_op_tasks
+        WHERE opType = :opType
+        AND mediaCloudId = :cloudId
+        AND status IN ('PENDING', 'ERROR', 'RUNNING', 'FAILED')
+    """)
+    suspend fun deleteUnfinishedTasksForCloudId(opType: ServerOpType, cloudId: Double): Int
+
+    @Query("DELETE FROM server_op_tasks WHERE id = :id")
+    suspend fun deleteById(id: Long): Int
+
+    @Query("SELECT COUNT(*) FROM server_op_tasks WHERE id = :id")
+    suspend fun countById(id: Long): Int
+
     /** 获取到期的待执行任务（PENDING 或 ERROR 状态且到期） */
     @Query("""
         SELECT * FROM server_op_tasks
