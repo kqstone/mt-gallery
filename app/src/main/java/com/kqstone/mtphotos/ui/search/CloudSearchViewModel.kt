@@ -20,6 +20,7 @@ import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DayGroup
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.ui.util.UiText
@@ -44,6 +45,7 @@ data class CloudSearchUiState(
     val isRefreshing: Boolean = false,
     val resultMonths: List<MonthGroup> = emptyList(),
     val error: UiText? = null,
+    val toastMessage: UiText? = null,
     val isClipAvailable: Boolean = true,
     val columnCount: Int = 4
 )
@@ -59,6 +61,7 @@ class CloudSearchViewModel(
     val uiState: StateFlow<CloudSearchUiState> = _uiState
 
     private var searchTipsJob: Job? = null
+    private var refreshJob: Job? = null
     private var filterCandidatesLoaded = false
 
     val selectionManager = SelectionManager(
@@ -166,7 +169,8 @@ class CloudSearchViewModel(
             isSearching = false,
             isRefreshing = false,
             resultMonths = emptyList(),
-            error = null
+            error = null,
+            toastMessage = null
         )
     }
 
@@ -179,9 +183,29 @@ class CloudSearchViewModel(
 
     fun refresh() {
         if (!_uiState.value.isActive) return
-        viewModelScope.launch {
-            performSearch(isRefresh = true)
+        if (refreshJob?.isActive == true || _uiState.value.isRefreshing) return
+
+        refreshJob = viewModelScope.launch {
+            val refreshError = PullRefreshSupport.run(
+                isDeviceOffline = { galleryRepository.isDeviceOffline() },
+                onOffline = { galleryRepository.markNetworkRetryPending() }
+            ) {
+                performSearch(isRefresh = true)
+            }
+            if (refreshError != null) {
+                val hasResults = _uiState.value.resultMonths.isNotEmpty()
+                _uiState.value = _uiState.value.copy(
+                    isSearching = false,
+                    isRefreshing = false,
+                    error = if (hasResults) _uiState.value.error else refreshError,
+                    toastMessage = refreshError
+                )
+            }
         }
+    }
+
+    fun clearToastMessage() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
     private suspend fun performSearch(isRefresh: Boolean) {
@@ -237,10 +261,17 @@ class CloudSearchViewModel(
                 )
             },
             onFailure = { e ->
+                val message = if (e.message != null) {
+                    UiText.DynamicString(e.message!!)
+                } else {
+                    UiText.StringResource(R.string.search_failed_simple)
+                }
+                val hasResults = _uiState.value.resultMonths.isNotEmpty()
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     isRefreshing = false,
-                    error = if (e.message != null) UiText.DynamicString(e.message!!) else UiText.StringResource(R.string.search_failed_simple)
+                    error = if (isRefresh && hasResults) _uiState.value.error else message,
+                    toastMessage = if (isRefresh) message else _uiState.value.toastMessage
                 )
             }
         )

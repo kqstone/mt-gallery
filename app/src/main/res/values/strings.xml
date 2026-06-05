@@ -135,6 +135,9 @@
     <string name="sync_complete_message">Media synced</string>
     <string name="sync_failed">Sync failed: %1$s</string>
     <string name="refresh_failed">Refresh failed</string>
+    <string name="refresh_no_network">No network connection. Refresh canceled.</string>
+    <string name="refresh_timeout">Refresh timed out. Check your connection and try again.</string>
+    <string name="refresh_server_unreachable">Unable to reach server. Try again later.</string>
     <string name="addr_summary_format">%1$s and %2$d other places</string>
     <string name="year_month_format">%1$s-%2$02d</string>
     <string name="sync_loading_cloud">Loading cloud media…</string>

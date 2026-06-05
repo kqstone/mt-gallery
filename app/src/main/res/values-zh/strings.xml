@@ -135,6 +135,9 @@
     <string name="sync_complete_message">数据已更新</string>
     <string name="sync_failed">同步失败: %1$s</string>
     <string name="refresh_failed">刷新失败</string>
+    <string name="refresh_no_network">当前无网络，刷新已取消</string>
+    <string name="refresh_timeout">刷新超时，请检查网络后重试</string>
+    <string name="refresh_server_unreachable">无法连接服务器，请稍后重试</string>
     <string name="addr_summary_format">%1$s 等 %2$d 地</string>
     <string name="year_month_format">%1$s年%2$d月</string>
     <string name="sync_loading_cloud">正在加载云端数据…</string>

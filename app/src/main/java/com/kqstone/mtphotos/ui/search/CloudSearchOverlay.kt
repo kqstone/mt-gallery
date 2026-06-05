@@ -92,6 +92,7 @@ import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 import com.kqstone.mtphotos.ui.util.OverlayStatusBarStyleEffect
 
@@ -113,6 +114,11 @@ fun CloudSearchOverlay(
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isFilterPanelVisible by remember { mutableStateOf(true) }
+
+    ToastMessageEffect(
+        message = uiState.toastMessage,
+        onConsumed = viewModel::clearToastMessage
+    )
 
     BackHandler(enabled = true) {
         if (isSelectionMode) {

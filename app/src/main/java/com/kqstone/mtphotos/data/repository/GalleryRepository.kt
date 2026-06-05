@@ -147,6 +147,14 @@ class GalleryRepository(private val container: AppContainer) {
 
     private fun urlBase(): String = prefsManager.getServerUrlSync()
 
+    fun isDeviceOffline(): Boolean {
+        return NetworkFailure.isDeviceOffline(prefsManager.context)
+    }
+
+    suspend fun markNetworkRetryPending() {
+        prefsManager.setNetworkRetryPending(true)
+    }
+
     suspend fun getTimeline(): Result<List<TimelineMonth>> {
         return try {
             val response = container.gatewayApi.GatewayControllerGetTimelineData()
