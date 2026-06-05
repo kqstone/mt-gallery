@@ -8,7 +8,9 @@ import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,13 +23,15 @@ data class DiscoveryUiState(
     val locations: List<LocationItem> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: UiText? = null
+    val error: UiText? = null,
+    val toastMessage: UiText? = null
 )
 
 class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiscoveryUiState())
     val uiState: StateFlow<DiscoveryUiState> = _uiState
+    private var refreshJob: Job? = null
 
     init {
         loadAll()
@@ -62,9 +66,19 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
     }
 
     fun refresh() {
-        _uiState.value = _uiState.value.copy(isRefreshing = true)
-        viewModelScope.launch {
-            try {
+        if (refreshJob?.isActive == true || _uiState.value.isRefreshing) return
+
+        _uiState.value = _uiState.value.copy(
+            isRefreshing = true,
+            error = null,
+            toastMessage = null
+        )
+        refreshJob = viewModelScope.launch {
+            var resultMessage: UiText? = null
+            val refreshError = PullRefreshSupport.run(
+                isDeviceOffline = { galleryRepository.isDeviceOffline() },
+                onOffline = { galleryRepository.markNetworkRetryPending() }
+            ) {
                 val (people, scenes, locations) = coroutineScope {
                     val peopleDeferred = async { galleryRepository.getPeopleList() }
                     val scenesDeferred = async { galleryRepository.getClassifyTopList() }
@@ -75,19 +89,38 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
                         locationsDeferred.await()
                     )
                 }
-                _uiState.value = DiscoveryUiState(
+                resultMessage = buildError(
+                    people.exceptionOrNull(),
+                    scenes.exceptionOrNull(),
+                    locations.exceptionOrNull()
+                )
+                val nextState = DiscoveryUiState(
                     people = people.getOrNull() ?: emptyList(),
                     scenes = scenes.getOrNull() ?: emptyList(),
-                    locations = locations.getOrNull() ?: emptyList()
+                    locations = locations.getOrNull() ?: emptyList(),
+                    error = null
                 )
-            } catch (e: Exception) {
+                if (nextState.hasContent || resultMessage == null) {
+                    _uiState.value = nextState
+                } else if (!_uiState.value.hasContent) {
+                    _uiState.value = _uiState.value.copy(error = resultMessage)
+                }
+            }
+
+            val message = refreshError ?: resultMessage
+            if (message != null) {
+                val hasContent = _uiState.value.hasContent
                 _uiState.value = _uiState.value.copy(
-                    isRefreshing = false,
-                    error = e.message?.let { UiText.DynamicString(it) }
-                        ?: UiText.StringResource(R.string.load_failed)
+                    error = if (hasContent) _uiState.value.error else message,
+                    toastMessage = message
                 )
             }
+            _uiState.value = _uiState.value.copy(isRefreshing = false)
         }
+    }
+
+    fun clearToastMessage() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
@@ -109,3 +142,19 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
         }
     }
 }
+
+private fun buildError(vararg errors: Throwable?): UiText? {
+    val actualErrors = errors.filterNotNull()
+    if (actualErrors.isNotEmpty()) {
+        return PullRefreshSupport.toRefreshMessage(actualErrors.first())
+    }
+    val messages = errors.mapNotNull { it?.message?.takeIf(String::isNotBlank) }
+    return when {
+        messages.isEmpty() -> null
+        messages.size == 1 -> UiText.DynamicString(messages.first())
+        else -> UiText.DynamicString(messages.joinToString(" / "))
+    }
+}
+
+private val DiscoveryUiState.hasContent: Boolean
+    get() = people.isNotEmpty() || scenes.isNotEmpty() || locations.isNotEmpty()

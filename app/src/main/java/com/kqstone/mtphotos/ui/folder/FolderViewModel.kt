@@ -7,7 +7,9 @@ import com.kqstone.mtphotos.data.repository.AlbumItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,13 +28,15 @@ data class FolderUiState(
     val categories: List<CollectionCategoryItem> = defaultCollectionCategories(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val error: UiText? = null
+    val error: UiText? = null,
+    val toastMessage: UiText? = null
 )
 
 class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FolderUiState())
     val uiState: StateFlow<FolderUiState> = _uiState
+    private var refreshJob: Job? = null
 
     init {
         loadFolders()
@@ -52,16 +56,47 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
     }
 
     fun refresh() {
-        _uiState.value = _uiState.value.copy(isRefreshing = true, error = null)
-        viewModelScope.launch {
-            val result = loadCollections()
-            _uiState.value = FolderUiState(
-                albums = result.albums,
-                folders = result.folders,
-                categories = defaultCollectionCategories(),
-                error = result.error
-            )
+        if (refreshJob?.isActive == true || _uiState.value.isRefreshing) return
+
+        _uiState.value = _uiState.value.copy(
+            isRefreshing = true,
+            error = null,
+            toastMessage = null
+        )
+        refreshJob = viewModelScope.launch {
+            var resultMessage: UiText? = null
+            val refreshError = PullRefreshSupport.run(
+                isDeviceOffline = { galleryRepository.isDeviceOffline() },
+                onOffline = { galleryRepository.markNetworkRetryPending() }
+            ) {
+                val result = loadCollections()
+                resultMessage = result.error
+                if (result.hasContent || result.error == null) {
+                    _uiState.value = _uiState.value.copy(
+                        albums = result.albums,
+                        folders = result.folders,
+                        categories = defaultCollectionCategories(),
+                        error = null
+                    )
+                } else if (!_uiState.value.hasContent) {
+                    _uiState.value = _uiState.value.copy(error = result.error)
+                }
+            }
+
+            val message = refreshError ?: resultMessage
+            if (message != null) {
+                val hasContent = _uiState.value.hasContent
+                _uiState.value = _uiState.value.copy(
+                    error = if (hasContent) _uiState.value.error else message,
+                    toastMessage = message
+                )
+            }
+            _uiState.value = _uiState.value.copy(isRefreshing = false)
         }
+    }
+
+    fun clearToastMessage() {
+        _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
     fun getThumbUrlByMd5(md5: String): String {
@@ -89,6 +124,10 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
     }
 
     private fun buildError(albumError: Throwable?, folderError: Throwable?): UiText? {
+        val errors = listOfNotNull(albumError, folderError)
+        if (errors.isNotEmpty()) {
+            return PullRefreshSupport.toRefreshMessage(errors.first())
+        }
         val albumMessage = albumError?.message?.takeIf { it.isNotBlank() }
         val folderMessage = folderError?.message?.takeIf { it.isNotBlank() }
         return when {
@@ -110,7 +149,12 @@ private data class CollectionLoadResult(
     val albums: List<AlbumItem> = emptyList(),
     val folders: List<FolderItem> = emptyList(),
     val error: UiText? = null
-)
+) {
+    val hasContent: Boolean get() = albums.isNotEmpty() || folders.isNotEmpty()
+}
+
+private val FolderUiState.hasContent: Boolean
+    get() = albums.isNotEmpty() || folders.isNotEmpty()
 
 private fun defaultCollectionCategories(): List<CollectionCategoryItem> {
     return listOf(
