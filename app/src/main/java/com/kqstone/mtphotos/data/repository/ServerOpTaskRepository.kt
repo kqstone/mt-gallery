@@ -12,6 +12,7 @@ import com.kqstone.mtphotos.data.local.db.ServerOpTaskEntity
 import com.kqstone.mtphotos.data.local.db.ServerOpType
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.model.UpdatePeopleDto
 import com.kqstone.mtphotos.network.NetworkFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -269,18 +270,21 @@ class ServerOpTaskRepository(
     ) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val params = gson.toJson(mapOf("personId" to personId, "newName" to newName))
-        dao.insert(
-            ServerOpTaskEntity(
-                opType = ServerOpType.RENAME_PERSON,
-                mediaFileName = personName,
-                mediaMd5 = "",
-                mediaCloudId = personId,
-                params = params,
-                nextAttemptAt = now,
-                createdAt = now,
-                updatedAt = now
+        database.withTransaction {
+            dao.deleteUnfinishedTasksForCloudId(ServerOpType.RENAME_PERSON, personId)
+            dao.insert(
+                ServerOpTaskEntity(
+                    opType = ServerOpType.RENAME_PERSON,
+                    mediaFileName = personName,
+                    mediaMd5 = "",
+                    mediaCloudId = personId,
+                    params = params,
+                    nextAttemptAt = now,
+                    createdAt = now,
+                    updatedAt = now
+                )
             )
-        )
+        }
         Log.d(TAG, "Enqueued rename person task: $personName -> $newName")
     }
 
@@ -754,7 +758,13 @@ class ServerOpTaskRepository(
             }
             ServerOpType.RENAME_PERSON -> {
                 // 预留
-                Log.d(TAG, "RENAME_PERSON task executed (placeholder): params=$params")
+                val personId = (params["personId"] as? Number)?.toDouble()
+                    ?: task.mediaCloudId
+                    ?: throw IllegalStateException("Missing personId for RENAME_PERSON")
+                val newName = params["newName"] as? String
+                    ?: throw IllegalStateException("Missing newName for RENAME_PERSON")
+                renamePerson(personId, newName)
+                Log.d(TAG, "RENAME_PERSON task executed: personId=$personId")
             }
             ServerOpType.TAG -> {
                 // 预留
@@ -780,6 +790,16 @@ class ServerOpTaskRepository(
                 ?: response["error"]?.toString()
                 ?: "Delete response did not confirm success: $response"
             throw IllegalStateException(message)
+        }
+    }
+
+    private suspend fun renamePerson(personId: Double, newName: String) {
+        val body = UpdatePeopleDto(name = newName)
+        try {
+            container.gatewayApi.GatewayControllerPart3UpdatePeopleInfo(personId, body)
+        } catch (e: HttpException) {
+            if (e.code() != 404 && e.code() != 405) throw e
+            container.gatewayApi.GatewayControllerPart3UpdatePeopleInfoPut(personId, body)
         }
     }
 

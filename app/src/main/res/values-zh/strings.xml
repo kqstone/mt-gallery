@@ -92,6 +92,10 @@
     <string name="default_album_name">相册</string>
     <string name="people_photos">人物照片</string>
     <string name="scene_photos">场景照片</string>
+    <string name="person_unnamed">未命名</string>
+    <string name="edit_person_name">修改人物名称</string>
+    <string name="person_name">人物名称</string>
+    <string name="save_btn">保存</string>
     <string name="category_favorites">收藏</string>
     <string name="category_recent">最近添加</string>
     <string name="category_videos">视频</string>

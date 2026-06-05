@@ -19,17 +19,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,6 +49,7 @@ import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.TopBarActionIcon
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,7 +61,8 @@ fun CategoryFileListScreen(
     loadParam2: String? = null,
     title: String,
     onPhotoClick: (UnifiedPhotoItem) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onPersonRenamed: (String, String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val targetDistrict = remember(loadParam) { mutableStateOf<String?>(null) }
@@ -68,6 +76,15 @@ fun CategoryFileListScreen(
     val isCurrentPage = uiState.pageKey == expectedPageKey
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = isCurrentPage && selectedIds.isNotEmpty()
+    val unnamedPersonName = stringResource(R.string.person_unnamed)
+    var currentTitle by remember(loadType, loadParam, title) { mutableStateOf(title) }
+    var showRenameDialog by remember(loadType, loadParam) { mutableStateOf(false) }
+    var renameInput by remember(loadType, loadParam) { mutableStateOf("") }
+    val displayTitle = if (loadType == "people") {
+        personDisplayName(currentTitle, unnamedPersonName)
+    } else {
+        currentTitle
+    }
     val timelineLayout = remember(uiState.photos) {
         buildPhotoTimelineLayout(uiState.photos)
     }
@@ -234,12 +251,64 @@ fun CategoryFileListScreen(
                 )
             } else {
                 BackTitleTopBar(
-                    title = title,
+                    title = displayTitle,
                     onBack = onBack,
-                    scrollAlpha = scrollState.scrollAlpha
+                    scrollAlpha = scrollState.scrollAlpha,
+                    actions = {
+                        if (loadType == "people") {
+                            TopBarActionIcon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = stringResource(R.string.edit_person_name),
+                                onClick = {
+                                    renameInput = editablePersonName(currentTitle)
+                                    showRenameDialog = true
+                                }
+                            )
+                        }
+                    }
                 )
             }
         }
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text(stringResource(R.string.edit_person_name)) },
+            text = {
+                OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { renameInput = it },
+                    label = { Text(stringResource(R.string.person_name)) },
+                    placeholder = { Text(unnamedPersonName) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renamePerson(
+                            personId = loadParam,
+                            currentName = displayTitle,
+                            newName = renameInput
+                        ) { updatedName ->
+                            currentTitle = updatedName
+                            onPersonRenamed(loadParam, updatedName)
+                            showRenameDialog = false
+                        }
+                    },
+                    enabled = renameInput.isNotBlank()
+                ) {
+                    Text(stringResource(R.string.save_btn))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     if (showDeleteDialog.value) {
@@ -256,4 +325,21 @@ fun CategoryFileListScreen(
     }
 
     com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
+}
+
+private fun personDisplayName(name: String, unnamedName: String): String {
+    return if (isPersonNameMissing(name)) unnamedName else name
+}
+
+private fun editablePersonName(name: String): String {
+    return if (isPersonNameMissing(name)) "" else name
+}
+
+private fun isPersonNameMissing(name: String): Boolean {
+    val normalized = name.trim()
+    return normalized.isBlank() ||
+        normalized == "未知" ||
+        normalized == "未命名" ||
+        normalized.equals("unknown", ignoreCase = true) ||
+        normalized.equals("unnamed", ignoreCase = true)
 }

@@ -123,6 +123,18 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
         _uiState.value = _uiState.value.copy(toastMessage = null)
     }
 
+    fun updatePersonName(personId: String, newName: String) {
+        _uiState.value = _uiState.value.copy(
+            people = _uiState.value.people.map { person ->
+                if (person.id == personId) {
+                    person.copy(name = newName)
+                } else {
+                    person
+                }
+            }
+        )
+    }
+
     fun getThumbUrl(md5: String, fileId: Double): String {
         return galleryRepository.getThumbUrl(md5, fileId)
     }

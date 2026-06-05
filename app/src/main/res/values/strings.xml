@@ -92,6 +92,10 @@
     <string name="default_album_name">Album</string>
     <string name="people_photos">People</string>
     <string name="scene_photos">Scenes</string>
+    <string name="person_unnamed">Unnamed</string>
+    <string name="edit_person_name">Edit person name</string>
+    <string name="person_name">Person name</string>
+    <string name="save_btn">Save</string>
     <string name="category_favorites">Favorites</string>
     <string name="category_recent">Recently Added</string>
     <string name="category_videos">Videos</string>

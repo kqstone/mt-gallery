@@ -59,8 +59,8 @@ import com.kqstone.mtphotos.ui.util.hazeContentSource
 @Composable
 fun DiscoveryScreen(
     viewModel: DiscoveryViewModel,
-    onPersonClick: (String) -> Unit,
-    onSceneClick: (String, String?) -> Unit,
+    onPersonClick: (String, String) -> Unit,
+    onSceneClick: (String, String?, String) -> Unit,
     onLocationClick: (String) -> Unit,
     onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -137,7 +137,7 @@ fun DiscoveryScreen(
                             item {
                                 PeopleSection(
                                     people = uiState.people,
-                                    onItemClick = { onPersonClick(it.id) },
+                                    onItemClick = { onPersonClick(it.id, it.name) },
                                     portraitUrlProvider = { person ->
                                         if (person.coverFileId > 0) {
                                             viewModel.getPortraitUrl(person.id, person.coverFileId)
@@ -153,7 +153,7 @@ fun DiscoveryScreen(
                             item {
                                 SceneSection(
                                     scenes = uiState.scenes,
-                                    onItemClick = { onSceneClick(it.id, it.cid) },
+                                    onItemClick = { onSceneClick(it.id, it.cid, it.name) },
                                     thumbUrlProvider = { md5, _ -> viewModel.getThumbUrlByMd5(md5) }
                                 )
                             }
@@ -206,6 +206,7 @@ private fun PeopleSection(
     onItemClick: (PersonItem) -> Unit,
     portraitUrlProvider: (PersonItem) -> String?
 ) {
+    val unnamedPersonName = stringResource(R.string.person_unnamed)
     Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.section_people),
@@ -220,8 +221,9 @@ private fun PeopleSection(
                 items = people,
                 key = { it.id }
             ) { person ->
+                val displayName = personDisplayName(person.name, unnamedPersonName)
                 PersonCircleItem(
-                    name = person.name,
+                    name = displayName,
                     count = person.count,
                     thumbUrl = portraitUrlProvider(person),
                     onClick = { onItemClick(person) },
@@ -373,3 +375,13 @@ private fun PersonCircleItem(
 
 // Gradient preset for location cards
 private val LocationGradient = listOf(Color(0xFF8E9DFB), Color(0xFFEDACF7))
+
+private fun personDisplayName(name: String, unnamedName: String): String {
+    val normalized = name.trim()
+    val isMissing = normalized.isBlank() ||
+        normalized == "未知" ||
+        normalized == "未命名" ||
+        normalized.equals("unknown", ignoreCase = true) ||
+        normalized.equals("unnamed", ignoreCase = true)
+    return if (isMissing) unnamedName else name
+}

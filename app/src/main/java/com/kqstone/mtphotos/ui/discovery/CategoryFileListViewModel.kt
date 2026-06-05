@@ -343,6 +343,40 @@ class CategoryFileListViewModel(
         }
     }
 
+    fun renamePerson(
+        personId: String,
+        currentName: String,
+        newName: String,
+        onSuccess: (String) -> Unit
+    ) {
+        val cleanName = newName.trim()
+        if (cleanName.isBlank()) return
+
+        val personCloudId = personId.toDoubleOrNull()
+        if (personCloudId == null) {
+            _uiState.value = _uiState.value.copy(error = UiText.StringResource(R.string.load_failed))
+            return
+        }
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            try {
+                repo.enqueueRenamePerson(
+                    personId = personCloudId,
+                    newName = cleanName,
+                    personName = currentName
+                )
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+                onSuccess(cleanName)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    error = e.message?.let { UiText.DynamicString(it) }
+                        ?: UiText.StringResource(R.string.load_failed)
+                )
+            }
+        }
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,

@@ -234,11 +234,12 @@ fun MainScreen(
                 composable("discovery") {
                     DiscoveryScreen(
                         viewModel = discoveryViewModel,
-                        onPersonClick = { peopleId ->
-                            innerNavController.navigate("people/$peopleId")
+                        onPersonClick = { peopleId, title ->
+                            innerNavController.navigate("people/${Uri.encode(peopleId)}?title=${Uri.encode(title)}")
                         },
-                        onSceneClick = { id, cid ->
-                            innerNavController.navigate("scene/$id?cid=$cid")
+                        onSceneClick = { id, cid, title ->
+                            val cidQuery = cid?.let { "&cid=${Uri.encode(it)}" }.orEmpty()
+                            innerNavController.navigate("scene/${Uri.encode(id)}?title=${Uri.encode(title)}$cidQuery")
                         },
                         onLocationClick = { city ->
                             innerNavController.navigate("location/${Uri.encode(city)}")
@@ -302,31 +303,36 @@ fun MainScreen(
                     )
                 }
 
-                composable("people/{peopleId}") { backStackEntry ->
+                composable("people/{peopleId}?title={title}") { backStackEntry ->
                     val peopleId = backStackEntry.arguments?.getString("peopleId") ?: return@composable
+                    val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode)
+                        ?: stringResource(R.string.person_unnamed)
                     CategoryFileListScreen(
                         viewModel = categoryFileListViewModel,
                         loadType = "people",
                         loadParam = peopleId,
-                        title = stringResource(R.string.people_photos),
+                        title = title,
                         onPhotoClick = { photo ->
                             val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                             onNavigateToViewer(allPhotos, index)
                         },
-                        onBack = { innerNavController.popBackStack() }
+                        onBack = { innerNavController.popBackStack() },
+                        onPersonRenamed = discoveryViewModel::updatePersonName
                     )
                 }
 
-                composable("scene/{id}?cid={cid}") { backStackEntry ->
+                composable("scene/{id}?title={title}&cid={cid}") { backStackEntry ->
                     val id = backStackEntry.arguments?.getString("id") ?: return@composable
                     val cid = backStackEntry.arguments?.getString("cid")
+                    val title = backStackEntry.arguments?.getString("title")?.let(Uri::decode)
+                        ?: stringResource(R.string.scene_photos)
                     CategoryFileListScreen(
                         viewModel = categoryFileListViewModel,
                         loadType = "scene",
                         loadParam = id,
                         loadParam2 = cid,
-                        title = stringResource(R.string.scene_photos),
+                        title = title,
                         onPhotoClick = { photo ->
                             val allPhotos = categoryFileListViewModel.getAllLoadedPhotos()
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
