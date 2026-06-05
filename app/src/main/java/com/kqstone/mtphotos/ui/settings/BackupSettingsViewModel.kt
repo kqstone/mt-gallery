@@ -214,10 +214,11 @@ class BackupSettingsViewModel(
                 val stats = withContext(Dispatchers.IO) {
                     val context = prefsManager.context
                     val coilCacheDir = context.cacheDir.resolve("coil_image_cache")
+                    val localThumbsDir = context.cacheDir.resolve("thumbs")
                     val fullCacheDir = context.cacheDir.resolve("full_image_cache")
                     val videoCacheDir = context.cacheDir.resolve("video_cache")
                     CacheStats(
-                        thumbnailCacheSize = getDirectorySize(coilCacheDir),
+                        thumbnailCacheSize = getDirectorySize(coilCacheDir) + getDirectorySize(localThumbsDir),
                         mediaCacheSize = getDirectorySize(fullCacheDir) + getDirectorySize(videoCacheDir)
                     )
                 }
@@ -678,9 +679,11 @@ class BackupSettingsViewModel(
             try {
                 val context = prefsManager.context
                 val imageLoader = coil.Coil.imageLoader(context)
+                val app = context.applicationContext as? MTPhotosApp
                 imageLoader.diskCache?.clear()
                 imageLoader.memoryCache?.clear()
-                loadStats()
+                app?.container?.thumbnailCacheManager?.clearAll()
+                loadCacheStats(delayMillis = 0)
             } catch (e: Exception) {
                 Log.e(TAG, "clearThumbnailCache failed", e)
             }

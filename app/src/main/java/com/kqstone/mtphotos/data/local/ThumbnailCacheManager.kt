@@ -9,6 +9,8 @@ import java.io.File
 private const val TAG = "ThumbCacheManager"
 private const val THUMB_DIR = "thumbs"
 private const val DEFAULT_MAX_CACHE_SIZE = 500L * 1024 * 1024 // 500MB
+private const val TRIM_INTERVAL_MS = 5 * 60 * 1000L
+private const val TRIM_WRITE_THRESHOLD = 32
 
 /**
  * 缩略图本地缓存管理器。
@@ -16,6 +18,9 @@ private const val DEFAULT_MAX_CACHE_SIZE = 500L * 1024 * 1024 // 500MB
  * 采用 LRU 策略管理缓存大小。
  */
 class ThumbnailCacheManager(private val context: Context) {
+    private val trimLock = Any()
+    private var lastTrimAt = 0L
+    private var writesSinceTrim = 0
 
     private val cacheDir: File by lazy {
         File(context.cacheDir, THUMB_DIR).also { it.mkdirs() }
@@ -43,6 +48,7 @@ class ThumbnailCacheManager(private val context: Context) {
         try {
             val file = getThumbFile(md5)
             file.writeBytes(data)
+            maybeTrimToSize()
             file.absolutePath
         } catch (e: Exception) {
             Log.w(TAG, "Failed to cache thumb $md5", e)
@@ -61,6 +67,7 @@ class ThumbnailCacheManager(private val context: Context) {
      * 清理缓存到指定大小限制（LRU 淘汰）
      */
     suspend fun trimToSize(maxSize: Long = DEFAULT_MAX_CACHE_SIZE) = withContext(Dispatchers.IO) {
+        markTrimAttempt()
         val files = cacheDir.listFiles()?.toList() ?: return@withContext
         val totalSize = files.sumOf { it.length() }
         if (totalSize <= maxSize) return@withContext
@@ -90,5 +97,28 @@ class ThumbnailCacheManager(private val context: Context) {
 
     private fun getThumbFile(md5: String): File {
         return File(cacheDir, "$md5.webp")
+    }
+
+    private suspend fun maybeTrimToSize(maxSize: Long = DEFAULT_MAX_CACHE_SIZE) {
+        if (!shouldTrim()) return
+        trimToSize(maxSize)
+    }
+
+    private fun shouldTrim(): Boolean {
+        val now = System.currentTimeMillis()
+        synchronized(trimLock) {
+            writesSinceTrim += 1
+            if (writesSinceTrim < TRIM_WRITE_THRESHOLD && now - lastTrimAt < TRIM_INTERVAL_MS) {
+                return false
+            }
+            return true
+        }
+    }
+
+    private fun markTrimAttempt() {
+        synchronized(trimLock) {
+            lastTrimAt = System.currentTimeMillis()
+            writesSinceTrim = 0
+        }
     }
 }
