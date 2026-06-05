@@ -17,16 +17,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -42,7 +43,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.kqstone.mtphotos.R
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -94,12 +97,10 @@ fun PhotoThumbnail(
         val isVideo = photo.isPlayableMedia()
 
         if (isVideo) {
-            Icon(
-                imageVector = Icons.Default.PlayCircleFilled,
-                contentDescription = "Video",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            VideoDurationBadge(
+                durationMillis = photo.duration,
                 modifier = Modifier
-                    .align(Alignment.Center)
+                    .align(Alignment.BottomStart)
                     .padding(4.dp)
             )
         }
@@ -148,6 +149,42 @@ fun PhotoThumbnail(
                     .background(Color.Black.copy(alpha = 0.35f))
             )
         }
+    }
+}
+
+@Composable
+private fun VideoDurationBadge(
+    durationMillis: Long,
+    modifier: Modifier = Modifier
+) {
+    val label = formatVideoDuration(durationMillis) ?: return
+    Text(
+        text = label,
+        color = Color.White,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Medium
+        ),
+        maxLines = 1,
+        modifier = modifier
+            .background(
+                color = Color.Black.copy(alpha = 0.46f),
+                shape = RoundedCornerShape(999.dp)
+            )
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    )
+}
+
+private fun formatVideoDuration(durationMillis: Long): String? {
+    if (durationMillis <= 0) return null
+    val totalSeconds = ((durationMillis + 999) / 1000).coerceAtLeast(1)
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / 3600
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
     }
 }
 

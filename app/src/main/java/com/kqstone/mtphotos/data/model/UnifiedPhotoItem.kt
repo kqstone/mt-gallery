@@ -56,7 +56,10 @@ data class UnifiedPhotoItem(
 
     val livePhotosVideoId: Double? = null,
     val isLivePhotosVideo: Boolean = false,
-    val livePhotoUuid: String? = null
+    val livePhotoUuid: String? = null,
+
+    /** Video duration in milliseconds. */
+    val duration: Long = 0
 ) {
     /**
      * 用于唯一标识此项（兼容旧 PhotoItem 的 id 字段）

@@ -36,7 +36,8 @@ data class PhotoItem(
     val livePhotosVideoId: Double? = null,
     val isLivePhotosVideo: Boolean = false,
     val livePhotoUuid: String? = null,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val duration: Long = 0
 )
 
 data class FolderItem(
@@ -524,6 +525,7 @@ class GalleryRepository(private val container: AppContainer) {
             || parseBoolean(map["favorite"])
             || parseBoolean(map["isFav"])
             || parseBoolean(map["fav"])
+        val duration = parseDurationMillis(map)
         return PhotoItem(
             id = id,
             md5 = md5,
@@ -536,8 +538,37 @@ class GalleryRepository(private val container: AppContainer) {
             livePhotosVideoId = livePhotosVideoId,
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid,
-            isFavorite = isFavorite
+            isFavorite = isFavorite,
+            duration = duration
         )
+    }
+
+    private fun parseDurationMillis(map: Map<*, *>): Long {
+        parseDurationMillisValue(map)?.let { return it }
+        val extra = map["extra"] as? Map<*, *> ?: return 0
+        return parseDurationMillisValue(extra) ?: 0
+    }
+
+    private fun parseDurationMillisValue(map: Map<*, *>): Long? {
+        firstNumericValue(map, "durationMs", "durationMillis", "duration_ms", "duration_millis")
+            ?.let { return it.toLong().coerceAtLeast(0) }
+        val duration = firstNumericValue(map, "duration", "Duration", "videoDuration", "video_duration")
+            ?: return null
+        if (duration <= 0.0) return 0
+        val millis = if (duration < 24 * 60 * 60) duration * 1000 else duration
+        return millis.toLong().coerceAtLeast(0)
+    }
+
+    private fun firstNumericValue(map: Map<*, *>, vararg keys: String): Double? {
+        for (key in keys) {
+            val parsed = when (val value = map[key]) {
+                is Number -> value.toDouble()
+                is String -> value.trim().toDoubleOrNull()
+                else -> null
+            }
+            if (parsed != null) return parsed
+        }
+        return null
     }
 
     private fun parseAddr(map: Map<*, *>): String? {

@@ -502,6 +502,7 @@ class SyncRepository(
             mtime = mtime,
             width = width.toInt(),
             height = height.toInt(),
+            duration = duration,
             livePhotosVideoId = livePhotosVideoId,
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid,
@@ -741,6 +742,8 @@ class SyncRepository(
             },
             duration = when {
                 (local?.duration ?: 0) > 0 -> local!!.duration
+                (cloud?.duration ?: 0) > 0 -> cloud!!.duration
+                (cloudSource?.duration ?: 0) > 0 -> cloudSource!!.duration
                 else -> existing?.duration ?: 0
             },
             syncStatus = when {
@@ -1281,6 +1284,7 @@ fun MediaEntity.toUnifiedPhotoItem(localFolders: Set<String>? = null): UnifiedPh
         isStorageOptimized = if (localVisible) isStorageOptimized else true,
         isFavorite = isFavorite,
         fileSize = fileSize,
+        duration = duration,
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
         isLivePhotosVideo = isLivePhotosVideo,
@@ -1303,6 +1307,7 @@ fun PhotoItem.toCloudOnlyUnifiedPhotoItem(): UnifiedPhotoItem {
         addr = addr,
         livePhotosVideoId = livePhotosVideoId,
         isLivePhotosVideo = isLivePhotosVideo,
-        livePhotoUuid = livePhotoUuid
+        livePhotoUuid = livePhotoUuid,
+        duration = duration
     )
 }
