@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,10 +52,14 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
+import com.kqstone.mtphotos.ui.util.findActivity
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import android.content.Context
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -128,6 +133,7 @@ fun ViewerScreen(
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+    ViewerSystemBarsEffect(isUiVisible = isUiVisible)
 
     Box(
         modifier = Modifier
@@ -460,6 +466,49 @@ fun ViewerScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         )
+    }
+}
+
+@Composable
+private fun ViewerSystemBarsEffect(isUiVisible: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+
+    val window = view.context.findActivity()?.window ?: return
+    val insetsController = remember(window, view) {
+        WindowCompat.getInsetsController(window, view)
+    }
+    val previousSystemBarsBehavior = remember(insetsController) {
+        insetsController.systemBarsBehavior
+    }
+    val previousLightStatusBars = remember(insetsController) {
+        insetsController.isAppearanceLightStatusBars
+    }
+    val previousLightNavigationBars = remember(insetsController) {
+        insetsController.isAppearanceLightNavigationBars
+    }
+
+    SideEffect {
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.isAppearanceLightStatusBars = false
+        insetsController.isAppearanceLightNavigationBars = false
+
+        val systemBars = WindowInsetsCompat.Type.systemBars()
+        if (isUiVisible) {
+            insetsController.show(systemBars)
+        } else {
+            insetsController.hide(systemBars)
+        }
+    }
+
+    DisposableEffect(insetsController) {
+        onDispose {
+            insetsController.show(WindowInsetsCompat.Type.systemBars())
+            insetsController.systemBarsBehavior = previousSystemBarsBehavior
+            insetsController.isAppearanceLightStatusBars = previousLightStatusBars
+            insetsController.isAppearanceLightNavigationBars = previousLightNavigationBars
+        }
     }
 }
 
