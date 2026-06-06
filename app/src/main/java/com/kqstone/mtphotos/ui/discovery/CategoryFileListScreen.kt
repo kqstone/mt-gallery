@@ -61,8 +61,7 @@ fun CategoryFileListScreen(
     loadParam2: String? = null,
     title: String,
     onPhotoClick: (UnifiedPhotoItem) -> Unit,
-    onBack: () -> Unit,
-    onPersonRenamed: (String, String) -> Unit = { _, _ -> }
+    onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val targetDistrict = remember(loadParam) { mutableStateOf<String?>(null) }
@@ -294,7 +293,6 @@ fun CategoryFileListScreen(
                             newName = renameInput
                         ) { updatedName ->
                             currentTitle = updatedName
-                            onPersonRenamed(loadParam, updatedName)
                             showRenameDialog = false
                         }
                     },

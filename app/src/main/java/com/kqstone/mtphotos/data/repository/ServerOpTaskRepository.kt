@@ -132,6 +132,12 @@ class ServerOpTaskRepository(
         )
 
         val fileId = cloudId ?: run {
+            container.mediaUiMutationBus.publish(
+                MediaUiMutation.FavoriteChanged(
+                    photos = listOf(mutationPhoto(cloudId, dbId, md5, fileName)),
+                    isFavorite = isFavorite
+                )
+            )
             Log.d(TAG, "Updated local-only favorite state: $fileName, isFavorite=$isFavorite")
             return@withContext
         }
@@ -153,6 +159,12 @@ class ServerOpTaskRepository(
                 )
             )
         }
+        container.mediaUiMutationBus.publish(
+            MediaUiMutation.FavoriteChanged(
+                photos = listOf(mutationPhoto(cloudId, dbId, md5, fileName)),
+                isFavorite = isFavorite
+            )
+        )
         Log.d(TAG, "Enqueued favorite task: $fileName, isFavorite=$isFavorite")
     }
 
@@ -218,6 +230,9 @@ class ServerOpTaskRepository(
             }
             Log.d(TAG, "Enqueued ${tasks.size} favorite tasks, isFavorite=$isFavorite")
         }
+        container.mediaUiMutationBus.publish(
+            MediaUiMutation.FavoriteChanged(actionablePhotos, isFavorite)
+        )
         tasks.size
     }
 
@@ -292,6 +307,9 @@ class ServerOpTaskRepository(
         val cloudIds = distinctPhotos.mapNotNull { it.cloudId }.distinct()
         if (cloudIds.isEmpty()) {
             Log.d(TAG, "Updated local-only hide state, isHide=$isHide, count=${distinctPhotos.size}")
+            container.mediaUiMutationBus.publish(
+                MediaUiMutation.HideChanged(distinctPhotos, isHide)
+            )
             return@withContext 0
         }
 
@@ -314,6 +332,9 @@ class ServerOpTaskRepository(
             dao.insert(task)
         }
         Log.d(TAG, "Enqueued hide task, isHide=$isHide, count=${cloudIds.size}")
+        container.mediaUiMutationBus.publish(
+            MediaUiMutation.HideChanged(distinctPhotos, isHide)
+        )
         cloudIds.size
     }
 
@@ -381,6 +402,9 @@ class ServerOpTaskRepository(
                 )
             )
         }
+        container.mediaUiMutationBus.publish(
+            MediaUiMutation.PersonRenamed(personId.toString(), newName)
+        )
         Log.d(TAG, "Enqueued rename person task: $personName -> $newName")
     }
 
@@ -447,6 +471,12 @@ class ServerOpTaskRepository(
                 nextAttemptAt = now,
                 createdAt = now,
                 updatedAt = now
+            )
+        )
+        container.mediaUiMutationBus.publish(
+            MediaUiMutation.HideChanged(
+                photos = actionableFileIds.map { mutationPhoto(it, 0L, md5, fileName) },
+                isHide = isHide
             )
         )
         Log.d(TAG, "Enqueued hide task: $fileName, isHide=$isHide, count=${fileIds.size}")
@@ -659,6 +689,25 @@ class ServerOpTaskRepository(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun mutationPhoto(
+        cloudId: Double?,
+        dbId: Long,
+        md5: String,
+        fileName: String
+    ): UnifiedPhotoItem {
+        return UnifiedPhotoItem(
+            cloudId = cloudId,
+            dbId = dbId,
+            md5 = md5,
+            fileName = fileName,
+            fileType = "",
+            mtime = "",
+            width = 0.0,
+            height = 0.0,
+            syncStatus = if (cloudId != null) SyncStatus.CLOUD_ONLY else SyncStatus.LOCAL_ONLY
+        )
     }
 
     // ===== 任务执行路由 =====

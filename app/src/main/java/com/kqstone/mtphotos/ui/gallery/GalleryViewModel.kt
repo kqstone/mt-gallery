@@ -14,6 +14,8 @@ import com.kqstone.mtphotos.data.local.db.TimelineMonthCount
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
@@ -75,7 +77,8 @@ class GalleryViewModel(
     private val syncRepository: SyncRepository? = null,
     private val prefsManager: PrefsManager? = null,
     private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-    private val appContext: Context? = null
+    private val appContext: Context? = null,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GalleryUiState())
@@ -99,7 +102,48 @@ class GalleryViewModel(
     val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
+        observeMediaUiMutations()
         loadTimeline()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                applyMediaUiMutation(mutation)
+            }
+        }
+    }
+
+    private fun applyMediaUiMutation(mutation: MediaUiMutation) {
+        when (mutation) {
+            is MediaUiMutation.Deleted -> {
+                _uiState.value = _uiState.value.copy(
+                    months = _uiState.value.months.removePhotos(mutation.photos)
+                )
+            }
+            is MediaUiMutation.FavoriteChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    months = _uiState.value.months.updateFavorite(
+                        mutation.photos,
+                        mutation.isFavorite
+                    )
+                )
+            }
+            is MediaUiMutation.HideChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    months = if (mutation.isHide) {
+                        _uiState.value.months.removePhotos(mutation.photos)
+                    } else {
+                        _uiState.value.months.upsertPhotos(
+                            mutation.photos.map { it.copy(isHide = false) },
+                            ::buildMonthGroups
+                        )
+                    }
+                )
+            }
+            is MediaUiMutation.PersonRenamed -> Unit
+        }
     }
 
     private fun getFolderSelectionState(): BackupFolderSelection {
@@ -926,12 +970,13 @@ class GalleryViewModel(
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
         val allPhotos = _uiState.value.months.flatMap { month -> month.days.flatMap { it.photos } }
+        val selectedPhotos = allPhotos.filter { it.id in selectedIds }
         selectionManager.deleteSelected(
             photos = allPhotos,
             onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
         ) {
             _uiState.value = _uiState.value.copy(
-                months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+                months = _uiState.value.months.removePhotos(selectedPhotos)
             )
         }
     }
@@ -943,7 +988,7 @@ class GalleryViewModel(
         if (selectedPhotos.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(
-            months = updateFavoriteState(_uiState.value.months, selectedIds, isFavorite = true)
+            months = _uiState.value.months.updateFavorite(selectedPhotos, isFavorite = true)
         )
         selectionManager.clearSelection()
 
@@ -963,7 +1008,7 @@ class GalleryViewModel(
         if (selectedPhotos.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(
-            months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+            months = _uiState.value.months.removePhotos(selectedPhotos)
         )
         selectionManager.clearSelection()
 
@@ -974,51 +1019,6 @@ class GalleryViewModel(
                 appContext?.let { BackupScheduler.triggerServerOpWork(it) }
             }
         }
-    }
-
-    fun restoreHiddenPhotos(photos: List<UnifiedPhotoItem>) {
-        if (photos.isEmpty()) return
-        val visiblePhotos = photos.map { it.copy(isHide = false) }
-        val merged = linkedMapOf<String, UnifiedPhotoItem>()
-        for (photo in getAllLoadedPhotos()) {
-            merged[photo.mergeKey()] = photo
-        }
-        for (photo in visiblePhotos) {
-            merged[photo.mergeKey()] = photo
-        }
-        _uiState.value = _uiState.value.copy(
-            months = buildMonthGroups(merged.values.toList())
-        )
-    }
-
-    private fun updateFavoriteState(
-        groups: List<MonthGroup>,
-        selectedIds: Set<Double>,
-        isFavorite: Boolean
-    ): List<MonthGroup> {
-        return groups.map { month ->
-            month.copy(
-                days = month.days.map { day ->
-                    day.copy(
-                        photos = day.photos.map { photo ->
-                            if (photo.id in selectedIds) photo.copy(isFavorite = isFavorite) else photo
-                        }
-                    )
-                }
-            )
-        }
-    }
-
-    private fun removeSelectedPhotos(
-        groups: List<MonthGroup>,
-        selectedIds: Set<Double>
-    ): List<MonthGroup> {
-        return groups.map { month ->
-            val updatedDays = month.days.map { day ->
-                day.copy(photos = day.photos.filter { it.id !in selectedIds })
-            }.filter { it.photos.isNotEmpty() }
-            month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
-        }.filter { it.days.isNotEmpty() || !it.isLoaded || it.totalCount > 0 }
     }
 
     fun updateColumnCount(newCount: Int) {
@@ -1131,7 +1131,8 @@ class GalleryViewModel(
         private val syncRepository: SyncRepository? = null,
         private val prefsManager: PrefsManager? = null,
         private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-        private val appContext: Context? = null
+        private val appContext: Context? = null,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1140,7 +1141,8 @@ class GalleryViewModel(
                 syncRepository,
                 prefsManager,
                 serverOpTaskRepository,
-                appContext
+                appContext,
+                mediaUiMutationBus
             ) as T
         }
     }

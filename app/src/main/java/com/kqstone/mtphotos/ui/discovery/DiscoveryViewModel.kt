@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
@@ -27,14 +29,29 @@ data class DiscoveryUiState(
     val toastMessage: UiText? = null
 )
 
-class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
+class DiscoveryViewModel(
+    private val galleryRepository: GalleryRepository,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiscoveryUiState())
     val uiState: StateFlow<DiscoveryUiState> = _uiState
     private var refreshJob: Job? = null
 
     init {
+        observeMediaUiMutations()
         loadAll()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                if (mutation is MediaUiMutation.PersonRenamed) {
+                    updatePersonName(mutation.personId, mutation.newName)
+                }
+            }
+        }
     }
 
     fun loadAll() {
@@ -147,10 +164,13 @@ class DiscoveryViewModel(private val galleryRepository: GalleryRepository) : Vie
         return galleryRepository.getPortraitUrl(personId, cover)
     }
 
-    class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val galleryRepository: GalleryRepository,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return DiscoveryViewModel(galleryRepository) as T
+            return DiscoveryViewModel(galleryRepository, mediaUiMutationBus) as T
         }
     }
 }

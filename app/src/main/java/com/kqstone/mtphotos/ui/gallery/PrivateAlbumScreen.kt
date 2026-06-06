@@ -80,7 +80,6 @@ import kotlin.math.sqrt
 fun PrivateAlbumScreen(
     viewModel: PrivateAlbumViewModel,
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit,
-    onPhotosUnhidden: (List<UnifiedPhotoItem>) -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -254,7 +253,7 @@ fun PrivateAlbumScreen(
                     onSelectAll = viewModel::selectAll,
                     onDelete = { showDeleteDialog = true },
                     onShare = { viewModel.shareSelected(context) },
-                    onUnhide = { viewModel.unhideSelected(onPhotosUnhidden) },
+                    onUnhide = { viewModel.unhideSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = 1f
                 )

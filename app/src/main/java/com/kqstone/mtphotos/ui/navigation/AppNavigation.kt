@@ -115,7 +115,8 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             container.galleryRepository,
             container.originalDownloadManager,
             container.serverOpTaskRepository,
-            viewerContext.applicationContext
+            viewerContext.applicationContext,
+            container.mediaUiMutationBus
         )
     )
 
@@ -192,7 +193,8 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
                     container.syncRepository,
                     container.prefsManager,
                     container.serverOpTaskRepository,
-                    viewerContext.applicationContext
+                    viewerContext.applicationContext,
+                    container.mediaUiMutationBus
                 )
             )
             MainScreen(

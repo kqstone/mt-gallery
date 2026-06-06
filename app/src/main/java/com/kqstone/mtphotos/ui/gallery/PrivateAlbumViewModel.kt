@@ -10,6 +10,8 @@ import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.util.ShareManager
@@ -41,7 +43,8 @@ class PrivateAlbumViewModel(
     private val galleryRepository: GalleryRepository,
     private val prefsManager: PrefsManager,
     private val serverOpTaskRepository: ServerOpTaskRepository,
-    private val appContext: Context
+    private val appContext: Context,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -61,6 +64,50 @@ class PrivateAlbumViewModel(
     val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     private var sessionPassword: String = ""
+
+    init {
+        observeMediaUiMutations()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                applyMediaUiMutation(mutation)
+            }
+        }
+    }
+
+    private fun applyMediaUiMutation(mutation: MediaUiMutation) {
+        when (mutation) {
+            is MediaUiMutation.Deleted -> {
+                _uiState.value = _uiState.value.copy(
+                    months = _uiState.value.months.removePhotos(mutation.photos)
+                )
+            }
+            is MediaUiMutation.FavoriteChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    months = _uiState.value.months.updateFavorite(
+                        mutation.photos,
+                        mutation.isFavorite
+                    )
+                )
+            }
+            is MediaUiMutation.HideChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    months = if (mutation.isHide) {
+                        _uiState.value.months.upsertPhotos(
+                            mutation.photos.map { it.copy(isHide = true) },
+                            ::buildMonthGroups
+                        )
+                    } else {
+                        _uiState.value.months.removePhotos(mutation.photos)
+                    }
+                )
+            }
+            is MediaUiMutation.PersonRenamed -> Unit
+        }
+    }
 
     fun acknowledgeIntro() {
         _uiState.value = _uiState.value.copy(showIntro = false)
@@ -305,18 +352,16 @@ class PrivateAlbumViewModel(
         selectionManager.selectAll(getAllLoadedPhotos().map { it.id })
     }
 
-    fun unhideSelected(onPhotosUnhidden: (List<UnifiedPhotoItem>) -> Unit = {}) {
+    fun unhideSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
         if (selectedIds.isEmpty()) return
         val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
         if (selectedPhotos.isEmpty()) return
-        val restoredPhotos = selectedPhotos.map { it.copy(isHide = false) }
 
         _uiState.value = _uiState.value.copy(
-            months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+            months = _uiState.value.months.removePhotos(selectedPhotos)
         )
         selectionManager.clearSelection()
-        onPhotosUnhidden(restoredPhotos)
 
         viewModelScope.launch {
             serverOpTaskRepository.enqueueHides(selectedPhotos, isHide = false)
@@ -334,9 +379,13 @@ class PrivateAlbumViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
-        selectionManager.deleteSelected {
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        selectionManager.deleteSelected(
+            photos = getAllLoadedPhotos(),
+            onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
+        ) {
             _uiState.value = _uiState.value.copy(
-                months = removeSelectedPhotos(_uiState.value.months, selectedIds)
+                months = _uiState.value.months.removePhotos(selectedPhotos)
             )
         }
     }
@@ -390,18 +439,6 @@ class PrivateAlbumViewModel(
             }
     }
 
-    private fun removeSelectedPhotos(
-        groups: List<MonthGroup>,
-        selectedIds: Set<Double>
-    ): List<MonthGroup> {
-        return groups.map { month ->
-            val updatedDays = month.days.map { day ->
-                day.copy(photos = day.photos.filter { it.id !in selectedIds })
-            }.filter { it.photos.isNotEmpty() }
-            month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
-        }.filter { it.days.isNotEmpty() }
-    }
-
     private fun formatYearMonth(ym: String): UiText {
         val parts = ym.split("-")
         return if (parts.size >= 2) {
@@ -417,7 +454,8 @@ class PrivateAlbumViewModel(
         private val galleryRepository: GalleryRepository,
         private val prefsManager: PrefsManager,
         private val serverOpTaskRepository: ServerOpTaskRepository,
-        private val appContext: Context
+        private val appContext: Context,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -425,7 +463,8 @@ class PrivateAlbumViewModel(
                 galleryRepository,
                 prefsManager,
                 serverOpTaskRepository,
-                appContext
+                appContext,
+                mediaUiMutationBus
             ) as T
         }
     }
