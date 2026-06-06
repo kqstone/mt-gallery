@@ -1,7 +1,5 @@
 package com.kqstone.mtphotos.ui.folder
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,14 +38,9 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.FolderItem
-import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
-import com.kqstone.mtphotos.ui.gallery.SelectionManager
-import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
-import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.media.MediaGridHost
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
-import com.kqstone.mtphotos.ui.util.PermissionHelper
-import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.bounceClick
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
@@ -70,12 +61,6 @@ fun FolderDetailScreen(
     val timelineLayout = remember(uiState.photos) {
         buildPhotoTimelineLayout(uiState.photos)
     }
-
-    BackHandler(enabled = isSelectionMode) {
-        viewModel.selectionManager.clearSelection()
-    }
-
-    val showDeleteDialog = remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     LaunchedEffect(folderId) {
@@ -90,121 +75,62 @@ fun FolderDetailScreen(
 
     val navigationBarsHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            !isCurrentFolder || uiState.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = scrollState.topBarHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            uiState.error != null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = scrollState.topBarHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = uiState.error!!.asString(),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = stringResource(R.string.click_to_retry),
-                            modifier = Modifier.clickable { viewModel.loadFolder(folderId, force = true) },
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-            uiState.photos.isEmpty() && uiState.subfolders.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = scrollState.topBarHeight),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.folder_empty),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            else -> {
-                TimelinePhotoGrid(
-                    months = timelineLayout.months,
-                    columnCount = uiState.columnCount,
-                    selectedPhotoIds = selectedIds,
-                    isSelectionMode = isSelectionMode,
-                    selectionManager = viewModel.selectionManager,
-                    getThumbUrl = viewModel::getThumbUrl,
-                    onPhotoClick = onPhotoClick,
-                    onColumnCountChange = viewModel::updateColumnCount,
-                    showMonthHeaders = timelineLayout.showMonthHeaders,
-                    showDayHeaders = timelineLayout.showDayHeaders,
-                    stateKey = "folder:$folderId",
-                    modifier = Modifier.fillMaxSize(),
-                    gridState = gridState,
-                    contentPadding = PaddingValues(top = scrollState.topBarHeight, bottom = navigationBarsHeight + 16.dp, start = 1.dp, end = 1.dp),
-                    leadingContent = if (uiState.subfolders.isNotEmpty()) {
-                        {
-                            SubfolderSection(
-                                subfolders = uiState.subfolders,
-                                onFolderClick = onFolderClick,
-                                thumbUrlProvider = viewModel::getThumbUrlByMd5
-                            )
-                        }
-                    } else {
-                        null
-                    }
+    MediaGridHost(
+        months = timelineLayout.months,
+        columnCount = uiState.columnCount,
+        selectedPhotoIds = selectedIds,
+        isSelectionMode = isSelectionMode,
+        selectionManager = viewModel.selectionManager,
+        getThumbUrl = viewModel::getThumbUrl,
+        onPhotoClick = onPhotoClick,
+        onColumnCountChange = viewModel::updateColumnCount,
+        onSelectAll = { viewModel.selectAll() },
+        onDeleteSelected = { viewModel.deleteSelected() },
+        onClearSelection = { viewModel.selectionManager.clearSelection() },
+        normalTopBar = {
+            BackTitleTopBar(
+                title = uiState.folderName.ifEmpty { stringResource(R.string.section_folders) },
+                onBack = onBack,
+                scrollAlpha = scrollState.scrollAlpha
+            )
+        },
+        isLoading = !isCurrentFolder || uiState.isLoading,
+        error = uiState.error,
+        isEmpty = uiState.photos.isEmpty() && uiState.subfolders.isEmpty(),
+        emptyContent = {
+            Text(
+                text = stringResource(R.string.folder_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        onRetry = { viewModel.loadFolder(folderId, force = true) },
+        contentTopPadding = scrollState.topBarHeight,
+        showMonthHeaders = timelineLayout.showMonthHeaders,
+        showDayHeaders = timelineLayout.showDayHeaders,
+        stateKey = "folder:$folderId",
+        gridState = gridState,
+        contentPadding = PaddingValues(
+            top = scrollState.topBarHeight,
+            bottom = navigationBarsHeight + 16.dp,
+            start = 1.dp,
+            end = 1.dp
+        ),
+        leadingContent = if (uiState.subfolders.isNotEmpty()) {
+            {
+                SubfolderSection(
+                    subfolders = uiState.subfolders,
+                    onFolderClick = onFolderClick,
+                    thumbUrlProvider = viewModel::getThumbUrlByMd5
                 )
             }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-        ) {
-            if (isSelectionMode) {
-                SelectionTopBar(
-                    selectedCount = selectedIds.size,
-                    onSelectAll = { viewModel.selectAll() },
-                    onDelete = { showDeleteDialog.value = true },
-                    onShare = { viewModel.shareSelected(context) },
-                    onFavorite = { viewModel.favoriteSelected() },
-                    onClearSelection = { viewModel.selectionManager.clearSelection() },
-                    scrollAlpha = scrollState.scrollAlpha
-                )
-            } else {
-                BackTitleTopBar(
-                    title = uiState.folderName.ifEmpty { stringResource(R.string.section_folders) },
-                    onBack = onBack,
-                    scrollAlpha = scrollState.scrollAlpha
-                )
-            }
-        }
-    }
-
-    if (showDeleteDialog.value) {
-        DeleteConfirmDialog(
-            selectedCount = selectedIds.size,
-            onConfirm = {
-                showDeleteDialog.value = false
-                if (PermissionHelper.requestManageStoragePermission(context)) {
-                    viewModel.deleteSelected()
-                }
-            },
-            onDismiss = { showDeleteDialog.value = false }
-        )
-    }
-
-    com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
+        } else {
+            null
+        },
+        shareManager = viewModel.shareManager,
+        scrollAlpha = scrollState.scrollAlpha,
+        onShare = { viewModel.shareSelected(context) },
+        onFavorite = { viewModel.favoriteSelected() }
+    )
 }
 
 @Composable
