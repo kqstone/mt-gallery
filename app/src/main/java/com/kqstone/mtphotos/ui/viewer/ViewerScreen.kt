@@ -141,12 +141,14 @@ fun ViewerScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .hazeSource(state = hazeState)
     ) {
+        val isLandscape = maxWidth > maxHeight
+
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -305,93 +307,17 @@ fun ViewerScreen(
             }
         }
 
-        // Bottom Gradient & Floating Action HUD Bar
-        AnimatedVisibility(
+        ViewerActionHud(
             visible = isUiVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
-                        )
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp, top = 24.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Pager Number Indicator
-                    Text(
-                        text = "${visiblePage + 1} / ${photos.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Control Buttons (Narrower width, no pill background)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Share
-                        HUDButton(
-                            icon = Icons.Default.Share,
-                            label = stringResource(R.string.share),
-                            onClick = { viewModel.sharePhoto(context) }
-                        )
-
-                        // Favorite with scale animation
-                        val favScale by animateFloatAsState(
-                            targetValue = if (uiState.isFavorite) 1.25f else 1.0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
-                            label = "favorite_scale"
-                        )
-
-                        HUDButton(
-                            icon = if (uiState.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                            label = if (uiState.isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
-                            iconColor = if (uiState.isFavorite) Color(0xFFFFD700) else Color.White,
-                            iconScale = favScale,
-                            onClick = { viewModel.toggleFavorite() }
-                        )
-
-                        // Hide / Unhide
-                        HUDButton(
-                            icon = if (uiState.isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            label = if (uiState.isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
-                            onClick = { viewModel.toggleHide() }
-                        )
-
-                        // Delete
-                        HUDButton(
-                            icon = Icons.Default.Delete,
-                            label = stringResource(R.string.delete),
-                            onClick = { showDeleteDialog = true }
-                        )
-
-                        // Info Details
-                        HUDButton(
-                            icon = Icons.Default.Info,
-                            label = stringResource(R.string.info),
-                            onClick = { showBottomSheet = true }
-                        )
-                    }
-                }
-            }
-        }
+            isLandscape = isLandscape,
+            isFavorite = uiState.isFavorite,
+            isHide = uiState.isHide,
+            onShare = { viewModel.sharePhoto(context) },
+            onToggleFavorite = { viewModel.toggleFavorite() },
+            onToggleHide = { viewModel.toggleHide() },
+            onDelete = { showDeleteDialog = true },
+            onInfo = { showBottomSheet = true }
+        )
 
         // Sharing Overlay Indicator
         com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
@@ -559,6 +485,155 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
     }
 
     return restore
+}
+
+@Composable
+private fun BoxScope.ViewerActionHud(
+    visible: Boolean,
+    isLandscape: Boolean,
+    isFavorite: Boolean,
+    isHide: Boolean,
+    onShare: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleHide: () -> Unit,
+    onDelete: () -> Unit,
+    onInfo: () -> Unit
+) {
+    val favScale by animateFloatAsState(
+        targetValue = if (isFavorite) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "favorite_scale"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier.align(if (isLandscape) Alignment.CenterEnd else Alignment.BottomCenter)
+    ) {
+        if (isLandscape) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(104.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                ) {
+                    ViewerActionButtons(
+                        isLandscape = true,
+                        isFavorite = isFavorite,
+                        isHide = isHide,
+                        favScale = favScale,
+                        onShare = onShare,
+                        onToggleFavorite = onToggleFavorite,
+                        onToggleHide = onToggleHide,
+                        onDelete = onDelete,
+                        onInfo = onInfo
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp, top = 24.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ViewerActionButtons(
+                        isLandscape = false,
+                        isFavorite = isFavorite,
+                        isHide = isHide,
+                        favScale = favScale,
+                        onShare = onShare,
+                        onToggleFavorite = onToggleFavorite,
+                        onToggleHide = onToggleHide,
+                        onDelete = onDelete,
+                        onInfo = onInfo
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerActionButtons(
+    isLandscape: Boolean,
+    isFavorite: Boolean,
+    isHide: Boolean,
+    favScale: Float,
+    onShare: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleHide: () -> Unit,
+    onDelete: () -> Unit,
+    onInfo: () -> Unit
+) {
+    val content: @Composable () -> Unit = {
+        HUDButton(
+            icon = Icons.Default.Share,
+            label = stringResource(R.string.share),
+            onClick = onShare
+        )
+        HUDButton(
+            icon = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+            label = if (isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
+            iconColor = if (isFavorite) Color(0xFFFFD700) else Color.White,
+            iconScale = favScale,
+            onClick = onToggleFavorite
+        )
+        HUDButton(
+            icon = if (isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+            label = if (isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+            onClick = onToggleHide
+        )
+        HUDButton(
+            icon = Icons.Default.Delete,
+            label = stringResource(R.string.delete),
+            onClick = onDelete
+        )
+        HUDButton(
+            icon = Icons.Default.Info,
+            label = stringResource(R.string.info),
+            onClick = onInfo
+        )
+    }
+
+    if (isLandscape) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            content = { content() }
+        )
+    } else {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            content = { content() }
+        )
+    }
 }
 
 @Composable

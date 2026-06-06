@@ -1,5 +1,6 @@
 package com.kqstone.mtphotos.ui.navigation
 
+import android.content.pm.ActivityInfo
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,6 +30,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
@@ -43,6 +45,7 @@ import com.kqstone.mtphotos.ui.settings.SettingsViewModel
 import com.kqstone.mtphotos.ui.settings.AboutScreen
 import com.kqstone.mtphotos.ui.settings.AboutViewModel
 import com.kqstone.mtphotos.ui.util.AppPermissionGate
+import com.kqstone.mtphotos.ui.util.findActivity
 import com.kqstone.mtphotos.ui.viewer.ViewerScreen
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import com.kqstone.mtphotos.worker.BackupScheduler
@@ -86,6 +89,8 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
     val context = LocalContext.current
     val mainActivity = context as? com.kqstone.mtphotos.MainActivity
     AppStatusEffects(container)
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    ScreenOrientationEffect(route = navBackStackEntry?.destination?.route)
 
     LaunchedEffect(navController, mainActivity) {
         mainActivity?.let { activity ->
@@ -279,6 +284,26 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
     val authRequired by container.prefsManager.authRequired.collectAsState(initial = false)
     if (authRequired) {
         ReauthDialog(container = container)
+    }
+}
+
+@Composable
+private fun ScreenOrientationEffect(route: String?) {
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(activity, route) {
+        if (activity != null) {
+            activity.requestedOrientation = if (route == "viewer") {
+                ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
+
+        onDispose {
+            if (activity != null && route == "viewer") {
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+        }
     }
 }
 
