@@ -334,7 +334,7 @@ fun ViewerScreen(
 
                     // Control Buttons (Narrower width, no pill background)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(32.dp, Alignment.CenterHorizontally),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Share
@@ -360,6 +360,13 @@ fun ViewerScreen(
                             iconColor = if (uiState.isFavorite) Color(0xFFFFD700) else Color.White,
                             iconScale = favScale,
                             onClick = { viewModel.toggleFavorite() }
+                        )
+
+                        // Hide / Unhide
+                        HUDButton(
+                            icon = if (uiState.isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            label = if (uiState.isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+                            onClick = { viewModel.toggleHide() }
                         )
 
                         // Delete

@@ -32,6 +32,7 @@ data class ViewerUiState(
     val photos: List<UnifiedPhotoItem> = emptyList(),
     val currentIndex: Int = 0,
     val isFavorite: Boolean = false,
+    val isHide: Boolean = false,
     val isLoadingDetails: Boolean = false,
     val exifInfo: Map<String, Any>? = null,
     val fileDetailInfo: Map<String, Any>? = null,
@@ -101,8 +102,11 @@ class ViewerViewModel(
             }
             is MediaUiMutation.HideChanged -> {
                 _uiState.update { state ->
+                    val updatedPhotos = state.photos.updateHide(mutation.photos, mutation.isHide)
                     state.copy(
-                        photos = state.photos.updateHide(mutation.photos, mutation.isHide)
+                        photos = updatedPhotos,
+                        isHide = updatedPhotos.getOrNull(state.currentIndex)?.isHide
+                            ?: state.isHide
                     )
                 }
             }
@@ -141,7 +145,8 @@ class ViewerViewModel(
         _uiState.value = ViewerUiState(
             photos = photos,
             currentIndex = index,
-            isFavorite = photos.getOrNull(index)?.isFavorite ?: false
+            isFavorite = photos.getOrNull(index)?.isFavorite ?: false,
+            isHide = photos.getOrNull(index)?.isHide ?: false
         )
         syncDownloadState()
         loadExifAndFavoriteForCurrent()
@@ -153,6 +158,7 @@ class ViewerViewModel(
             it.copy(
                 currentIndex = boundedIndex,
                 isFavorite = it.photos.getOrNull(boundedIndex)?.isFavorite ?: false,
+                isHide = it.photos.getOrNull(boundedIndex)?.isHide ?: false,
                 exifInfo = null,
                 fileDetailInfo = null,
                 originalDownloaded = false,
@@ -254,6 +260,25 @@ class ViewerViewModel(
         }
     }
 
+    fun toggleHide() {
+        val photo = getCurrentPhoto() ?: return
+        val newHide = !_uiState.value.isHide
+        _uiState.update { state ->
+            state.copy(
+                isHide = newHide,
+                photos = state.photos.mapIndexed { index, item ->
+                    if (index == state.currentIndex) item.copy(isHide = newHide) else item
+                }
+            )
+        }
+        viewModelScope.launch {
+            serverOpTaskRepository.enqueueHides(listOf(photo), isHide = newHide)
+            if (photo.cloudId != null) {
+                BackupScheduler.triggerServerOpWork(appContext)
+            }
+        }
+    }
+
     fun deleteCurrentPhoto(onDeleted: (hasRemainingPhotos: Boolean) -> Unit) {
         val photo = getCurrentPhoto() ?: return
         viewModelScope.launch {
@@ -293,6 +318,7 @@ class ViewerViewModel(
                 photos = updatedPhotos,
                 currentIndex = updatedIndex,
                 isFavorite = updatedPhotos.getOrNull(updatedIndex)?.isFavorite ?: false,
+                isHide = updatedPhotos.getOrNull(updatedIndex)?.isHide ?: false,
                 exifInfo = null,
                 fileDetailInfo = null,
                 originalDownloaded = false,
@@ -330,6 +356,7 @@ class ViewerViewModel(
                 photos = updatedPhotos,
                 currentIndex = updatedIndex,
                 isFavorite = updatedPhotos.getOrNull(updatedIndex)?.isFavorite ?: false,
+                isHide = updatedPhotos.getOrNull(updatedIndex)?.isHide ?: false,
                 exifInfo = null,
                 fileDetailInfo = null,
                 originalDownloaded = false,
