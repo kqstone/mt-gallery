@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
@@ -428,10 +430,19 @@ private fun PrivateAlbumPatternUnlockContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            Text(
-                text = stringResource(R.string.private_album_pattern_prompt),
-                style = MaterialTheme.typography.titleMedium
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.private_album_pattern_prompt),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
             PatternLockPad(
                 enabled = !isLoading,
                 resetSeed = 0,
@@ -674,10 +685,19 @@ private fun FullScreenPinContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            }
             PinDots(count = pinLength)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (error != null) {
@@ -723,25 +743,18 @@ private fun BoxScope.TouchBlocker() {
 @Composable
 private fun PinDots(count: Int) {
     val filledColor = MaterialTheme.colorScheme.primary
-    val outlineColor = MaterialTheme.colorScheme.outline
+    val unfilledColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
     Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(6) { index ->
-            Canvas(modifier = Modifier.size(14.dp)) {
+            Canvas(modifier = Modifier.size(16.dp)) {
+                val isFilled = index < count
+                val targetRadius = if (isFilled) size.minDimension / 2f else size.minDimension / 3.5f
                 drawCircle(
-                    color = if (index < count) {
-                        filledColor
-                    } else {
-                        androidx.compose.ui.graphics.Color.Transparent
-                    },
-                    radius = size.minDimension / 2f
-                )
-                drawCircle(
-                    color = outlineColor,
-                    radius = size.minDimension / 2f,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx())
+                    color = if (isFilled) filledColor else unfilledColor,
+                    radius = targetRadius
                 )
             }
         }
@@ -762,8 +775,8 @@ private fun PinNumberPad(
         listOf("", "0", "backspace")
     )
     BoxWithConstraints(modifier = modifier) {
-        val keySize = (maxWidth / 3.2f).coerceIn(88.dp, 112.dp)
-        val rowSpacing = (keySize / 9f).coerceIn(8.dp, 12.dp)
+        val keySize = (maxWidth / 4f).coerceIn(72.dp, 96.dp)
+        val rowSpacing = (keySize / 5f).coerceIn(12.dp, 24.dp)
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(rowSpacing)
@@ -777,10 +790,13 @@ private fun PinNumberPad(
                     row.forEach { key ->
                         when (key) {
                             "" -> Spacer(modifier = Modifier.size(keySize))
-                            "backspace" -> IconButton(
-                                enabled = enabled,
-                                onClick = onBackspace,
-                                modifier = Modifier.size(keySize)
+                            "backspace" -> Box(
+                                modifier = Modifier
+                                    .size(keySize)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .clickable(enabled = enabled, onClick = onBackspace)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Backspace,
@@ -788,14 +804,18 @@ private fun PinNumberPad(
                                     tint = MaterialTheme.colorScheme.onSurface
                                 )
                             }
-                            else -> TextButton(
-                                enabled = enabled,
-                                onClick = { onDigit(key) },
-                                modifier = Modifier.size(keySize)
+                            else -> Box(
+                                modifier = Modifier
+                                    .size(keySize)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .clickable(enabled = enabled, onClick = { onDigit(key) })
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = key,
-                                    style = MaterialTheme.typography.headlineMedium
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
@@ -817,7 +837,7 @@ private fun PatternLockPad(
     var size by remember(resetSeed) { mutableStateOf(IntSize.Zero) }
     val centers = remember(size) { computePatternCenters(size) }
     val hitRadius = remember(size) {
-        if (size.width <= 0 || size.height <= 0) 0f else min(size.width, size.height) / 8f
+        if (size.width <= 0 || size.height <= 0) 0f else min(size.width, size.height) / 6f
     }
     val primaryColor = MaterialTheme.colorScheme.primary
     val primarySoftColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -852,9 +872,9 @@ private fun PatternLockPad(
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (centers.isNotEmpty()) {
                 val patternSize = min(size.width, size.height).toFloat()
-                val outerRadius = patternSize / 13f
-                val centerRadius = patternSize / 24f
-                val strokeWidth = patternSize / 90f
+                val outerRadius = patternSize / 12f
+                val centerRadius = patternSize / 28f
+                val strokeWidth = patternSize / 80f
                 if (selectedNodes.size > 1) {
                     val path = androidx.compose.ui.graphics.Path().apply {
                         moveTo(centers[selectedNodes.first()].x, centers[selectedNodes.first()].y)
@@ -888,12 +908,12 @@ private fun PatternLockPad(
 
 private fun computePatternCenters(size: IntSize): List<Offset> {
     if (size.width <= 0 || size.height <= 0) return emptyList()
-    val cellWidth = size.width / 4f
-    val cellHeight = size.height / 4f
+    val cellWidth = size.width / 3f
+    val cellHeight = size.height / 3f
     return buildList {
         for (row in 0 until 3) {
             for (col in 0 until 3) {
-                add(Offset(cellWidth * (col + 1), cellHeight * (row + 1)))
+                add(Offset(cellWidth * col + cellWidth / 2f, cellHeight * row + cellHeight / 2f))
             }
         }
     }
