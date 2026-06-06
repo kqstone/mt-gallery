@@ -263,6 +263,102 @@ class ServerOpTaskRepository(
         }
     }
 
+    suspend fun enqueueHides(
+        photos: List<UnifiedPhotoItem>,
+        isHide: Boolean
+    ): Int = withContext(Dispatchers.IO) {
+        val distinctPhotos = photos.distinctBy { photo ->
+            photo.cloudId?.let { "cloud:$it" }
+                ?: photo.dbId.takeIf { it > 0 }?.let { "db:$it" }
+                ?: photo.md5.takeIf { it.isNotBlank() }?.let { "md5:$it" }
+                ?: photo.uniqueKey
+        }
+        if (distinctPhotos.isEmpty()) return@withContext 0
+
+        for (photo in distinctPhotos) {
+            updateLocalHide(
+                cloudId = photo.cloudId,
+                dbId = photo.dbId,
+                md5 = photo.md5,
+                fileName = photo.fileName,
+                fileType = photo.fileType,
+                mtime = photo.mtime,
+                width = photo.width.toInt(),
+                height = photo.height.toInt(),
+                isHide = isHide
+            )
+        }
+
+        val cloudIds = distinctPhotos.mapNotNull { it.cloudId }.distinct()
+        if (cloudIds.isEmpty()) {
+            Log.d(TAG, "Updated local-only hide state, isHide=$isHide, count=${distinctPhotos.size}")
+            return@withContext 0
+        }
+
+        val first = distinctPhotos.first { it.cloudId != null }
+        val now = System.currentTimeMillis()
+        val task = ServerOpTaskEntity(
+            opType = ServerOpType.HIDE,
+            mediaFileName = first.fileName,
+            mediaMd5 = first.md5,
+            mediaCloudId = cloudIds.first(),
+            params = gson.toJson(mapOf("fileIds" to cloudIds, "isHide" to isHide)),
+            nextAttemptAt = now,
+            createdAt = now,
+            updatedAt = now
+        )
+        database.withTransaction {
+            for (cloudId in cloudIds) {
+                dao.deleteUnfinishedTasksForCloudId(ServerOpType.HIDE, cloudId)
+            }
+            dao.insert(task)
+        }
+        Log.d(TAG, "Enqueued hide task, isHide=$isHide, count=${cloudIds.size}")
+        cloudIds.size
+    }
+
+    private suspend fun updateLocalHide(
+        cloudId: Double?,
+        dbId: Long,
+        md5: String,
+        fileName: String,
+        fileType: String = "",
+        mtime: String = "",
+        width: Int = 0,
+        height: Int = 0,
+        isHide: Boolean
+    ) {
+        val mediaDao = database.mediaDao()
+        var updated = 0
+        if (cloudId != null) {
+            updated = mediaDao.updateHideByCloudId(cloudId, isHide)
+        }
+        if (updated == 0 && dbId > 0) {
+            updated = mediaDao.updateHideById(dbId, isHide)
+        }
+        if (updated == 0 && md5.isNotEmpty()) {
+            mediaDao.findByMd5(md5)?.let { existing ->
+                updated = mediaDao.updateHideById(existing.id, isHide)
+            }
+        }
+        if (updated == 0 && cloudId != null) {
+            mediaDao.insert(
+                MediaEntity(
+                    cloudId = cloudId,
+                    md5 = md5,
+                    cloudMd5 = md5,
+                    fileName = fileName,
+                    fileType = fileType,
+                    mtime = mtime,
+                    width = width,
+                    height = height,
+                    syncStatus = SyncStatus.CLOUD_ONLY,
+                    isHide = isHide
+                )
+            )
+        }
+    }
+
     suspend fun enqueueRenamePerson(
         personId: Double,
         newName: String,
@@ -771,6 +867,14 @@ class ServerOpTaskRepository(
                 Log.d(TAG, "TAG task executed (placeholder): params=$params")
             }
             ServerOpType.HIDE -> {
+                val fileIds = (params["fileIds"] as? List<*>)
+                    ?.mapNotNull { (it as? Number)?.toDouble() }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: throw IllegalStateException("Missing fileIds for HIDE")
+                val isHide = params["isHide"] as? Boolean
+                    ?: throw IllegalStateException("Missing isHide for HIDE")
+                container.galleryRepository.toggleHide(fileIds, isHide).getOrThrow()
+                Log.d(TAG, "HIDE task executed: isHide=$isHide, count=${fileIds.size}")
                 // 预留
                 Log.d(TAG, "HIDE task executed (placeholder): params=$params")
             }

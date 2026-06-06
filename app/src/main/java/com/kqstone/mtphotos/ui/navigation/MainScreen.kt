@@ -51,6 +51,8 @@ import com.kqstone.mtphotos.ui.folder.FolderScreen
 import com.kqstone.mtphotos.ui.folder.FolderViewModel
 import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.gallery.PrivateAlbumScreen
+import com.kqstone.mtphotos.ui.gallery.PrivateAlbumViewModel
 import com.kqstone.mtphotos.ui.map.MapScreen
 import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.search.CloudSearchOverlay
@@ -126,6 +128,14 @@ fun MainScreen(
         factory = CloudSearchViewModel.Factory(
             container.galleryRepository,
             container.syncRepository,
+            container.serverOpTaskRepository,
+            appContext
+        )
+    )
+    val privateAlbumViewModel: PrivateAlbumViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        factory = PrivateAlbumViewModel.Factory(
+            container.galleryRepository,
+            container.prefsManager,
             container.serverOpTaskRepository,
             appContext
         )
@@ -208,7 +218,24 @@ fun MainScreen(
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
                         onAboutClick = onNavigateToAbout,
+                        onOpenPrivateAlbum = {
+                            innerNavController.navigate("private_album") {
+                                launchSingleTop = true
+                            }
+                        },
                         onOpLogClick = onNavigateToOpLog
+                    )
+                }
+
+                composable("private_album") {
+                    PrivateAlbumScreen(
+                        viewModel = privateAlbumViewModel,
+                        onPhotoClick = { photo, allPhotos ->
+                            val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
+                            onNavigateToViewer(allPhotos, index)
+                        },
+                        onPhotosUnhidden = galleryViewModel::restoreHiddenPhotos,
+                        onBack = { innerNavController.popBackStack() }
                     )
                 }
 

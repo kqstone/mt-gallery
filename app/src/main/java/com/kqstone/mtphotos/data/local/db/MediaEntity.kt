@@ -46,6 +46,7 @@ enum class BackupStatus {
         Index(value = ["syncStatus"]),
         Index(value = ["backupStatus"]),
         Index(value = ["isFavorite"]),
+        Index(value = ["isHide"]),
         Index(value = ["mtime"])
     ]
 )
@@ -116,6 +117,8 @@ data class MediaEntity(
     val isStorageOptimized: Boolean = false,
 
     val isFavorite: Boolean = false,
+
+    val isHide: Boolean = false,
 
     /** 记录创建时间 */
     val createdAt: Long = System.currentTimeMillis(),

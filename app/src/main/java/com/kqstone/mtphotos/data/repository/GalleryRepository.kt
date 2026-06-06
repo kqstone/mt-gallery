@@ -1,14 +1,22 @@
 package com.kqstone.mtphotos.data.repository
 
 import com.kqstone.mtphotos.AppContainer
+import com.kqstone.mtphotos.data.local.db.BackupStatus
 import com.kqstone.mtphotos.data.local.db.MediaEntity
+import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.local.db.toMapPhotoEntity
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.network.NetworkFailure
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.math.BigInteger
+import java.security.KeyFactory
+import java.security.spec.RSAPublicKeySpec
+import java.security.spec.X509EncodedKeySpec
 import java.net.URLEncoder
+import java.util.Base64
+import javax.crypto.Cipher
 
 data class TimelineMonth(
     val yearMonth: String,
@@ -37,7 +45,8 @@ data class PhotoItem(
     val isLivePhotosVideo: Boolean = false,
     val livePhotoUuid: String? = null,
     val isFavorite: Boolean = false,
-    val duration: Long = 0
+    val duration: Long = 0,
+    val isHide: Boolean = false
 )
 
 data class FolderItem(
@@ -455,6 +464,13 @@ class GalleryRepository(private val container: AppContainer) {
                 photos += parseTimelineMonthData(value)
             }
         }
+        if (photos.isEmpty()) {
+            for (sectionKey in listOf("data", "result", "list", "fileList", "files", "rows")) {
+                val section = response[sectionKey] as? List<*> ?: continue
+                appendPhotoItems(section, photos)
+                if (photos.isNotEmpty()) break
+            }
+        }
         return if (photos.isNotEmpty()) {
             photos.distinctBy { it.id }
         } else {
@@ -526,6 +542,9 @@ class GalleryRepository(private val container: AppContainer) {
             || parseBoolean(map["isFav"])
             || parseBoolean(map["fav"])
         val duration = parseDurationMillis(map)
+        val isHide = parseBoolean(map["isHide"])
+            || parseBoolean(map["hide"])
+            || parseBoolean(map["is_hide"])
         return PhotoItem(
             id = id,
             md5 = md5,
@@ -539,7 +558,8 @@ class GalleryRepository(private val container: AppContainer) {
             isLivePhotosVideo = isLivePhotosVideo,
             livePhotoUuid = livePhotoUuid,
             isFavorite = isFavorite,
-            duration = duration
+            duration = duration,
+            isHide = isHide
         )
     }
 
@@ -1259,6 +1279,248 @@ class GalleryRepository(private val container: AppContainer) {
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun toggleHide(photoIds: List<Double>, isHide: Boolean): Result<Unit> {
+        return try {
+            val ids = photoIds.map { it.toInt() }.distinct()
+            if (ids.isEmpty()) return Result.success(Unit)
+            val body = mapOf("fileIds" to ids)
+            if (isHide) {
+                container.gatewayApi.GatewayControllerPart3AddHideFiles(body)
+            } else {
+                container.gatewayApi.GatewayControllerPart3CancelHideFiles(body)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getHiddenFiles(password: String): Result<List<PhotoItem>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val rsaResponse = container.authApi.AppControllerGetLoginRSAKeys()
+                val encryptedPassword = encryptPasswordWithRsa(password, rsaResponse)
+                    ?: return@withContext Result.failure(Exception("RSA public key not found"))
+                val passwordCodeResponse = container.gatewayApi.GatewayControllerPart3PwdCode(
+                    buildPasswordCodeBody(encryptedPassword, rsaResponse)
+                )
+                val passwordCode = parsePasswordCode(passwordCodeResponse)
+                    ?: return@withContext Result.failure(Exception("Password verification response missing passwordCode"))
+
+                val hidden = container.gatewayApi.GatewayControllerPart3FilesInHide(
+                    mapOf("passwordCode" to passwordCode)
+                )
+                val photos = parsePhotoItems(hidden).map { it.copy(isHide = true) }
+                cacheHiddenFiles(photos)
+                Result.success(photos)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    private fun buildPasswordCodeBody(
+        encryptedPassword: String,
+        rsaResponse: Map<String, Any>
+    ): Map<String, Any> {
+        val body = mutableMapOf<String, Any>(
+            "password" to "__MT_RSA_ENC",
+            "passwordEnc" to encryptedPassword
+        )
+        parseRsaKeyId(rsaResponse)?.let { key ->
+            body["key"] = key
+            body["rsaKey"] = key
+        }
+        return body
+    }
+
+    private fun encryptPasswordWithRsa(password: String, rsaResponse: Map<String, Any>): String? {
+        val publicKeyPem = parseRsaPublicKey(rsaResponse) ?: return null
+        val publicKey = parseRsaPublicKeyPem(publicKeyPem)
+        val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, publicKey)
+        return Base64.getEncoder().encodeToString(cipher.doFinal(password.toByteArray(Charsets.UTF_8)))
+    }
+
+    private fun parseRsaPublicKeyPem(publicKeyPem: String): java.security.PublicKey {
+        val keyFactory = KeyFactory.getInstance("RSA")
+        val cleanKey = publicKeyPem
+            .replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "")
+            .replace("-----BEGIN RSA PUBLIC KEY-----", "")
+            .replace("-----END RSA PUBLIC KEY-----", "")
+            .replace("\\s".toRegex(), "")
+        val keyBytes = Base64.getDecoder().decode(cleanKey)
+        return if (publicKeyPem.contains("BEGIN RSA PUBLIC KEY")) {
+            val (modulus, exponent) = parsePkcs1RsaPublicKey(keyBytes)
+            keyFactory.generatePublic(RSAPublicKeySpec(modulus, exponent))
+        } else {
+            keyFactory.generatePublic(X509EncodedKeySpec(keyBytes))
+        }
+    }
+
+    private fun parsePkcs1RsaPublicKey(bytes: ByteArray): Pair<BigInteger, BigInteger> {
+        val reader = DerReader(bytes)
+        reader.readSequence()
+        val modulus = reader.readInteger()
+        val exponent = reader.readInteger()
+        return modulus to exponent
+    }
+
+    private class DerReader(private val bytes: ByteArray) {
+        private var offset = 0
+
+        fun readSequence() {
+            readTag(0x30)
+            readLength()
+        }
+
+        fun readInteger(): BigInteger {
+            readTag(0x02)
+            val length = readLength()
+            require(offset + length <= bytes.size) { "Invalid RSA public key" }
+            val value = bytes.copyOfRange(offset, offset + length)
+            offset += length
+            return BigInteger(1, value)
+        }
+
+        private fun readTag(expected: Int) {
+            require(offset < bytes.size && bytes[offset].toInt() and 0xff == expected) {
+                "Invalid RSA public key"
+            }
+            offset += 1
+        }
+
+        private fun readLength(): Int {
+            require(offset < bytes.size) { "Invalid RSA public key" }
+            val first = bytes[offset++].toInt() and 0xff
+            if (first and 0x80 == 0) return first
+            val count = first and 0x7f
+            require(count in 1..4 && offset + count <= bytes.size) { "Invalid RSA public key" }
+            var length = 0
+            repeat(count) {
+                length = (length shl 8) or (bytes[offset++].toInt() and 0xff)
+            }
+            return length
+        }
+    }
+
+    private fun parseRsaPublicKey(response: Map<String, Any>): String? {
+        val keys = arrayOf("publicKey", "public_key", "rsaPublicKey", "rsa_public_key", "key")
+        firstNonBlankString(response, *keys)?.let { value ->
+            if (value.contains("BEGIN PUBLIC KEY") || value.length > 80) return value
+        }
+        for (nestedKey in arrayOf("data", "result")) {
+            val nested = response[nestedKey] as? Map<*, *> ?: continue
+            firstNonBlankString(nested, *keys)?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseRsaKeyId(response: Map<String, Any>): String? {
+        val keys = arrayOf("id", "uuid", "rsaKey", "rsa_key")
+        firstNonBlankString(response, *keys)?.let { return it }
+        val rawKey = firstNonBlankString(response, "key")
+        if (rawKey != null && !rawKey.contains("BEGIN PUBLIC KEY") && rawKey.length <= 80) {
+            return rawKey
+        }
+        for (nestedKey in arrayOf("data", "result")) {
+            val nested = response[nestedKey] as? Map<*, *> ?: continue
+            firstNonBlankString(nested, *keys)?.let { return it }
+            val nestedRawKey = firstNonBlankString(nested, "key")
+            if (nestedRawKey != null &&
+                !nestedRawKey.contains("BEGIN PUBLIC KEY") &&
+                nestedRawKey.length <= 80
+            ) {
+                return nestedRawKey
+            }
+        }
+        return null
+    }
+
+    private fun parsePhotoItems(response: Any?): List<PhotoItem> {
+        return when (response) {
+            is Map<*, *> -> parsePhotoItems(
+                response.entries
+                    .mapNotNull { entry ->
+                        val key = entry.key as? String ?: return@mapNotNull null
+                        val value = entry.value ?: return@mapNotNull null
+                        key to value
+                    }
+                    .toMap()
+            )
+            is List<*> -> parsePhotoItems(response)
+            else -> emptyList()
+        }
+    }
+
+    private fun parsePasswordCode(response: Map<String, Any>): String? {
+        firstNonBlankString(response, "passwordCode", "password_code", "code")?.let { return it }
+        val nestedKeys = arrayOf("data", "result")
+        for (key in nestedKeys) {
+            val nested = response[key]
+            if (nested is Map<*, *>) {
+                firstNonBlankString(nested, "passwordCode", "password_code", "code")?.let { return it }
+            } else if (nested is String && nested.isNotBlank()) {
+                return nested
+            }
+        }
+        return null
+    }
+
+    private suspend fun cacheHiddenFiles(photos: List<PhotoItem>) {
+        if (photos.isEmpty()) return
+        val dao = container.database.mediaDao()
+        val cloudIds = photos.map { it.id }.distinct()
+        dao.updateHideByCloudIds(cloudIds, isHide = true)
+        val existingIds = dao.findByCloudIds(cloudIds).mapNotNull { it.cloudId }.toSet()
+        val missing = photos
+            .filter { it.id !in existingIds }
+            .map { photo ->
+                MediaEntity(
+                    cloudId = photo.id,
+                    md5 = photo.md5,
+                    cloudMd5 = photo.md5,
+                    fileName = photo.fileName,
+                    fileType = photo.fileType,
+                    mtime = photo.mtime,
+                    width = photo.width.toInt(),
+                    height = photo.height.toInt(),
+                    addr = photo.addr,
+                    livePhotosVideoId = photo.livePhotosVideoId,
+                    isLivePhotosVideo = photo.isLivePhotosVideo,
+                    livePhotoUuid = photo.livePhotoUuid,
+                    isFavorite = photo.isFavorite,
+                    isHide = true,
+                    syncStatus = SyncStatus.CLOUD_ONLY,
+                    backupStatus = BackupStatus.NOT_STARTED
+                )
+            }
+        if (missing.isNotEmpty()) {
+            dao.insertAll(missing)
+        }
+    }
+
+    suspend fun getCachedHiddenFiles(): List<PhotoItem> = withContext(Dispatchers.IO) {
+        container.database.mediaDao().getHiddenMedia().map { entity ->
+            PhotoItem(
+                id = entity.cloudId ?: entity.id.toDouble(),
+                md5 = entity.md5.ifEmpty { entity.cloudMd5.orEmpty() },
+                fileName = entity.fileName,
+                fileType = entity.fileType,
+                mtime = entity.mtime,
+                width = entity.width.toDouble(),
+                height = entity.height.toDouble(),
+                addr = entity.addr,
+                livePhotosVideoId = entity.livePhotosVideoId,
+                isLivePhotosVideo = entity.isLivePhotosVideo,
+                livePhotoUuid = entity.livePhotoUuid,
+                isFavorite = entity.isFavorite,
+                isHide = entity.isHide
+            )
         }
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,8 @@ import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 
+private const val PRIVATE_ALBUM_PULL_THRESHOLD = 1.85f
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryScreen(
@@ -53,6 +56,7 @@ fun GalleryScreen(
     onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit,
     onAboutClick: () -> Unit,
+    onOpenPrivateAlbum: () -> Unit,
     onOpLogClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -126,17 +130,54 @@ fun GalleryScreen(
                 
                 Box(modifier = Modifier.fillMaxSize()) {
                     val pullRefreshState = rememberPullToRefreshState()
+                    var privatePullArmed by remember { mutableStateOf(false) }
+                    LaunchedEffect(pullRefreshState.distanceFraction, uiState.isRefreshing) {
+                        if (!uiState.isRefreshing &&
+                            pullRefreshState.distanceFraction >= PRIVATE_ALBUM_PULL_THRESHOLD
+                        ) {
+                            privatePullArmed = true
+                        }
+                    }
                     PullToRefreshBox(
                         isRefreshing = uiState.isRefreshing,
-                        onRefresh = { viewModel.refresh() },
+                        onRefresh = {
+                            if (privatePullArmed) {
+                                privatePullArmed = false
+                                onOpenPrivateAlbum()
+                            } else {
+                                viewModel.refresh()
+                            }
+                        },
                         modifier = Modifier.fillMaxSize().hazeContentSource(),
                         state = pullRefreshState,
                         indicator = {
-                            PullToRefreshDefaults.Indicator(
-                                modifier = Modifier.align(Alignment.TopCenter).padding(top = scrollState.topBarHeight),
-                                isRefreshing = uiState.isRefreshing,
-                                state = pullRefreshState
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = scrollState.topBarHeight),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                PullToRefreshDefaults.Indicator(
+                                    isRefreshing = uiState.isRefreshing,
+                                    state = pullRefreshState
+                                )
+                                if (!uiState.isRefreshing && pullRefreshState.distanceFraction > 1.1f) {
+                                    Text(
+                                        text = stringResource(
+                                            if (privatePullArmed) {
+                                                R.string.private_album_release_to_open
+                                            } else {
+                                                R.string.private_album_keep_pulling
+                                            }
+                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier
+                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     ) {
                         TimelinePhotoGrid(
@@ -199,6 +240,7 @@ fun GalleryScreen(
                     onDelete = { showDeleteDialog = true },
                     onShare = { viewModel.shareSelected(context) },
                     onFavorite = { viewModel.favoriteSelected() },
+                    onHide = { viewModel.hideSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = scrollState.scrollAlpha
                 )

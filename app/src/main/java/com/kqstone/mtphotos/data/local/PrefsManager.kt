@@ -12,6 +12,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -45,6 +48,10 @@ class PrefsManager(val context: Context) {
         private val KEY_SERVER_UNREACHABLE_EVENT_AT = longPreferencesKey("server_unreachable_event_at")
         private val KEY_SERVER_UNREACHABLE_SHOWN_AT = longPreferencesKey("server_unreachable_shown_at")
         private val KEY_NETWORK_RETRY_PENDING = booleanPreferencesKey("network_retry_pending")
+        private val KEY_PRIVACY_INTRO_SHOWN = booleanPreferencesKey("privacy_intro_shown")
+        private val KEY_PRIVACY_LOCK_MODE = stringPreferencesKey("privacy_lock_mode")
+        private val KEY_PRIVACY_LOCK_SALT = stringPreferencesKey("privacy_lock_salt")
+        private val KEY_PRIVACY_LOCK_HASH = stringPreferencesKey("privacy_lock_hash")
 
         // 备份相关
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
@@ -75,6 +82,7 @@ class PrefsManager(val context: Context) {
         it[KEY_SERVER_UNREACHABLE_EVENT_AT] ?: 0L
     }
     val networkRetryPending: Flow<Boolean> = context.dataStore.data.map { it[KEY_NETWORK_RETRY_PENDING] ?: false }
+    val privacyLockMode: Flow<String> = context.dataStore.data.map { it[KEY_PRIVACY_LOCK_MODE] ?: PrivacyLockMode.NONE.name }
     val backupEnabled: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
     val backupWifiOnly: Flow<Boolean> = context.dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
     val backupFolders: Flow<String> = context.dataStore.data.map { it[KEY_BACKUP_FOLDERS] ?: "" }
@@ -133,6 +141,29 @@ class PrefsManager(val context: Context) {
         if (eventAt > shownAt) eventAt else 0L
     }
     fun getNetworkRetryPendingSync(): Boolean = runBlocking { networkRetryPending.first() }
+    fun getPrivacyIntroShownSync(): Boolean = runBlocking {
+        val prefs = context.dataStore.data.first()
+        prefs[KEY_PRIVACY_INTRO_SHOWN] ?: false
+    }
+    fun getPrivacyLockModeSync(): PrivacyLockMode = runBlocking {
+        val raw = context.dataStore.data.first()[KEY_PRIVACY_LOCK_MODE] ?: PrivacyLockMode.NONE.name
+        runCatching { PrivacyLockMode.valueOf(raw) }.getOrDefault(PrivacyLockMode.NONE)
+    }
+    fun getPrivacyLockSaltSync(): String = runBlocking {
+        context.dataStore.data.first()[KEY_PRIVACY_LOCK_SALT] ?: ""
+    }
+    fun getPrivacyLockHashSync(): String = runBlocking {
+        context.dataStore.data.first()[KEY_PRIVACY_LOCK_HASH] ?: ""
+    }
+    fun hasPrivacyLockConfiguredSync(): Boolean = runBlocking {
+        val prefs = context.dataStore.data.first()
+        val mode = prefs[KEY_PRIVACY_LOCK_MODE]
+            ?.let { runCatching { PrivacyLockMode.valueOf(it) }.getOrDefault(PrivacyLockMode.NONE) }
+            ?: PrivacyLockMode.NONE
+        mode != PrivacyLockMode.NONE &&
+            (prefs[KEY_PRIVACY_LOCK_SALT] ?: "").isNotBlank() &&
+            (prefs[KEY_PRIVACY_LOCK_HASH] ?: "").isNotBlank()
+    }
     fun getBackupWifiOnlySync(): Boolean = runBlocking { backupWifiOnly.first() }
     fun getBackupFoldersSync(): String = runBlocking { backupFolders.first() }
     fun getBackupFolderHistorySync(): Set<String> = runBlocking {
@@ -219,6 +250,47 @@ class PrefsManager(val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[KEY_NETWORK_RETRY_PENDING] = pending
         }
+    }
+
+    suspend fun setPrivacyIntroShown(shown: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PRIVACY_INTRO_SHOWN] = shown
+        }
+    }
+
+    suspend fun savePrivacyLock(mode: PrivacyLockMode, secret: String) {
+        require(mode != PrivacyLockMode.NONE) { "Privacy lock mode cannot be NONE" }
+        val salt = generatePrivacyLockSalt()
+        val hash = hashPrivacyLockSecret(salt, secret)
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PRIVACY_LOCK_MODE] = mode.name
+            prefs[KEY_PRIVACY_LOCK_SALT] = salt
+            prefs[KEY_PRIVACY_LOCK_HASH] = hash
+        }
+    }
+
+    suspend fun clearPrivacyLock() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(KEY_PRIVACY_LOCK_MODE)
+            prefs.remove(KEY_PRIVACY_LOCK_SALT)
+            prefs.remove(KEY_PRIVACY_LOCK_HASH)
+        }
+    }
+
+    fun verifyPrivacyLockSecretSync(secret: String): Boolean = runBlocking {
+        verifyPrivacyLockSecret(secret)
+    }
+
+    suspend fun verifyPrivacyLockSecret(secret: String): Boolean {
+        val prefs = context.dataStore.data.first()
+        val mode = prefs[KEY_PRIVACY_LOCK_MODE]
+            ?.let { runCatching { PrivacyLockMode.valueOf(it) }.getOrDefault(PrivacyLockMode.NONE) }
+            ?: PrivacyLockMode.NONE
+        if (mode == PrivacyLockMode.NONE) return false
+        val salt = prefs[KEY_PRIVACY_LOCK_SALT] ?: ""
+        val hash = prefs[KEY_PRIVACY_LOCK_HASH] ?: ""
+        if (salt.isBlank() || hash.isBlank()) return false
+        return hashPrivacyLockSecret(salt, secret) == hash
     }
 
     suspend fun saveAuthCode(authCode: String) {
@@ -344,5 +416,17 @@ class PrefsManager(val context: Context) {
 
     private fun defaultBackupDestinationPath(username: String?): String {
         return BackupDestinationDefaults.path(username)
+    }
+
+    private fun generatePrivacyLockSalt(): String {
+        val bytes = ByteArray(16)
+        SecureRandom().nextBytes(bytes)
+        return Base64.getEncoder().encodeToString(bytes)
+    }
+
+    private fun hashPrivacyLockSecret(salt: String, secret: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val input = "$salt:$secret"
+        return digest.digest(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 }
