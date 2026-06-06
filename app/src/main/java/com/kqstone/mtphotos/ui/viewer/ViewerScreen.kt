@@ -60,6 +60,7 @@ import android.content.Context
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.ViewCompat
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,10 +86,18 @@ fun ViewerScreen(
     var stopActivePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isExiting by remember { mutableStateOf(false) }
 
+    // UI visibility state for immersive full screen
+    var isUiVisible by remember { mutableStateOf(true) }
+    val restoreSystemBars = ViewerSystemBarsEffect(isUiVisible = isUiVisible)
+
     val stopAndGoBack = {
         if (!isExiting) {
             isExiting = true
             stopActivePlayback?.invoke()
+            // Show the viewer UI (action bar + system bars) before navigating
+            // away so that the previous screen sees correct inset values.
+            isUiVisible = true
+            restoreSystemBars()
             onBack()
         }
     }
@@ -128,12 +137,9 @@ fun ViewerScreen(
     val visiblePage = pagerState.settledPage.coerceIn(0, photos.lastIndex)
     val currentPhoto = photos[visiblePage]
 
-    // UI visibility state for immersive full screen
-    var isUiVisible by remember { mutableStateOf(true) }
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
-    ViewerSystemBarsEffect(isUiVisible = isUiVisible)
 
     Box(
         modifier = Modifier
@@ -469,12 +475,24 @@ fun ViewerScreen(
     }
 }
 
+/**
+ * Manages system bar visibility and appearance while the viewer is active.
+ *
+ * Returns a **restore** lambda that the caller must invoke **before** navigating
+ * away (i.e. before `onBack()`). This ensures the system bars and their insets
+ * are fully restored *before* the previous screen recomposes, preventing the
+ * content-under-status-bar glitch that occurs when `DisposableEffect.onDispose`
+ * fires too late (during the exit animation).
+ *
+ * The `DisposableEffect` still acts as a safety net in case the composable is
+ * removed without the lambda being called.
+ */
 @Composable
-private fun ViewerSystemBarsEffect(isUiVisible: Boolean) {
+private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
     val view = LocalView.current
-    if (view.isInEditMode) return
+    if (view.isInEditMode) return {}
 
-    val window = view.context.findActivity()?.window ?: return
+    val window = view.context.findActivity()?.window ?: return {}
     val insetsController = remember(window, view) {
         WindowCompat.getInsetsController(window, view)
     }
@@ -488,28 +506,52 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean) {
         insetsController.isAppearanceLightNavigationBars
     }
 
-    SideEffect {
-        insetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        insetsController.isAppearanceLightStatusBars = false
-        insetsController.isAppearanceLightNavigationBars = false
+    // Flag to avoid double-restoring from both the eager call and onDispose.
+    val restored = remember { mutableStateOf(false) }
 
-        val systemBars = WindowInsetsCompat.Type.systemBars()
-        if (isUiVisible) {
-            insetsController.show(systemBars)
-        } else {
-            insetsController.hide(systemBars)
+    val restore: () -> Unit = remember(insetsController) {
+        {
+            if (!restored.value) {
+                restored.value = true
+                // IMPORTANT: Restore behavior BEFORE showing bars.
+                // With BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE still active,
+                // show() would display bars as transient overlays that report
+                // zero insets — causing the returning screen to render content
+                // inside the status bar area.
+                insetsController.systemBarsBehavior = previousSystemBarsBehavior
+                insetsController.isAppearanceLightStatusBars = previousLightStatusBars
+                insetsController.isAppearanceLightNavigationBars = previousLightNavigationBars
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+                // Force the framework to re-dispatch insets so that Compose's
+                // WindowInsets.statusBars picks up the restored values immediately.
+                ViewCompat.requestApplyInsets(view)
+            }
+        }
+    }
+
+    SideEffect {
+        if (!restored.value) {
+            insetsController.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insetsController.isAppearanceLightStatusBars = false
+            insetsController.isAppearanceLightNavigationBars = false
+
+            val systemBars = WindowInsetsCompat.Type.systemBars()
+            if (isUiVisible) {
+                insetsController.show(systemBars)
+            } else {
+                insetsController.hide(systemBars)
+            }
         }
     }
 
     DisposableEffect(insetsController) {
         onDispose {
-            insetsController.show(WindowInsetsCompat.Type.systemBars())
-            insetsController.systemBarsBehavior = previousSystemBarsBehavior
-            insetsController.isAppearanceLightStatusBars = previousLightStatusBars
-            insetsController.isAppearanceLightNavigationBars = previousLightNavigationBars
+            restore()
         }
     }
+
+    return restore
 }
 
 @Composable
