@@ -43,7 +43,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppNavigation()
+                    com.kqstone.mtphotos.ui.util.ProvideStableStatusBarHeight {
+                        AppNavigation()
+                    }
                 }
             }
         }

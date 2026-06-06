@@ -2,9 +2,6 @@ package com.kqstone.mtphotos.ui.util
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -57,8 +54,9 @@ fun rememberScrollAlpha(
         animationSpec = tween(durationMillis = animDurationMillis),
         label = "actionBarAlpha"
     )
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarHeight = stableStatusBarHeight()
     val topBarHeight = TopBarHeight + statusBarHeight
 
     return ScrollAlphaState(scrollAlpha = scrollAlpha, topBarHeight = topBarHeight)
 }
+

@@ -22,15 +22,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -95,6 +90,8 @@ import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 import com.kqstone.mtphotos.ui.util.OverlayStatusBarStyleEffect
+import com.kqstone.mtphotos.ui.util.stableStatusBarHeight
+import com.kqstone.mtphotos.ui.util.stableStatusBarsPadding
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -153,7 +150,7 @@ fun CloudSearchOverlay(
                     onShare = { viewModel.shareSelected(context) },
                     onFavorite = { viewModel.favoriteSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
-                    modifier = Modifier.padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()),
+                    modifier = Modifier.padding(top = stableStatusBarHeight()),
                     scrollAlpha = 1f
                 )
             } else {
@@ -296,7 +293,7 @@ private fun CloudSearchTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
+            .stableStatusBarsPadding()
             .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
