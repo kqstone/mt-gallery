@@ -10,8 +10,11 @@ import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MapPhotoItem
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toUnifiedPhotoItem
+import com.kqstone.mtphotos.ui.gallery.removePhotos
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -59,7 +62,8 @@ data class MapViewport(
 
 class MapViewModel(
     private val galleryRepository: GalleryRepository,
-    private val syncRepository: SyncRepository? = null
+    private val syncRepository: SyncRepository? = null,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MapUiState())
@@ -76,7 +80,24 @@ class MapViewModel(
     }
 
     init {
+        observeMediaUiMutations()
         loadMapPhotos()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                when (mutation) {
+                    is MediaUiMutation.Deleted -> removeMapPhotos(mutation.photos)
+                    is MediaUiMutation.HideChanged -> {
+                        if (mutation.isHide) removeMapPhotos(mutation.photos)
+                    }
+                    is MediaUiMutation.FavoriteChanged,
+                    is MediaUiMutation.PersonRenamed -> Unit
+                }
+            }
+        }
     }
 
     fun loadMapPhotos() {
@@ -226,6 +247,38 @@ class MapViewModel(
         )
     }
 
+    private suspend fun removeMapPhotos(photos: List<UnifiedPhotoItem>) {
+        if (photos.isEmpty()) return
+        val cloudIds = photos.mapNotNull { it.cloudId }.toSet()
+        val md5s = photos.map { it.md5 }.filter { it.isNotBlank() }.toSet()
+        if (cloudIds.isEmpty() && md5s.isEmpty()) return
+
+        val state = _uiState.value
+        val updatedMapPhotos = state.allPhotos.filterNot { photo ->
+            photo.id in cloudIds || photo.md5 in md5s
+        }
+        if (updatedMapPhotos.size == state.allPhotos.size) return
+
+        publishPhotos(updatedMapPhotos, isLoading = false)
+        val current = _uiState.value
+        val updatedSelectedClusterPhotos = current.selectedClusterPhotos.removePhotos(photos)
+        val updatedSelectedCluster = current.selectedCluster?.let { cluster ->
+            val clusterPhotos = cluster.photos.filterNot { photo ->
+                photo.id in cloudIds || photo.md5 in md5s
+            }
+            if (clusterPhotos.isEmpty()) null else cluster.copy(photos = clusterPhotos)
+        }
+        _uiState.value = current.copy(
+            selectedCluster = updatedSelectedCluster,
+            selectedClusterPhotos = if (updatedSelectedCluster == null) {
+                emptyList()
+            } else {
+                updatedSelectedClusterPhotos
+            },
+            isResolvingSelectedCluster = current.isResolvingSelectedCluster && updatedSelectedCluster != null
+        )
+    }
+
     private suspend fun clustersFor(
         photos: List<MapPhotoItem>,
         zoomLevel: Float,
@@ -333,11 +386,12 @@ class MapViewModel(
 
     class Factory(
         private val galleryRepository: GalleryRepository,
-        private val syncRepository: SyncRepository? = null
+        private val syncRepository: SyncRepository? = null,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MapViewModel(galleryRepository, syncRepository) as T
+            return MapViewModel(galleryRepository, syncRepository, mediaUiMutationBus) as T
         }
     }
 

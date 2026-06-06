@@ -9,7 +9,12 @@ import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
+import com.kqstone.mtphotos.ui.gallery.removePhotos
+import com.kqstone.mtphotos.ui.gallery.updateFavorite
+import com.kqstone.mtphotos.ui.gallery.updateHide
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,7 +46,8 @@ class ViewerViewModel(
     private val galleryRepository: GalleryRepository,
     private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
     private val serverOpTaskRepository: ServerOpTaskRepository,
-    private val appContext: Context
+    private val appContext: Context,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ViewerUiState())
@@ -50,6 +56,7 @@ class ViewerViewModel(
     val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
+        observeMediaUiMutations()
         viewModelScope.launch {
             originalDownloadManager.downloadStates.collect { states ->
                 val currentMd5 = getCurrentPhoto()?.md5 ?: return@collect
@@ -57,6 +64,49 @@ class ViewerViewModel(
                     syncDownloadState()
                 }
             }
+        }
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                applyMediaUiMutation(mutation)
+            }
+        }
+    }
+
+    private fun applyMediaUiMutation(mutation: MediaUiMutation) {
+        when (mutation) {
+            is MediaUiMutation.Deleted -> {
+                val beforeKey = getCurrentPhoto()?.uniqueKey
+                val hasRemaining = removePhotosFromViewer(mutation.photos)
+                if (hasRemaining && beforeKey != getCurrentPhoto()?.uniqueKey) {
+                    syncDownloadState()
+                    loadExifAndFavoriteForCurrent()
+                }
+            }
+            is MediaUiMutation.FavoriteChanged -> {
+                _uiState.update { state ->
+                    val updatedPhotos = state.photos.updateFavorite(
+                        mutation.photos,
+                        mutation.isFavorite
+                    )
+                    state.copy(
+                        photos = updatedPhotos,
+                        isFavorite = updatedPhotos.getOrNull(state.currentIndex)?.isFavorite
+                            ?: state.isFavorite
+                    )
+                }
+            }
+            is MediaUiMutation.HideChanged -> {
+                _uiState.update { state ->
+                    state.copy(
+                        photos = state.photos.updateHide(mutation.photos, mutation.isHide)
+                    )
+                }
+            }
+            is MediaUiMutation.PersonRenamed -> Unit
         }
     }
 
@@ -226,7 +276,10 @@ class ViewerViewModel(
             val deletedIndex = state.photos.indexOfFirst { it.uniqueKey == photo.uniqueKey }
                 .takeIf { it >= 0 }
                 ?: state.currentIndex.takeIf { state.photos.getOrNull(it)?.uniqueKey == photo.uniqueKey }
-                ?: return@update state
+                ?: run {
+                    hasRemainingPhotos = state.photos.isNotEmpty()
+                    return@update state
+                }
 
             val updatedPhotos = state.photos.toMutableList().also { it.removeAt(deletedIndex) }
             hasRemainingPhotos = updatedPhotos.isNotEmpty()
@@ -248,6 +301,42 @@ class ViewerViewModel(
             )
         }
 
+        return hasRemainingPhotos
+    }
+
+    private fun removePhotosFromViewer(photos: List<UnifiedPhotoItem>): Boolean {
+        var hasRemainingPhotos = false
+        _uiState.update { state ->
+            val currentPhoto = state.photos.getOrNull(state.currentIndex)
+            val updatedPhotos = state.photos.removePhotos(photos)
+            if (updatedPhotos.size == state.photos.size) {
+                hasRemainingPhotos = state.photos.isNotEmpty()
+                return@update state
+            }
+
+            hasRemainingPhotos = updatedPhotos.isNotEmpty()
+            val updatedIndex = if (updatedPhotos.isEmpty()) {
+                0
+            } else {
+                currentPhoto
+                    ?.let { current ->
+                        updatedPhotos.indexOfFirst { it.uniqueKey == current.uniqueKey }
+                    }
+                    ?.takeIf { it >= 0 }
+                    ?: state.currentIndex.coerceAtMost(updatedPhotos.lastIndex)
+            }
+
+            state.copy(
+                photos = updatedPhotos,
+                currentIndex = updatedIndex,
+                isFavorite = updatedPhotos.getOrNull(updatedIndex)?.isFavorite ?: false,
+                exifInfo = null,
+                fileDetailInfo = null,
+                originalDownloaded = false,
+                resolvedVideoUrl = null,
+                isPlayingTranscode = false
+            )
+        }
         return hasRemainingPhotos
     }
 
@@ -307,11 +396,18 @@ class ViewerViewModel(
         private val galleryRepository: GalleryRepository,
         private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
         private val serverOpTaskRepository: ServerOpTaskRepository,
-        private val appContext: Context
+        private val appContext: Context,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ViewerViewModel(galleryRepository, originalDownloadManager, serverOpTaskRepository, appContext) as T
+            return ViewerViewModel(
+                galleryRepository,
+                originalDownloadManager,
+                serverOpTaskRepository,
+                appContext,
+                mediaUiMutationBus
+            ) as T
         }
     }
 }

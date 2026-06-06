@@ -8,6 +8,8 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SearchFilters
@@ -20,6 +22,9 @@ import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DayGroup
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.gallery.removePhotos
+import com.kqstone.mtphotos.ui.gallery.updateFavorite
+import com.kqstone.mtphotos.ui.gallery.updateHide
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
@@ -54,7 +59,8 @@ class CloudSearchViewModel(
     private val galleryRepository: GalleryRepository,
     private val syncRepository: SyncRepository? = null,
     private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-    private val appContext: Context? = null
+    private val appContext: Context? = null,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CloudSearchUiState())
@@ -73,7 +79,61 @@ class CloudSearchViewModel(
     val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
+        observeMediaUiMutations()
         refreshClipAvailability()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                applyMediaUiMutation(mutation)
+            }
+        }
+    }
+
+    private fun applyMediaUiMutation(mutation: MediaUiMutation) {
+        when (mutation) {
+            is MediaUiMutation.Deleted -> {
+                _uiState.value = _uiState.value.copy(
+                    resultMonths = _uiState.value.resultMonths.removePhotos(mutation.photos)
+                )
+            }
+            is MediaUiMutation.FavoriteChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    resultMonths = _uiState.value.resultMonths.updateFavorite(
+                        mutation.photos,
+                        mutation.isFavorite
+                    )
+                )
+            }
+            is MediaUiMutation.HideChanged -> {
+                _uiState.value = _uiState.value.copy(
+                    resultMonths = if (mutation.isHide) {
+                        _uiState.value.resultMonths.removePhotos(mutation.photos)
+                    } else {
+                        _uiState.value.resultMonths.updateHide(mutation.photos, isHide = false)
+                    }
+                )
+            }
+            is MediaUiMutation.PersonRenamed -> {
+                val state = _uiState.value
+                _uiState.value = state.copy(
+                    people = state.people.map { person ->
+                        if (person.id == mutation.personId) {
+                            person.copy(name = mutation.newName)
+                        } else {
+                            person
+                        }
+                    },
+                    filters = if (state.filters.personId == mutation.personId) {
+                        state.filters.copy(personName = mutation.newName)
+                    } else {
+                        state.filters
+                    }
+                )
+            }
+        }
     }
 
     private fun refreshClipAvailability() {
@@ -376,12 +436,13 @@ class CloudSearchViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
         selectionManager.deleteSelected(
             photos = getAllLoadedPhotos(),
             onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
         ) {
             _uiState.value = _uiState.value.copy(
-                resultMonths = removeSelectedPhotos(_uiState.value.resultMonths, selectedIds)
+                resultMonths = _uiState.value.resultMonths.removePhotos(selectedPhotos)
             )
         }
     }
@@ -401,7 +462,7 @@ class CloudSearchViewModel(
         if (selectedPhotos.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(
-            resultMonths = updateFavoriteState(_uiState.value.resultMonths, selectedIds, isFavorite = true)
+            resultMonths = _uiState.value.resultMonths.updateFavorite(selectedPhotos, isFavorite = true)
         )
         selectionManager.clearSelection()
 
@@ -412,36 +473,6 @@ class CloudSearchViewModel(
                 appContext?.let { BackupScheduler.triggerServerOpWork(it) }
             }
         }
-    }
-
-    private fun updateFavoriteState(
-        groups: List<MonthGroup>,
-        selectedIds: Set<Double>,
-        isFavorite: Boolean
-    ): List<MonthGroup> {
-        return groups.map { month ->
-            month.copy(
-                days = month.days.map { day ->
-                    day.copy(
-                        photos = day.photos.map { photo ->
-                            if (photo.id in selectedIds) photo.copy(isFavorite = isFavorite) else photo
-                        }
-                    )
-                }
-            )
-        }
-    }
-
-    private fun removeSelectedPhotos(
-        groups: List<MonthGroup>,
-        selectedIds: Set<Double>
-    ): List<MonthGroup> {
-        return groups.map { month ->
-            val updatedDays = month.days.map { day ->
-                day.copy(photos = day.photos.filter { it.id !in selectedIds })
-            }.filter { it.photos.isNotEmpty() }
-            month.copy(days = updatedDays, totalCount = updatedDays.sumOf { it.photos.size })
-        }.filter { it.days.isNotEmpty() || !it.isLoaded || it.totalCount > 0 }
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
@@ -462,7 +493,8 @@ class CloudSearchViewModel(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,
         private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-        private val appContext: Context? = null
+        private val appContext: Context? = null,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -470,7 +502,8 @@ class CloudSearchViewModel(
                 galleryRepository,
                 syncRepository,
                 serverOpTaskRepository,
-                appContext
+                appContext,
+                mediaUiMutationBus
             ) as T
         }
     }

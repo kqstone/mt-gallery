@@ -721,6 +721,10 @@ class GalleryRepository(private val container: AppContainer) {
             if (cloudRequests.isNotEmpty()) {
                 BackupScheduler.triggerServerOpWork(container.prefsManager.context)
             }
+            val deletedPhotos = entities.map { it.toUnifiedPhotoItem() }
+            if (deletedPhotos.isNotEmpty()) {
+                container.mediaUiMutationBus.publish(MediaUiMutation.Deleted(deletedPhotos))
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -746,6 +750,7 @@ class GalleryRepository(private val container: AppContainer) {
             if (cloudRequests.isNotEmpty()) {
                 BackupScheduler.triggerServerOpWork(container.prefsManager.context)
             }
+            container.mediaUiMutationBus.publish(MediaUiMutation.Deleted(photos))
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

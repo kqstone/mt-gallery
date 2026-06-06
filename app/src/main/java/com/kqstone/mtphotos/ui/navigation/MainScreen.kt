@@ -110,18 +110,23 @@ fun MainScreen(
             container.galleryRepository,
             container.syncRepository,
             container.serverOpTaskRepository,
-            appContext
+            appContext,
+            container.mediaUiMutationBus
         )
     )
     val discoveryViewModel: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = DiscoveryViewModel.Factory(container.galleryRepository)
+        factory = DiscoveryViewModel.Factory(
+            container.galleryRepository,
+            container.mediaUiMutationBus
+        )
     )
     val categoryFileListViewModel: CategoryFileListViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CategoryFileListViewModel.Factory(
             container.galleryRepository,
             container.syncRepository,
             container.serverOpTaskRepository,
-            appContext
+            appContext,
+            container.mediaUiMutationBus
         )
     )
     val cloudSearchViewModel: CloudSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -129,7 +134,8 @@ fun MainScreen(
             container.galleryRepository,
             container.syncRepository,
             container.serverOpTaskRepository,
-            appContext
+            appContext,
+            container.mediaUiMutationBus
         )
     )
     val privateAlbumViewModel: PrivateAlbumViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
@@ -137,7 +143,8 @@ fun MainScreen(
             container.galleryRepository,
             container.prefsManager,
             container.serverOpTaskRepository,
-            appContext
+            appContext,
+            container.mediaUiMutationBus
         )
     )
     var isSearchOverlayVisible by remember { mutableStateOf(false) }
@@ -234,7 +241,6 @@ fun MainScreen(
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                             onNavigateToViewer(allPhotos, index)
                         },
-                        onPhotosUnhidden = galleryViewModel::restoreHiddenPhotos,
                         onBack = { innerNavController.popBackStack() }
                     )
                 }
@@ -344,8 +350,7 @@ fun MainScreen(
                             val index = allPhotos.indexOfFirst { it.id == photo.id }.coerceAtLeast(0)
                             onNavigateToViewer(allPhotos, index)
                         },
-                        onBack = { innerNavController.popBackStack() },
-                        onPersonRenamed = discoveryViewModel::updatePersonName
+                        onBack = { innerNavController.popBackStack() }
                     )
                 }
 
@@ -389,7 +394,8 @@ fun MainScreen(
                     val mapViewModel: MapViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                         factory = MapViewModel.Factory(
                             galleryRepository = container.galleryRepository,
-                            syncRepository = container.syncRepository
+                            syncRepository = container.syncRepository,
+                            mediaUiMutationBus = container.mediaUiMutationBus
                         )
                     )
                     MapScreen(

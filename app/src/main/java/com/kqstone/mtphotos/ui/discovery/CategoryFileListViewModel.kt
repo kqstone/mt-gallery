@@ -7,11 +7,16 @@ import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
+import com.kqstone.mtphotos.ui.gallery.removePhotos
+import com.kqstone.mtphotos.ui.gallery.updateFavorite
+import com.kqstone.mtphotos.ui.gallery.updateHide
 import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
@@ -38,7 +43,8 @@ class CategoryFileListViewModel(
     private val galleryRepository: GalleryRepository,
     private val syncRepository: SyncRepository? = null,
     private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-    private val appContext: Context? = null
+    private val appContext: Context? = null,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CategoryFileListUiState())
@@ -62,6 +68,58 @@ class CategoryFileListViewModel(
     )
 
     val shareManager = ShareManager(galleryRepository, viewModelScope)
+
+    init {
+        observeMediaUiMutations()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                applyMediaUiMutation(mutation)
+            }
+        }
+    }
+
+    private fun applyMediaUiMutation(mutation: MediaUiMutation) {
+        when (mutation) {
+            is MediaUiMutation.Deleted -> updateLoadedPhotoPages { _, photos ->
+                photos.removePhotos(mutation.photos)
+            }
+            is MediaUiMutation.FavoriteChanged -> updateLoadedPhotoPages { currentPageKey, photos ->
+                val favoritesKey = pageKey("favorites", "")
+                if (!mutation.isFavorite && currentPageKey == favoritesKey) {
+                    photos.removePhotos(mutation.photos)
+                } else {
+                    photos.updateFavorite(mutation.photos, mutation.isFavorite)
+                }
+            }
+            is MediaUiMutation.HideChanged -> updateLoadedPhotoPages { _, photos ->
+                if (mutation.isHide) {
+                    photos.removePhotos(mutation.photos)
+                } else {
+                    photos.updateHide(mutation.photos, isHide = false)
+                }
+            }
+            is MediaUiMutation.PersonRenamed -> Unit
+        }
+    }
+
+    private fun updateLoadedPhotoPages(
+        transform: (pageKey: String?, photos: List<UnifiedPhotoItem>) -> List<UnifiedPhotoItem>
+    ) {
+        val current = _uiState.value
+        val updatedCurrent = current.copy(photos = transform(current.pageKey, current.photos))
+        _uiState.value = updatedCurrent
+
+        val keys = pageCache.keys.toList()
+        for (key in keys) {
+            val state = pageCache[key] ?: continue
+            pageCache[key] = state.copy(photos = transform(key, state.photos))
+        }
+        updateActiveCache(_uiState.value)
+    }
 
     fun loadPeopleFiles(peopleId: String, force: Boolean = false) {
         loadFiles(cacheKey = pageKey("people", peopleId), force = force) {
@@ -281,12 +339,14 @@ class CategoryFileListViewModel(
 
     fun deleteSelected() {
         val selectedIds = selectionManager.selectedPhotoIds.value
+        val selectedPhotos = _uiState.value.photos.filter { it.id in selectedIds }
         selectionManager.deleteSelected(
             photos = _uiState.value.photos,
             onDeletePhotos = { photos -> galleryRepository.deletePhotos(photos) }
         ) {
-            val remaining = _uiState.value.photos.filter { it.id !in selectedIds }
-            _uiState.value = _uiState.value.copy(photos = remaining)
+            _uiState.value = _uiState.value.copy(
+                photos = _uiState.value.photos.removePhotos(selectedPhotos)
+            )
             updateActiveCache(_uiState.value)
         }
     }
@@ -306,9 +366,7 @@ class CategoryFileListViewModel(
         if (selectedPhotos.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(
-            photos = _uiState.value.photos.map { photo ->
-                if (photo.id in selectedIds) photo.copy(isFavorite = true) else photo
-            }
+            photos = _uiState.value.photos.updateFavorite(selectedPhotos, isFavorite = true)
         )
         updateActiveCache(_uiState.value)
         selectionManager.clearSelection()
@@ -329,7 +387,7 @@ class CategoryFileListViewModel(
         if (selectedPhotos.isEmpty()) return
 
         _uiState.value = _uiState.value.copy(
-            photos = _uiState.value.photos.filter { it.id !in selectedIds }
+            photos = _uiState.value.photos.removePhotos(selectedPhotos)
         )
         updateActiveCache(_uiState.value)
         selectionManager.clearSelection()
@@ -381,7 +439,8 @@ class CategoryFileListViewModel(
         private val galleryRepository: GalleryRepository,
         private val syncRepository: SyncRepository? = null,
         private val serverOpTaskRepository: ServerOpTaskRepository? = null,
-        private val appContext: Context? = null
+        private val appContext: Context? = null,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -389,7 +448,8 @@ class CategoryFileListViewModel(
                 galleryRepository,
                 syncRepository,
                 serverOpTaskRepository,
-                appContext
+                appContext,
+                mediaUiMutationBus
             ) as T
         }
     }

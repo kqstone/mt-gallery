@@ -22,6 +22,7 @@ import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.repository.AuthRepository
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.GalleryRepository
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
@@ -157,6 +158,7 @@ class AppContainer(context: android.content.Context) {
 
     val authRepository = AuthRepository(this)
     val backupDestinationRepository = BackupDestinationRepository(this)
+    val mediaUiMutationBus = MediaUiMutationBus()
     val galleryRepository = GalleryRepository(this)
 
     // Room 数据库
