@@ -677,6 +677,20 @@ class GalleryRepository(private val container: AppContainer) {
         return "${urlBase()}/gateway/file/$id/$md5${urlSuffix()}&type=transcode"
     }
 
+    suspend fun getFileStreamUrl(id: Double): Result<String> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2FileStreamLink(fileIdPath(id))
+            val link = (response as? Map<*, *>)?.get("link")?.toString().orEmpty()
+            if (link.isBlank()) {
+                Result.failure(IllegalStateException("Empty stream link"))
+            } else {
+                Result.success(toAbsoluteUrl(link))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     fun getFileDownloadUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileDownload/$id/$md5${urlSuffix()}"
     }
@@ -704,6 +718,19 @@ class GalleryRepository(private val container: AppContainer) {
 
     fun getMotionPhotoUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileMotion/$id/$md5${urlSuffix()}"
+    }
+
+    private fun fileIdPath(id: Double): String {
+        return if (id % 1.0 == 0.0) id.toLong().toString() else id.toString()
+    }
+
+    private fun toAbsoluteUrl(link: String): String {
+        return when {
+            link.startsWith("http://", ignoreCase = true) ||
+                link.startsWith("https://", ignoreCase = true) -> link
+            link.startsWith("/") -> "${urlBase()}$link"
+            else -> "${urlBase()}/$link"
+        }
     }
 
     suspend fun deleteFiles(ids: List<Double>): Result<Unit> {

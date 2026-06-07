@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +59,7 @@ import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import android.content.Context
+import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -139,7 +142,25 @@ fun ViewerScreen(
 
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCastDeviceDialog by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+
+    LaunchedEffect(uiState.streamFailureCount) {
+        if (uiState.streamFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.stream_link_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(uiState.castFailureCount) {
+        if (uiState.castFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.cast_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(uiState.castSuccessCount) {
+        if (uiState.castSuccessCount > 0) {
+            showCastDeviceDialog = false
+            Toast.makeText(context, context.getString(R.string.cast_sent), Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -181,9 +202,14 @@ fun ViewerScreen(
             } else if (isPlayableMedia) {
                 Box(modifier = Modifier.fillMaxSize())
             } else {
+                val imageUrl = if (isCurrentPage && uiState.isPlayingStreamUrl && !photo.isPlayableMedia()) {
+                    uiState.streamMediaUrl ?: viewModel.getFullImageUrl(photo)
+                } else {
+                    viewModel.getFullImageUrl(photo)
+                }
                 ZoomableImage(
                     photo = photo,
-                    imageUrl = viewModel.getFullImageUrl(photo),
+                    imageUrl = imageUrl,
                     contentDescription = photo.fileName,
                     onTap = { isUiVisible = !isUiVisible },
                     onZoomedChanged = {}
@@ -268,7 +294,31 @@ fun ViewerScreen(
                     val showLoadOriginalButton = needsOriginal &&
                         (!currentPhoto.isVideo() || uiState.isPlayingTranscode) &&
                         !uiState.originalDownloaded
+                    val showStreamButton = currentPhoto.cloudId != null
 
+                    if (showStreamButton) {
+                        IconButton(
+                            onClick = {
+                                showCastDeviceDialog = true
+                                viewModel.startCastDeviceDiscovery()
+                            },
+                            enabled = !uiState.isDiscoveringCastDevices && !uiState.isCastingToDevice
+                        ) {
+                            if (uiState.isDiscoveringCastDevices || uiState.isCastingToDevice) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Cast,
+                                    contentDescription = stringResource(R.string.stream_play),
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
                     if (showLoadOriginalButton) {
                         IconButton(onClick = { viewModel.downloadOriginal(context) }) {
                             if (uiState.isDownloadingOriginal) {
@@ -350,6 +400,17 @@ fun ViewerScreen(
         )
     }
 
+    if (showCastDeviceDialog) {
+        CastDeviceDialog(
+            devices = uiState.castDevices,
+            isDiscovering = uiState.isDiscoveringCastDevices,
+            isCasting = uiState.isCastingToDevice,
+            onRefresh = { viewModel.startCastDeviceDiscovery() },
+            onSelectDevice = { device -> viewModel.castCurrentMedia(device) },
+            onDismiss = { showCastDeviceDialog = false }
+        )
+    }
+
     // Elegant Delete Confirmation Dialog
     if (false && showDeleteDialog) {
         AlertDialog(
@@ -406,6 +467,124 @@ fun ViewerScreen(
             tonalElevation = 6.dp
         )
     }
+}
+
+@Composable
+private fun CastDeviceDialog(
+    devices: List<DlnaCastDevice>,
+    isDiscovering: Boolean,
+    isCasting: Boolean,
+    onRefresh: () -> Unit,
+    onSelectDevice: (DlnaCastDevice) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!isCasting) onDismiss()
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Cast,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.cast_devices))
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                when {
+                    isDiscovering && devices.isEmpty() -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(text = stringResource(R.string.searching_cast_devices))
+                        }
+                    }
+                    devices.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.no_cast_devices_found),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp)
+                        ) {
+                            items(devices, key = { it.id }) { device ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(enabled = !isCasting) { onSelectDevice(device) }
+                                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = device.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = URIHost(device.controlUrl),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (isCasting) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onRefresh,
+                enabled = !isDiscovering && !isCasting
+            ) {
+                Text(text = stringResource(R.string.refresh_btn))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isCasting
+            ) {
+                Text(text = stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+private fun URIHost(url: String): String {
+    return runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
 }
 
 /**
@@ -682,10 +861,15 @@ private fun ZoomableImage(
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
 
     val imageRequest = remember(imageUrl, photo.md5) {
+        val cacheKey = if (imageUrl.contains("/gateway/stream", ignoreCase = true)) {
+            "${photo.md5}_stream_${imageUrl.hashCode()}"
+        } else {
+            "${photo.md5}_full"
+        }
         coil.request.ImageRequest.Builder(context)
             .data(imageUrl)
-            .diskCacheKey("${photo.md5}_full")
-            .memoryCacheKey("${photo.md5}_full")
+            .diskCacheKey(cacheKey)
+            .memoryCacheKey(cacheKey)
             .diskCachePolicy(coil.request.CachePolicy.ENABLED)
             .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
             .build()
