@@ -27,8 +27,8 @@ import com.kqstone.mtphotos.ui.gallery.updateFavorite
 import com.kqstone.mtphotos.ui.gallery.updateHide
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.ShareManager
-import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.ui.util.UiText
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
@@ -476,11 +476,7 @@ class CloudSearchViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        return ThumbnailUrlResolver.resolve(
-            photo = photo,
-            galleryRepository = galleryRepository,
-            imageCloudUrl = { galleryRepository.getThumbUrlByMd5(it.md5) }
-        )
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> {

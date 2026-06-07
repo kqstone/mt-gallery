@@ -494,7 +494,7 @@ fun MapScreen(
                     cluster = cluster,
                     photos = uiState.selectedClusterPhotos,
                     isLoading = uiState.isResolvingSelectedCluster,
-                    thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
+                    thumbUrlProvider = viewModel::getThumbUrl,
                     onDismiss = { viewModel.selectCluster(null) },
                     onPhotoClick = onPhotoClick
                 )
@@ -545,7 +545,7 @@ private fun ClusterPhotoGrid(
     cluster: MapCluster,
     photos: List<UnifiedPhotoItem>,
     isLoading: Boolean,
-    thumbUrlProvider: (String, Double) -> String,
+    thumbUrlProvider: (UnifiedPhotoItem) -> String,
     onDismiss: () -> Unit,
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit
 ) {
@@ -580,7 +580,7 @@ private fun ClusterPhotoGrid(
         selectedPhotoIds = emptySet(),
         isSelectionMode = false,
         selectionManager = selectionManager,
-        getThumbUrl = { photo -> thumbUrlProvider(photo.md5, photo.id) },
+        getThumbUrl = thumbUrlProvider,
         onPhotoClick = { photo -> onPhotoClick(photo, photos) },
         onColumnCountChange = { columnCount = it },
         onSelectAll = {},

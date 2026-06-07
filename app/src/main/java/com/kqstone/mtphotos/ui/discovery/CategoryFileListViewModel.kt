@@ -17,9 +17,8 @@ import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.removePhotos
 import com.kqstone.mtphotos.ui.gallery.updateFavorite
 import com.kqstone.mtphotos.ui.gallery.updateHide
-import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.ShareManager
-import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.UiText
@@ -292,7 +291,7 @@ class CategoryFileListViewModel(
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
-        return galleryRepository.getThumbUrl(md5, fileId)
+        return MediaThumbnailResolver.resolveCloudThumb(md5, fileId, galleryRepository)
     }
 
     fun getVideoThumbUrl(md5: String): String {
@@ -300,11 +299,7 @@ class CategoryFileListViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        return ThumbnailUrlResolver.resolve(
-            photo = photo,
-            galleryRepository = galleryRepository,
-            imageCloudUrl = { galleryRepository.getThumbUrl(it.md5, it.id) }
-        )
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> = _uiState.value.photos
@@ -312,17 +307,21 @@ class CategoryFileListViewModel(
     private fun warmLocalVideoThumbnails(photos: List<UnifiedPhotoItem>) {
         localVideoThumbJob?.cancel()
         localVideoThumbJob = viewModelScope.launch {
-            LocalVideoThumbnailWarmup.warm(photos, syncRepository) { photo, path ->
-                updatePhotoThumbCachePath(photo.dbId, path)
-            }
+            updatePhotoThumbCachePaths(
+                MediaThumbnailResolver.warmLocalVideoThumbs(photos, syncRepository)
+            )
         }
     }
 
-    private fun updatePhotoThumbCachePath(dbId: Long, path: String) {
-        if (dbId <= 0) return
+    private fun updatePhotoThumbCachePaths(updates: List<Pair<Long, String>>) {
+        val byDbId = updates
+            .filter { (dbId, path) -> dbId > 0 && path.isNotBlank() }
+            .toMap()
+        if (byDbId.isEmpty()) return
+
         _uiState.value = _uiState.value.copy(
             photos = _uiState.value.photos.map { photo ->
-                if (photo.dbId == dbId) photo.copy(thumbCachePath = path) else photo
+                byDbId[photo.dbId]?.let { path -> photo.copy(thumbCachePath = path) } ?: photo
             }
         )
         updateActiveCache(_uiState.value)
