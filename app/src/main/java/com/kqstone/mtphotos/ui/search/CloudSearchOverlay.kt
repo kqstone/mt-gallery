@@ -60,6 +60,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,7 +91,6 @@ import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 import com.kqstone.mtphotos.ui.util.OverlayStatusBarStyleEffect
-import com.kqstone.mtphotos.ui.util.stableStatusBarHeight
 import com.kqstone.mtphotos.ui.util.stableStatusBarsPadding
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -110,7 +110,7 @@ fun CloudSearchOverlay(
     val keyboardController = LocalSoftwareKeyboardController.current
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var isFilterPanelVisible by remember { mutableStateOf(true) }
+    var isFilterPanelVisible by rememberSaveable { mutableStateOf(true) }
 
     ToastMessageEffect(
         message = uiState.toastMessage,
@@ -150,7 +150,6 @@ fun CloudSearchOverlay(
                     onShare = { viewModel.shareSelected(context) },
                     onFavorite = { viewModel.favoriteSelected() },
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
-                    modifier = Modifier.padding(top = stableStatusBarHeight()),
                     scrollAlpha = 1f
                 )
             } else {
@@ -158,8 +157,13 @@ fun CloudSearchOverlay(
                     query = uiState.query,
                     isSearching = uiState.isSearching,
                     isFilterPanelVisible = isFilterPanelVisible,
+                    autoFocus = !uiState.isActive,
                     onQueryChange = viewModel::updateQuery,
-                    onQueryFocused = { isFilterPanelVisible = true },
+                    onQueryFocused = {
+                        if (!uiState.isActive) {
+                            isFilterPanelVisible = true
+                        }
+                    },
                     onToggleFilters = { isFilterPanelVisible = !isFilterPanelVisible },
                     onSearch = {
                         keyboardController?.hide()
@@ -276,6 +280,7 @@ private fun CloudSearchTopBar(
     query: String,
     isSearching: Boolean,
     isFilterPanelVisible: Boolean,
+    autoFocus: Boolean,
     onQueryChange: (String) -> Unit,
     onQueryFocused: () -> Unit,
     onToggleFilters: () -> Unit,
@@ -285,8 +290,10 @@ private fun CloudSearchTopBar(
 ) {
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            focusRequester.requestFocus()
+        }
     }
 
     Row(

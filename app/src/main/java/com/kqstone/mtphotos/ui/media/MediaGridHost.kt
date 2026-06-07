@@ -66,6 +66,9 @@ fun MediaGridHost(
     overlayContent: @Composable BoxScope.() -> Unit = {},
     shareManager: ShareManager? = null,
     scrollAlpha: Float = 1f,
+    showTopBar: Boolean = true,
+    showSelectionTopBar: Boolean = true,
+    handleSelectionBack: Boolean = true,
     onShare: (() -> Unit)? = null,
     onFavorite: (() -> Unit)? = null,
     onUnfavorite: (() -> Unit)? = null,
@@ -75,7 +78,7 @@ fun MediaGridHost(
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = isSelectionMode) {
+    BackHandler(enabled = handleSelectionBack && isSelectionMode) {
         onClearSelection()
     }
 
@@ -148,26 +151,28 @@ fun MediaGridHost(
 
         overlayContent()
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-        ) {
-            if (isSelectionMode) {
-                SelectionTopBar(
-                    selectedCount = selectedPhotoIds.size,
-                    onSelectAll = onSelectAll,
-                    onDelete = { showDeleteDialog = true },
-                    onShare = onShare,
-                    onFavorite = onFavorite,
-                    onUnfavorite = onUnfavorite,
-                    onHide = onHide,
-                    onUnhide = onUnhide,
-                    onClearSelection = onClearSelection,
-                    scrollAlpha = scrollAlpha
-                )
-            } else {
-                normalTopBar()
+        if (showTopBar) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+            ) {
+                if (isSelectionMode && showSelectionTopBar) {
+                    SelectionTopBar(
+                        selectedCount = selectedPhotoIds.size,
+                        onSelectAll = onSelectAll,
+                        onDelete = { showDeleteDialog = true },
+                        onShare = onShare,
+                        onFavorite = onFavorite,
+                        onUnfavorite = onUnfavorite,
+                        onHide = onHide,
+                        onUnhide = onUnhide,
+                        onClearSelection = onClearSelection,
+                        scrollAlpha = scrollAlpha
+                    )
+                } else {
+                    normalTopBar()
+                }
             }
         }
     }
