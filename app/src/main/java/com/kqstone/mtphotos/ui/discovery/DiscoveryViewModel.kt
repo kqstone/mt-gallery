@@ -10,6 +10,7 @@ import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.Job
@@ -153,11 +154,11 @@ class DiscoveryViewModel(
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
-        return galleryRepository.getThumbUrl(md5, fileId)
+        return MediaThumbnailResolver.resolveCloudThumb(md5, fileId, galleryRepository)
     }
 
     fun getThumbUrlByMd5(md5: String): String {
-        return galleryRepository.getThumbUrlByMd5(md5)
+        return MediaThumbnailResolver.resolveCloudThumbByMd5(md5, galleryRepository)
     }
 
     fun getPortraitUrl(personId: String, cover: Double): String {

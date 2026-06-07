@@ -1,19 +1,14 @@
 package com.kqstone.mtphotos.ui.search
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,7 +24,7 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
-import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
+import com.kqstone.mtphotos.ui.media.MediaGridHost
 import com.kqstone.mtphotos.ui.util.UiText
 
 @Composable
@@ -90,57 +85,41 @@ fun SearchResultsPanel(
             )
         }
 
-        when {
-            isSearching && resultCount == 0 -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            searchError != null && resultCount == 0 -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = searchError.asString(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.click_to_retry),
-                            modifier = Modifier.clickable(onClick = onRetry),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-            else -> {
-                TimelinePhotoGrid(
-                    months = months,
-                    columnCount = columnCount,
-                    selectedPhotoIds = selectedPhotoIds,
-                    isSelectionMode = isSelectionMode,
-                    selectionManager = selectionManager,
-                    getThumbUrl = getThumbUrl,
-                    onPhotoClick = onPhotoClick,
-                    onColumnCountChange = onColumnCountChange,
-                    modifier = Modifier.weight(1f),
-                    showMonthHeaders = false,
-                    showDayHeaders = searchType != SearchType.VISUAL_TEXT,
-                    stateKey = "search-results",
-                    gridState = gridState,
-                    contentPadding = PaddingValues(
-                        start = 1.dp,
-                        end = 1.dp,
-                        bottom = bottomPadding
-                    )
+        MediaGridHost(
+            months = months,
+            columnCount = columnCount,
+            selectedPhotoIds = selectedPhotoIds,
+            isSelectionMode = isSelectionMode,
+            selectionManager = selectionManager,
+            getThumbUrl = getThumbUrl,
+            onPhotoClick = onPhotoClick,
+            onColumnCountChange = onColumnCountChange,
+            onSelectAll = {},
+            onDeleteSelected = {},
+            onClearSelection = selectionManager::clearSelection,
+            normalTopBar = {},
+            modifier = Modifier.weight(1f),
+            isLoading = isSearching && resultCount == 0,
+            error = searchError.takeIf { resultCount == 0 },
+            isEmpty = !isSearching && searchError == null && resultCount == 0,
+            emptyContent = {
+                Text(
+                    text = stringResource(R.string.no_photos),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-        }
+            },
+            onRetry = onRetry,
+            showMonthHeaders = false,
+            showDayHeaders = searchType != SearchType.VISUAL_TEXT,
+            stateKey = "search-results",
+            gridState = gridState,
+            contentPadding = PaddingValues(
+                start = 1.dp,
+                end = 1.dp,
+                bottom = bottomPadding
+            ),
+            showTopBar = false,
+            handleSelectionBack = false
+        )
     }
 }

@@ -64,10 +64,9 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.local.PrivacyLockMode
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.media.MediaGridHost
 import com.kqstone.mtphotos.ui.util.UiText
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
-import com.kqstone.mtphotos.ui.util.PermissionHelper
-import com.kqstone.mtphotos.ui.util.ShareProgressOverlay
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.hazeContentSource
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
@@ -86,7 +85,6 @@ fun PrivateAlbumScreen(
     val selectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = selectedIds.isNotEmpty()
     val context = LocalContext.current
-    var showDeleteDialog by remember { mutableStateOf(false) }
     var usePasswordFallback by remember { mutableStateOf(false) }
 
     fun leavePrivateAlbum() {
@@ -158,56 +156,70 @@ fun PrivateAlbumScreen(
             }
         } else {
             val pullRefreshState = rememberPullToRefreshState()
-            PullToRefreshBox(
-                isRefreshing = uiState.isLoading,
-                onRefresh = viewModel::refresh,
-                modifier = Modifier.fillMaxSize().hazeContentSource(),
-                state = pullRefreshState,
-                indicator = {
-                    PullToRefreshDefaults.Indicator(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = scrollState.topBarHeight),
+            MediaGridHost(
+                months = uiState.months,
+                columnCount = uiState.columnCount,
+                selectedPhotoIds = selectedIds,
+                isSelectionMode = isSelectionMode,
+                selectionManager = viewModel.selectionManager,
+                getThumbUrl = viewModel::getThumbUrl,
+                onPhotoClick = { photo -> onPhotoClick(photo, viewModel.getAllLoadedPhotos()) },
+                onColumnCountChange = viewModel::updateColumnCount,
+                onSelectAll = viewModel::selectAll,
+                onDeleteSelected = viewModel::deleteSelected,
+                onClearSelection = { viewModel.selectionManager.clearSelection() },
+                normalTopBar = {
+                    BackTitleTopBar(
+                        title = stringResource(R.string.private_album_title),
+                        onBack = { leavePrivateAlbum() },
+                        scrollAlpha = scrollState.scrollAlpha
+                    )
+                },
+                isEmpty = !uiState.isLoading && uiState.months.isEmpty(),
+                emptyContent = {
+                    Text(
+                        text = stringResource(R.string.private_album_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                contentTopPadding = scrollState.topBarHeight,
+                stateKey = "gallery:private",
+                gridState = gridState,
+                contentPadding = PaddingValues(
+                    top = scrollState.topBarHeight,
+                    bottom = 80.dp,
+                    start = 1.dp,
+                    end = 1.dp
+                ),
+                gridContainer = { gridContent ->
+                    PullToRefreshBox(
                         isRefreshing = uiState.isLoading,
-                        state = pullRefreshState
-                    )
-                }
-            ) {
-                if (!uiState.isLoading && uiState.months.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = scrollState.topBarHeight),
-                        contentAlignment = Alignment.Center
+                        onRefresh = viewModel::refresh,
+                        modifier = Modifier.fillMaxSize().hazeContentSource(),
+                        state = pullRefreshState,
+                        indicator = {
+                            PullToRefreshDefaults.Indicator(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = scrollState.topBarHeight),
+                                isRefreshing = uiState.isLoading,
+                                state = pullRefreshState
+                            )
+                        }
                     ) {
-                        Text(
-                            text = stringResource(R.string.private_album_empty),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        gridContent()
                     }
-                } else {
-                    TimelinePhotoGrid(
-                        months = uiState.months,
-                        columnCount = uiState.columnCount,
-                        selectedPhotoIds = selectedIds,
-                        isSelectionMode = isSelectionMode,
-                        selectionManager = viewModel.selectionManager,
-                        getThumbUrl = viewModel::getThumbUrl,
-                        onPhotoClick = { photo -> onPhotoClick(photo, viewModel.getAllLoadedPhotos()) },
-                        onColumnCountChange = viewModel::updateColumnCount,
-                        onMonthPlaceholderClick = {},
-                        stateKey = "gallery:private",
-                        gridState = gridState,
-                        contentPadding = PaddingValues(
-                            top = scrollState.topBarHeight,
-                            bottom = 80.dp,
-                            start = 1.dp,
-                            end = 1.dp
-                        )
-                    )
-                }
-            }
+                },
+                shareManager = viewModel.shareManager,
+                scrollAlpha = if (isSelectionMode) 1f else scrollState.scrollAlpha,
+                showTopBar = !uiState.showSetupPrompt && uiState.setupMode == null,
+                handleSelectionBack = false,
+                selectionActions = listOf(
+                    MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
+                    MediaSelectionAction(MediaSelectionActionType.UNHIDE) { viewModel.unhideSelected() }
+                )
+            )
         }
 
         if (uiState.showSetupPrompt) {
@@ -240,31 +252,6 @@ fun PrivateAlbumScreen(
             else -> Unit
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-        ) {
-            if (uiState.isLocked || uiState.showSetupPrompt || uiState.setupMode != null) {
-                Unit
-            } else if (isSelectionMode) {
-                SelectionTopBar(
-                    selectedCount = selectedIds.size,
-                    onSelectAll = viewModel::selectAll,
-                    onDelete = { showDeleteDialog = true },
-                    onShare = { viewModel.shareSelected(context) },
-                    onUnhide = { viewModel.unhideSelected() },
-                    onClearSelection = { viewModel.selectionManager.clearSelection() },
-                    scrollAlpha = 1f
-                )
-            } else {
-                BackTitleTopBar(
-                    title = stringResource(R.string.private_album_title),
-                    onBack = { leavePrivateAlbum() },
-                    scrollAlpha = scrollState.scrollAlpha
-                )
-            }
-        }
     }
 
     if (uiState.showIntro) {
@@ -280,20 +267,6 @@ fun PrivateAlbumScreen(
         )
     }
 
-    if (showDeleteDialog) {
-        DeleteConfirmDialog(
-            selectedCount = selectedIds.size,
-            onConfirm = {
-                showDeleteDialog = false
-                if (PermissionHelper.requestManageStoragePermission(context)) {
-                    viewModel.deleteSelected()
-                }
-            },
-            onDismiss = { showDeleteDialog = false }
-        )
-    }
-
-    ShareProgressOverlay(viewModel.shareManager)
 }
 
 @Composable

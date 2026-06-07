@@ -14,8 +14,8 @@ import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.ShareManager
-import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.ui.util.UiText
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -406,11 +406,7 @@ class PrivateAlbumViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        return ThumbnailUrlResolver.resolve(
-            photo = photo,
-            galleryRepository = galleryRepository,
-            imageCloudUrl = { galleryRepository.getThumbUrlByMd5(it.md5) }
-        )
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun getAllLoadedPhotos(): List<UnifiedPhotoItem> {

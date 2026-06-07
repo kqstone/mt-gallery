@@ -22,9 +22,8 @@ import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.TimelineMonth
 import com.kqstone.mtphotos.data.repository.TimelineSnapshot
 import com.kqstone.mtphotos.data.repository.toCloudOnlyUnifiedPhotoItem
-import com.kqstone.mtphotos.ui.util.LocalVideoThumbnailWarmup
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
-import com.kqstone.mtphotos.ui.util.ThumbnailUrlResolver
 import com.kqstone.mtphotos.worker.BackupScheduler
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.ShareManager
@@ -1029,11 +1028,7 @@ class GalleryViewModel(
     }
 
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
-        return ThumbnailUrlResolver.resolve(
-            photo = photo,
-            galleryRepository = galleryRepository,
-            imageCloudUrl = { galleryRepository.getThumbUrlByMd5(it.md5) }
-        )
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun getFullImageUrl(photo: UnifiedPhotoItem): String {
@@ -1056,7 +1051,9 @@ class GalleryViewModel(
         }
     }
 
-    fun getThumbUrl(md5: String, fileId: Double): String = galleryRepository.getThumbUrl(md5, fileId)
+    fun getThumbUrl(md5: String, fileId: Double): String {
+        return MediaThumbnailResolver.resolveCloudThumb(md5, fileId, galleryRepository)
+    }
 
     fun getVideoThumbUrl(md5: String): String = galleryRepository.getVideoThumbUrl(md5)
 
@@ -1077,10 +1074,10 @@ class GalleryViewModel(
     private fun warmLocalVideoThumbnails(photos: List<UnifiedPhotoItem>) {
         localVideoThumbJob?.cancel()
         localVideoThumbJob = viewModelScope.launch {
-            val updates = mutableListOf<Pair<Long, String>>()
-            LocalVideoThumbnailWarmup.warm(photos.take(LOCAL_VIDEO_THUMB_WARMUP_LIMIT), syncRepository) { photo, path ->
-                updates.add(photo.dbId to path)
-            }
+            val updates = MediaThumbnailResolver.warmLocalVideoThumbs(
+                photos.take(LOCAL_VIDEO_THUMB_WARMUP_LIMIT),
+                syncRepository
+            )
             updatePhotoThumbCachePaths(updates)
         }
     }

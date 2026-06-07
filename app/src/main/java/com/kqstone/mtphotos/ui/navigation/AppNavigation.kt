@@ -35,6 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.oplog.OpLogScreen
 import com.kqstone.mtphotos.ui.oplog.OpLogViewModel
 import com.kqstone.mtphotos.ui.settings.BackupSetupScreen
@@ -276,7 +277,9 @@ private fun AppContent(container: com.kqstone.mtphotos.AppContainer) {
             OpLogScreen(
                 viewModel = opLogViewModel,
                 onBack = { navController.popBackStack() },
-                getThumbUrl = { md5, _ -> container.galleryRepository.getThumbUrlByMd5(md5) }
+                getThumbUrl = { md5, fileId ->
+                    MediaThumbnailResolver.resolveCloudThumb(md5, fileId ?: 0.0, container.galleryRepository)
+                }
             )
         }
     }

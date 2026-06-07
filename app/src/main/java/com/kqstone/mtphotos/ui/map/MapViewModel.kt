@@ -15,6 +15,7 @@ import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.data.repository.toUnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.removePhotos
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -167,7 +168,11 @@ class MapViewModel(
     }
 
     fun getThumbUrl(md5: String, fileId: Double): String {
-        return galleryRepository.getThumbUrl(md5, fileId)
+        return MediaThumbnailResolver.resolveCloudThumb(md5, fileId, galleryRepository)
+    }
+
+    fun getThumbUrl(photo: UnifiedPhotoItem): String {
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun updateCameraState(

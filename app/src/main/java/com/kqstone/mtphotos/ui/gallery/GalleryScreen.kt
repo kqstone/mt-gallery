@@ -1,9 +1,6 @@
 package com.kqstone.mtphotos.ui.gallery
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,8 +34,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.ui.media.MediaGridHost
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
-import com.kqstone.mtphotos.ui.util.PermissionHelper
 import androidx.compose.ui.res.stringResource
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
@@ -63,10 +59,6 @@ fun GalleryScreen(
     val gallerySelectedIds by viewModel.selectionManager.selectedPhotoIds.collectAsState()
     val isSelectionMode = gallerySelectedIds.isNotEmpty()
 
-    BackHandler(enabled = isSelectionMode) {
-        viewModel.selectionManager.clearSelection()
-    }
-    var showDeleteDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     // 后台同步和刷新结果使用轻量 Toast 提示
@@ -92,183 +84,137 @@ fun GalleryScreen(
         firstVisibleItemScrollOffset = { gridState.firstVisibleItemScrollOffset }
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            uiState.isLoading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = scrollState.topBarHeight, bottom = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-            uiState.error != null && uiState.months.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = scrollState.topBarHeight, bottom = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = uiState.error!!.asString(), color = MaterialTheme.colorScheme.error)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.click_to_retry),
-                            modifier = Modifier.clickable {
-                                viewModel.loadTimeline()
-                            },
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-            else -> {
-                val progressText = uiState.syncProgressText?.asString()
-                val hasSyncProgress = uiState.isSyncing && progressText != null
-                
-                Box(modifier = Modifier.fillMaxSize()) {
-                    val pullRefreshState = rememberPullToRefreshState()
-                    var privatePullArmed by remember { mutableStateOf(false) }
-                    LaunchedEffect(pullRefreshState.distanceFraction, uiState.isRefreshing) {
-                        if (!uiState.isRefreshing &&
-                            pullRefreshState.distanceFraction >= PRIVATE_ALBUM_PULL_THRESHOLD
-                        ) {
-                            privatePullArmed = true
-                        }
-                    }
-                    PullToRefreshBox(
-                        isRefreshing = uiState.isRefreshing,
-                        onRefresh = {
-                            if (privatePullArmed) {
-                                privatePullArmed = false
-                                onOpenPrivateAlbum()
-                            } else {
-                                viewModel.refresh()
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize().hazeContentSource(),
-                        state = pullRefreshState,
-                        indicator = {
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = scrollState.topBarHeight),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                PullToRefreshDefaults.Indicator(
-                                    isRefreshing = uiState.isRefreshing,
-                                    state = pullRefreshState
-                                )
-                                if (!uiState.isRefreshing && pullRefreshState.distanceFraction > 1.1f) {
-                                    Text(
-                                        text = stringResource(
-                                            if (privatePullArmed) {
-                                                R.string.private_album_release_to_open
-                                            } else {
-                                                R.string.private_album_keep_pulling
-                                            }
-                                        ),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    ) {
-                        TimelinePhotoGrid(
-                            months = uiState.months,
-                            columnCount = uiState.columnCount,
-                            selectedPhotoIds = gallerySelectedIds,
-                            isSelectionMode = isSelectionMode,
-                            selectionManager = viewModel.selectionManager,
-                            getThumbUrl = viewModel::getThumbUrl,
-                            onPhotoClick = { photo -> onPhotoClick(photo, viewModel.getAllLoadedPhotos()) },
-                            onColumnCountChange = { viewModel.updateColumnCount(it) },
-                            onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) },
-                            stateKey = "gallery:timeline",
-                            gridState = gridState,
-                            contentPadding = PaddingValues(
-                                top = if (hasSyncProgress) scrollState.topBarHeight + 40.dp else scrollState.topBarHeight,
-                                bottom = 80.dp,
-                                start = 1.dp,
-                                end = 1.dp
-                            )
-                        )
-                    }
-                    
-                    if (hasSyncProgress) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = scrollState.topBarHeight)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .height(16.dp)
-                                    .width(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = progressText!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
+    val progressText = uiState.syncProgressText?.asString()
+    val hasSyncProgress = uiState.isSyncing && progressText != null
+    val pullRefreshState = rememberPullToRefreshState()
+    var privatePullArmed by remember { mutableStateOf(false) }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
+    LaunchedEffect(pullRefreshState.distanceFraction, uiState.isRefreshing) {
+        if (!uiState.isRefreshing &&
+            pullRefreshState.distanceFraction >= PRIVATE_ALBUM_PULL_THRESHOLD
         ) {
-            if (isSelectionMode) {
-                SelectionTopBar(
-                    selectedCount = gallerySelectedIds.size,
-                    onSelectAll = viewModel::selectAll,
-                    onDelete = { showDeleteDialog = true },
-                    onShare = { viewModel.shareSelected(context) },
-                    onFavorite = { viewModel.favoriteSelected() },
-                    onHide = { viewModel.hideSelected() },
-                    onClearSelection = { viewModel.selectionManager.clearSelection() },
-                    scrollAlpha = scrollState.scrollAlpha
-                )
-            } else {
-                SearchEntryTopBar(
-                    onSearchClick = onOpenSearch,
-                    onSettingsClick = onSettingsClick,
-                    onAboutClick = onAboutClick,
-                    onOpLogClick = onOpLogClick,
-                    scrollAlpha = scrollState.scrollAlpha
-                )
-            }
+            privatePullArmed = true
         }
-
     }
 
-    if (showDeleteDialog) {
-        DeleteConfirmDialog(
-            selectedCount = gallerySelectedIds.size,
-            onConfirm = {
-                showDeleteDialog = false
-                if (PermissionHelper.requestManageStoragePermission(context)) {
-                    viewModel.deleteSelected()
+    MediaGridHost(
+        months = uiState.months,
+        columnCount = uiState.columnCount,
+        selectedPhotoIds = gallerySelectedIds,
+        isSelectionMode = isSelectionMode,
+        selectionManager = viewModel.selectionManager,
+        getThumbUrl = viewModel::getThumbUrl,
+        onPhotoClick = { photo -> onPhotoClick(photo, viewModel.getAllLoadedPhotos()) },
+        onColumnCountChange = { viewModel.updateColumnCount(it) },
+        onSelectAll = viewModel::selectAll,
+        onDeleteSelected = viewModel::deleteSelected,
+        onClearSelection = { viewModel.selectionManager.clearSelection() },
+        normalTopBar = {
+            SearchEntryTopBar(
+                onSearchClick = onOpenSearch,
+                onSettingsClick = onSettingsClick,
+                onAboutClick = onAboutClick,
+                onOpLogClick = onOpLogClick,
+                scrollAlpha = scrollState.scrollAlpha
+            )
+        },
+        isLoading = uiState.isLoading,
+        error = uiState.error.takeIf { uiState.months.isEmpty() },
+        isEmpty = !uiState.isLoading && uiState.months.isEmpty(),
+        emptyContent = {
+            Text(
+                text = stringResource(R.string.no_photos),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        onRetry = viewModel::loadTimeline,
+        contentTopPadding = scrollState.topBarHeight,
+        onMonthPlaceholderClick = { viewModel.loadTimelineMonth(it.yearMonth) },
+        stateKey = "gallery:timeline",
+        gridState = gridState,
+        contentPadding = PaddingValues(
+            top = if (hasSyncProgress) scrollState.topBarHeight + 40.dp else scrollState.topBarHeight,
+            bottom = 80.dp,
+            start = 1.dp,
+            end = 1.dp
+        ),
+        gridContainer = { gridContent ->
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = {
+                    if (privatePullArmed) {
+                        privatePullArmed = false
+                        onOpenPrivateAlbum()
+                    } else {
+                        viewModel.refresh()
+                    }
+                },
+                modifier = Modifier.fillMaxSize().hazeContentSource(),
+                state = pullRefreshState,
+                indicator = {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = scrollState.topBarHeight),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        PullToRefreshDefaults.Indicator(
+                            isRefreshing = uiState.isRefreshing,
+                            state = pullRefreshState
+                        )
+                        if (!uiState.isRefreshing && pullRefreshState.distanceFraction > 1.1f) {
+                            Text(
+                                text = stringResource(
+                                    if (privatePullArmed) {
+                                        R.string.private_album_release_to_open
+                                    } else {
+                                        R.string.private_album_keep_pulling
+                                    }
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                 }
-            },
-            onDismiss = { showDeleteDialog = false }
+            ) {
+                gridContent()
+            }
+        },
+        overlayContent = {
+            if (hasSyncProgress) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = scrollState.topBarHeight)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .height(16.dp)
+                            .width(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = progressText.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        shareManager = viewModel.shareManager,
+        scrollAlpha = scrollState.scrollAlpha,
+        selectionActions = listOf(
+            MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
+            MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() },
+            MediaSelectionAction(MediaSelectionActionType.HIDE) { viewModel.hideSelected() }
         )
-    }
-
-    com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
+    )
 }
