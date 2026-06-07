@@ -78,6 +78,27 @@ data class PersonItem(
     val count: Int
 )
 
+data class PeopleDescriptorBox(
+    val x: Double,
+    val y: Double,
+    val width: Double,
+    val height: Double
+)
+
+data class PeopleDescriptorPerson(
+    val id: Double,
+    val name: String,
+    val cover: Double
+)
+
+data class PeopleDescriptorItem(
+    val id: Double,
+    val pass: Boolean,
+    val score: Double,
+    val box: PeopleDescriptorBox,
+    val person: PeopleDescriptorPerson
+)
+
 data class SceneItem(
     val id: String,
     val name: String,
@@ -691,6 +712,15 @@ class GalleryRepository(private val container: AppContainer) {
         }
     }
 
+    suspend fun getPeopleDescriptorsOfFile(fileId: Double): Result<List<PeopleDescriptorItem>> {
+        return try {
+            val response = container.peopleDescriptorAdminApi.PeopleDescriptorControllerFindDescriptorOfFile(fileId)
+            Result.success(response.mapNotNull(::parsePeopleDescriptorItem))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     fun getFileDownloadUrl(id: Double, md5: String): String {
         return "${urlBase()}/gateway/fileDownload/$id/$md5${urlSuffix()}"
     }
@@ -1285,6 +1315,42 @@ class GalleryRepository(private val container: AppContainer) {
             is String -> value.toDoubleOrNull()
             else -> null
         }
+    }
+
+    private fun parsePeopleDescriptorItem(item: Map<String, Any>): PeopleDescriptorItem? {
+        val boxMap = item["box"] as? Map<*, *> ?: return null
+        val personMap = item["people"] as? Map<*, *> ?: return null
+        val personName = (personMap["name"] as? String)
+            ?.trim()
+            ?.takeIf(::hasDisplayPersonName)
+            ?: return null
+        val box = PeopleDescriptorBox(
+            x = parseNumericValue(boxMap["x"]) ?: return null,
+            y = parseNumericValue(boxMap["y"]) ?: return null,
+            width = parseNumericValue(boxMap["width"]) ?: return null,
+            height = parseNumericValue(boxMap["height"]) ?: return null
+        )
+        if (box.width <= 0.0 || box.height <= 0.0) return null
+
+        return PeopleDescriptorItem(
+            id = parseNumericValue(item["id"]) ?: 0.0,
+            pass = parseBoolean(item["pass"]),
+            score = parseNumericValue(item["score"]) ?: 0.0,
+            box = box,
+            person = PeopleDescriptorPerson(
+                id = parseNumericValue(personMap["id"]) ?: 0.0,
+                name = personName,
+                cover = parseNumericValue(personMap["cover"]) ?: 0.0
+            )
+        )
+    }
+
+    private fun hasDisplayPersonName(name: String): Boolean {
+        val normalized = name.trim()
+        return normalized.isNotBlank() &&
+            !normalized.equals("null", ignoreCase = true) &&
+            !normalized.equals("unknown", ignoreCase = true) &&
+            !normalized.equals("unnamed", ignoreCase = true)
     }
 
     private fun albumContainsFile(album: Map<String, Any>, photoId: Double): Boolean? {

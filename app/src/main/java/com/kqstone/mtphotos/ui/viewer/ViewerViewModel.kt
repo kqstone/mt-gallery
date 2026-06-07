@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
@@ -49,7 +50,11 @@ data class ViewerUiState(
     val isDiscoveringCastDevices: Boolean = false,
     val isCastingToDevice: Boolean = false,
     val castFailureCount: Int = 0,
-    val castSuccessCount: Int = 0
+    val castSuccessCount: Int = 0,
+    val peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
+    val isPeopleInfoVisible: Boolean = false,
+    val isLoadingPeopleDescriptors: Boolean = false,
+    val peopleDescriptorFailureCount: Int = 0
 )
 
 class ViewerViewModel(
@@ -179,7 +184,10 @@ class ViewerViewModel(
                 isPlayingStreamUrl = false,
                 castDevices = emptyList(),
                 isDiscoveringCastDevices = false,
-                isCastingToDevice = false
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
         syncDownloadState()
@@ -363,7 +371,10 @@ class ViewerViewModel(
                 isPlayingStreamUrl = false,
                 castDevices = emptyList(),
                 isDiscoveringCastDevices = false,
-                isCastingToDevice = false
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
 
@@ -407,10 +418,73 @@ class ViewerViewModel(
                 isPlayingStreamUrl = false,
                 castDevices = emptyList(),
                 isDiscoveringCastDevices = false,
-                isCastingToDevice = false
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
         return hasRemainingPhotos
+    }
+
+    fun togglePeopleInfo() {
+        val photo = getCurrentPhoto() ?: return
+        val fileId = photo.cloudId ?: return
+        val state = _uiState.value
+        if (state.isPeopleInfoVisible) {
+            hidePeopleInfo()
+            return
+        }
+        if (state.peopleDescriptors.isNotEmpty()) {
+            _uiState.update { it.copy(isPeopleInfoVisible = true) }
+            return
+        }
+        if (state.isLoadingPeopleDescriptors) return
+
+        _uiState.update {
+            it.copy(
+                isLoadingPeopleDescriptors = true,
+                isPeopleInfoVisible = false
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                galleryRepository.getPeopleDescriptorsOfFile(fileId)
+            }
+            _uiState.update { current ->
+                val currentPhoto = current.photos.getOrNull(current.currentIndex)
+                if (currentPhoto?.uniqueKey != photo.uniqueKey) {
+                    current
+                } else {
+                    result.fold(
+                        onSuccess = { descriptors ->
+                            current.copy(
+                                peopleDescriptors = descriptors,
+                                isPeopleInfoVisible = true,
+                                isLoadingPeopleDescriptors = false
+                            )
+                        },
+                        onFailure = {
+                            current.copy(
+                                isPeopleInfoVisible = false,
+                                isLoadingPeopleDescriptors = false,
+                                peopleDescriptorFailureCount = current.peopleDescriptorFailureCount + 1
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun hidePeopleInfo() {
+        _uiState.update {
+            it.copy(
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
+            )
+        }
     }
 
     fun sharePhoto(context: android.content.Context) {
@@ -593,6 +667,13 @@ class ViewerViewModel(
 
     fun getVideoUrl(id: Double, md5: String): String {
         return galleryRepository.getFullImageUrl(id, md5)
+    }
+
+    fun getPeoplePortraitUrl(descriptor: PeopleDescriptorItem): String? {
+        val personId = descriptor.person.id.takeIf { it > 0.0 } ?: return null
+        val cover = descriptor.person.cover.takeIf { it > 0.0 } ?: return null
+        val personIdPath = if (personId % 1.0 == 0.0) personId.toLong().toString() else personId.toString()
+        return galleryRepository.getPortraitUrl(personIdPath, cover)
     }
 
     fun getCurrentPhoto(): UnifiedPhotoItem? {
