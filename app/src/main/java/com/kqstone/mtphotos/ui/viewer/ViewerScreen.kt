@@ -63,6 +63,7 @@ import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import android.content.Context
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -96,7 +97,12 @@ fun ViewerScreen(
 
     // UI visibility state for immersive full screen
     var isUiVisible by remember { mutableStateOf(true) }
-    val restoreSystemBars = ViewerSystemBarsEffect(isUiVisible = isUiVisible)
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscapeOrientation = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val restoreSystemBars = ViewerSystemBarsEffect(
+        isUiVisible = isUiVisible,
+        isLandscape = isLandscapeOrientation
+    )
 
     val stopAndGoBack = {
         if (!isExiting) {
@@ -672,7 +678,10 @@ private fun URIHost(url: String): String {
  * removed without the lambda being called.
  */
 @Composable
-private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
+private fun ViewerSystemBarsEffect(
+    isUiVisible: Boolean,
+    isLandscape: Boolean
+): () -> Unit {
     val view = LocalView.current
     if (view.isInEditMode) return {}
 
@@ -720,11 +729,16 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
             insetsController.isAppearanceLightStatusBars = false
             insetsController.isAppearanceLightNavigationBars = false
 
+            val statusBars = WindowInsetsCompat.Type.statusBars()
+            val navigationBars = WindowInsetsCompat.Type.navigationBars()
             val systemBars = WindowInsetsCompat.Type.systemBars()
-            if (isUiVisible) {
-                insetsController.show(systemBars)
-            } else {
-                insetsController.hide(systemBars)
+            when {
+                !isUiVisible -> insetsController.hide(systemBars)
+                isLandscape -> {
+                    insetsController.show(navigationBars)
+                    insetsController.hide(statusBars)
+                }
+                else -> insetsController.show(systemBars)
             }
         }
     }
