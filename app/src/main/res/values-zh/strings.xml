@@ -174,7 +174,19 @@
 
     <!-- Viewer Screen -->
     <string name="load_original">加载原图</string>
+    <string name="stream_play">串流投屏</string>
+    <string name="stream_link_failed">无法获取串流地址</string>
+    <string name="cast_devices">投屏设备</string>
+    <string name="searching_cast_devices">正在搜索设备...</string>
+    <string name="no_cast_devices_found">未发现投屏设备</string>
+    <string name="cast_sent">已发送投屏请求</string>
+    <string name="cast_failed">投屏失败</string>
     <string name="favorited">已收藏</string>
+    <string name="people">人物</string>
+    <string name="hide_people">隐藏人物</string>
+    <string name="loading_people">加载人物</string>
+    <string name="people_load_failed">人物加载失败</string>
+    <string name="no_named_people">没有已命名人物</string>
     <string name="info">信息</string>
     <string name="delete_this_media">删除此媒体？</string>
     <string name="delete_media_confirm_desc">确定要从本地存储与云端服务器永久删除此文件吗？该操作不可撤销。</string>

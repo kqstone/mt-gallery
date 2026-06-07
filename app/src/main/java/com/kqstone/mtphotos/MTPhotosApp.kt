@@ -11,6 +11,7 @@ import okhttp3.Response
 import com.kqstone.mtphotos.data.api.AuthApi
 import com.kqstone.mtphotos.data.api.GatewayApi
 import com.kqstone.mtphotos.data.api.AlbumApi
+import com.kqstone.mtphotos.data.api.PeopleDescriptorAdminApi
 import com.kqstone.mtphotos.data.api.ShareApi
 import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.MediaChangeObserver
@@ -154,6 +155,7 @@ class AppContainer(context: android.content.Context) {
     val authApi: AuthApi get() = retrofitClient.create()
     val gatewayApi: GatewayApi get() = retrofitClient.create()
     val albumApi: AlbumApi get() = retrofitClient.create()
+    val peopleDescriptorAdminApi: PeopleDescriptorAdminApi get() = retrofitClient.create()
     val shareApi: ShareApi get() = retrofitClient.create()
 
     val authRepository = AuthRepository(this)

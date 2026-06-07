@@ -1,6 +1,7 @@
 package com.kqstone.mtphotos
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         intent?.let { _intentFlow.tryEmit(it) }
         enableEdgeToEdge()
         enableHighRefreshRate()

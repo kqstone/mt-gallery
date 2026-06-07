@@ -7,6 +7,7 @@ import com.kqstone.mtphotos.data.repository.AlbumItem
 import com.kqstone.mtphotos.data.repository.FolderItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.R
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.Job
@@ -100,7 +101,7 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
     }
 
     fun getThumbUrlByMd5(md5: String): String {
-        return galleryRepository.getThumbUrlByMd5(md5)
+        return MediaThumbnailResolver.resolveCloudThumbByMd5(md5, galleryRepository)
     }
 
     private suspend fun loadCollections(): CollectionLoadResult {

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
@@ -40,7 +41,20 @@ data class ViewerUiState(
     val downloadProgress: Float? = null,
     val originalDownloaded: Boolean = false,
     val resolvedVideoUrl: String? = null,
-    val isPlayingTranscode: Boolean = false
+    val isPlayingTranscode: Boolean = false,
+    val streamMediaUrl: String? = null,
+    val isResolvingStreamUrl: Boolean = false,
+    val isPlayingStreamUrl: Boolean = false,
+    val streamFailureCount: Int = 0,
+    val castDevices: List<DlnaCastDevice> = emptyList(),
+    val isDiscoveringCastDevices: Boolean = false,
+    val isCastingToDevice: Boolean = false,
+    val castFailureCount: Int = 0,
+    val castSuccessCount: Int = 0,
+    val peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
+    val isPeopleInfoVisible: Boolean = false,
+    val isLoadingPeopleDescriptors: Boolean = false,
+    val peopleDescriptorFailureCount: Int = 0
 )
 
 class ViewerViewModel(
@@ -55,6 +69,7 @@ class ViewerViewModel(
     val uiState: StateFlow<ViewerUiState> = _uiState
 
     val shareManager = ShareManager(galleryRepository, viewModelScope)
+    private val dlnaCastClient = DlnaCastClient(appContext)
 
     init {
         observeMediaUiMutations()
@@ -163,7 +178,16 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
-                isPlayingTranscode = false
+                isPlayingTranscode = false,
+                streamMediaUrl = null,
+                isResolvingStreamUrl = false,
+                isPlayingStreamUrl = false,
+                castDevices = emptyList(),
+                isDiscoveringCastDevices = false,
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
         syncDownloadState()
@@ -201,17 +225,17 @@ class ViewerViewModel(
 
     private suspend fun resolveVideoUrl(photo: UnifiedPhotoItem) {
         if (!photo.isMotionPhoto() && photo.localUri?.isNotEmpty() == true && !photo.isStorageOptimized) {
-            _uiState.update { it.copy(resolvedVideoUrl = photo.localUri, isPlayingTranscode = false) }
+            updateResolvedVideoUrl(photo, photo.localUri, isPlayingTranscode = false)
             return
         }
         val cloudId = photo.cloudId
         if (cloudId == null) {
-            _uiState.update { it.copy(resolvedVideoUrl = "", isPlayingTranscode = false) }
+            updateResolvedVideoUrl(photo, "", isPlayingTranscode = false)
             return
         }
         if (photo.isMotionPhoto()) {
             val url = galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
-            _uiState.update { it.copy(resolvedVideoUrl = url, isPlayingTranscode = false) }
+            updateResolvedVideoUrl(photo, url, isPlayingTranscode = false)
             return
         }
         
@@ -222,13 +246,31 @@ class ViewerViewModel(
                 val client = OkHttpClient()
                 val response = client.newCall(request).execute()
                 if (response.isSuccessful) {
-                    _uiState.update { it.copy(resolvedVideoUrl = transcodeUrl, isPlayingTranscode = true) }
+                    updateResolvedVideoUrl(photo, transcodeUrl, isPlayingTranscode = true)
                     return@withContext
                 }
             } catch (e: Exception) {}
             
             val originalUrl = galleryRepository.getFullImageUrl(cloudId, photo.md5)
-            _uiState.update { it.copy(resolvedVideoUrl = originalUrl, isPlayingTranscode = false) }
+            updateResolvedVideoUrl(photo, originalUrl, isPlayingTranscode = false)
+        }
+    }
+
+    private fun updateResolvedVideoUrl(
+        photo: UnifiedPhotoItem,
+        url: String?,
+        isPlayingTranscode: Boolean
+    ) {
+        _uiState.update { state ->
+            val currentPhoto = state.photos.getOrNull(state.currentIndex)
+            if (currentPhoto?.uniqueKey != photo.uniqueKey || state.isPlayingStreamUrl) {
+                state
+            } else {
+                state.copy(
+                    resolvedVideoUrl = url,
+                    isPlayingTranscode = isPlayingTranscode
+                )
+            }
         }
     }
 
@@ -323,7 +365,16 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
-                isPlayingTranscode = false
+                isPlayingTranscode = false,
+                streamMediaUrl = null,
+                isResolvingStreamUrl = false,
+                isPlayingStreamUrl = false,
+                castDevices = emptyList(),
+                isDiscoveringCastDevices = false,
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
 
@@ -361,10 +412,79 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
-                isPlayingTranscode = false
+                isPlayingTranscode = false,
+                streamMediaUrl = null,
+                isResolvingStreamUrl = false,
+                isPlayingStreamUrl = false,
+                castDevices = emptyList(),
+                isDiscoveringCastDevices = false,
+                isCastingToDevice = false,
+                peopleDescriptors = emptyList(),
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
             )
         }
         return hasRemainingPhotos
+    }
+
+    fun togglePeopleInfo() {
+        val photo = getCurrentPhoto() ?: return
+        val fileId = photo.cloudId ?: return
+        val state = _uiState.value
+        if (state.isPeopleInfoVisible) {
+            hidePeopleInfo()
+            return
+        }
+        if (state.peopleDescriptors.isNotEmpty()) {
+            _uiState.update { it.copy(isPeopleInfoVisible = true) }
+            return
+        }
+        if (state.isLoadingPeopleDescriptors) return
+
+        _uiState.update {
+            it.copy(
+                isLoadingPeopleDescriptors = true,
+                isPeopleInfoVisible = false
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                galleryRepository.getPeopleDescriptorsOfFile(fileId)
+            }
+            _uiState.update { current ->
+                val currentPhoto = current.photos.getOrNull(current.currentIndex)
+                if (currentPhoto?.uniqueKey != photo.uniqueKey) {
+                    current
+                } else {
+                    result.fold(
+                        onSuccess = { descriptors ->
+                            current.copy(
+                                peopleDescriptors = descriptors,
+                                isPeopleInfoVisible = true,
+                                isLoadingPeopleDescriptors = false
+                            )
+                        },
+                        onFailure = {
+                            current.copy(
+                                isPeopleInfoVisible = false,
+                                isLoadingPeopleDescriptors = false,
+                                peopleDescriptorFailureCount = current.peopleDescriptorFailureCount + 1
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun hidePeopleInfo() {
+        _uiState.update {
+            it.copy(
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
+            )
+        }
     }
 
     fun sharePhoto(context: android.content.Context) {
@@ -394,6 +514,141 @@ class ViewerViewModel(
         originalDownloadManager.startDownload(photo, _uiState.value.fileDetailInfo)
     }
 
+    fun startCastDeviceDiscovery() {
+        if (_uiState.value.isDiscoveringCastDevices) return
+
+        _uiState.update {
+            it.copy(
+                castDevices = emptyList(),
+                isDiscoveringCastDevices = true
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { dlnaCastClient.discover() }
+            }
+            _uiState.update { state ->
+                state.copy(
+                    castDevices = result.getOrElse { emptyList() },
+                    isDiscoveringCastDevices = false,
+                    castFailureCount = if (result.isFailure) state.castFailureCount + 1 else state.castFailureCount
+                )
+            }
+        }
+    }
+
+    fun castCurrentMedia(device: DlnaCastDevice) {
+        val photo = getCurrentPhoto() ?: return
+        val cloudId = photo.cloudId ?: run {
+            markCastFailed()
+            return
+        }
+        if (_uiState.value.isCastingToDevice) return
+
+        _uiState.update { it.copy(isCastingToDevice = true) }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val streamUrl = galleryRepository.getFileStreamUrl(cloudId).getOrThrow()
+                    dlnaCastClient.play(device, streamUrl)
+                }
+            }
+            result.fold(
+                onSuccess = {
+                    _uiState.update { state ->
+                        state.copy(
+                            isCastingToDevice = false,
+                            castSuccessCount = state.castSuccessCount + 1
+                        )
+                    }
+                },
+                onFailure = {
+                    markCastFailed(photo)
+                }
+            )
+        }
+    }
+
+    private fun markCastFailed(photo: UnifiedPhotoItem? = null) {
+        _uiState.update { state ->
+            val currentPhoto = state.photos.getOrNull(state.currentIndex)
+            if (photo != null && currentPhoto?.uniqueKey != photo.uniqueKey) {
+                state.copy(isCastingToDevice = false)
+            } else {
+                state.copy(
+                    isCastingToDevice = false,
+                    castFailureCount = state.castFailureCount + 1
+                )
+            }
+        }
+    }
+
+    fun streamCurrentMedia() {
+        val photo = getCurrentPhoto() ?: return
+        val cloudId = photo.cloudId ?: run {
+            markStreamFailed()
+            return
+        }
+        if (_uiState.value.isResolvingStreamUrl) return
+
+        _uiState.update {
+            it.copy(
+                isResolvingStreamUrl = true,
+                isPlayingStreamUrl = false,
+                streamMediaUrl = null
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                galleryRepository.getFileStreamUrl(cloudId)
+            }
+            result.fold(
+                onSuccess = { url ->
+                    _uiState.update { state ->
+                        val currentPhoto = state.photos.getOrNull(state.currentIndex)
+                        if (currentPhoto?.uniqueKey != photo.uniqueKey) {
+                            state
+                        } else if (photo.isPlayableMedia()) {
+                            state.copy(
+                                isResolvingStreamUrl = false,
+                                isPlayingStreamUrl = true,
+                                streamMediaUrl = url,
+                                resolvedVideoUrl = url,
+                                isPlayingTranscode = false
+                            )
+                        } else {
+                            state.copy(
+                                isResolvingStreamUrl = false,
+                                isPlayingStreamUrl = true,
+                                streamMediaUrl = url
+                            )
+                        }
+                    }
+                },
+                onFailure = {
+                    markStreamFailed(photo)
+                }
+            )
+        }
+    }
+
+    private fun markStreamFailed(photo: UnifiedPhotoItem? = null) {
+        _uiState.update { state ->
+            val currentPhoto = state.photos.getOrNull(state.currentIndex)
+            if (photo != null && currentPhoto?.uniqueKey != photo.uniqueKey) {
+                state
+            } else {
+                state.copy(
+                    isResolvingStreamUrl = false,
+                    streamFailureCount = state.streamFailureCount + 1
+                )
+            }
+        }
+    }
+
     fun getVideoUrl(photo: UnifiedPhotoItem): String {
         if (!photo.isMotionPhoto()) {
             photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
@@ -412,6 +667,13 @@ class ViewerViewModel(
 
     fun getVideoUrl(id: Double, md5: String): String {
         return galleryRepository.getFullImageUrl(id, md5)
+    }
+
+    fun getPeoplePortraitUrl(descriptor: PeopleDescriptorItem): String? {
+        val personId = descriptor.person.id.takeIf { it > 0.0 } ?: return null
+        val cover = descriptor.person.cover.takeIf { it > 0.0 } ?: return null
+        val personIdPath = if (personId % 1.0 == 0.0) personId.toLong().toString() else personId.toString()
+        return galleryRepository.getPortraitUrl(personIdPath, cover)
     }
 
     fun getCurrentPhoto(): UnifiedPhotoItem? {

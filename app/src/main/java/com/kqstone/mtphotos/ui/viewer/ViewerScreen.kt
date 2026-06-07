@@ -16,6 +16,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,10 +42,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.findActivity
@@ -57,6 +63,7 @@ import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import android.content.Context
+import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -66,6 +73,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -139,14 +147,39 @@ fun ViewerScreen(
 
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCastDeviceDialog by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
-    Box(
+    LaunchedEffect(uiState.streamFailureCount) {
+        if (uiState.streamFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.stream_link_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(uiState.castFailureCount) {
+        if (uiState.castFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.cast_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(uiState.castSuccessCount) {
+        if (uiState.castSuccessCount > 0) {
+            showCastDeviceDialog = false
+            Toast.makeText(context, context.getString(R.string.cast_sent), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(uiState.peopleDescriptorFailureCount) {
+        if (uiState.peopleDescriptorFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.people_load_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .hazeSource(state = hazeState)
     ) {
+        val isLandscape = maxWidth > maxHeight
+
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -160,31 +193,70 @@ fun ViewerScreen(
 
             if (isPlayableMedia && isCurrentPage) {
                 val url = uiState.resolvedVideoUrl ?: ""
-                if (url.isNotEmpty()) {
-                    VideoPlayer(
-                        videoUrl = url,
-                        isCurrentPage = true,
-                        isUiVisible = isUiVisible,
-                        onToggleUi = { isUiVisible = !isUiVisible },
-                        onStopPlaybackReady = { stopActivePlayback = it }
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = Color.White)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (url.isNotEmpty()) {
+                        VideoPlayer(
+                            videoUrl = url,
+                            isCurrentPage = true,
+                            isUiVisible = isUiVisible,
+                            onToggleUi = { isUiVisible = !isUiVisible },
+                            onStopPlaybackReady = { stopActivePlayback = it }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color.White)
+                        }
+                    }
+                    if (uiState.isPeopleInfoVisible) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(onClick = {
+                                    viewModel.hidePeopleInfo()
+                                    isUiVisible = false
+                                })
+                        )
+                        PeopleInfoListOverlay(
+                            descriptors = uiState.peopleDescriptors,
+                            isLoading = false,
+                            portraitUrlProvider = viewModel::getPeoplePortraitUrl,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .fillMaxWidth()
+                                .padding(top = 72.dp, start = 16.dp, end = 16.dp)
+                                .clickable(onClick = {})
+                        )
                     }
                 }
             } else if (isPlayableMedia) {
                 Box(modifier = Modifier.fillMaxSize())
             } else {
+                val imageUrl = if (isCurrentPage && uiState.isPlayingStreamUrl && !photo.isPlayableMedia()) {
+                    uiState.streamMediaUrl ?: viewModel.getFullImageUrl(photo)
+                } else {
+                    viewModel.getFullImageUrl(photo)
+                }
                 ZoomableImage(
                     photo = photo,
-                    imageUrl = viewModel.getFullImageUrl(photo),
+                    imageUrl = imageUrl,
                     contentDescription = photo.fileName,
                     onTap = { isUiVisible = !isUiVisible },
-                    onZoomedChanged = {}
+                    onZoomedChanged = {},
+                    peopleDescriptors = if (isCurrentPage && uiState.isPeopleInfoVisible) {
+                        uiState.peopleDescriptors
+                    } else {
+                        emptyList()
+                    },
+                    isPeopleInfoVisible = isCurrentPage && uiState.isPeopleInfoVisible,
+                    isLoadingPeopleInfo = false,
+                    onDismissPeopleInfo = {
+                        viewModel.hidePeopleInfo()
+                        isUiVisible = false
+                    }
                 )
             }
         }
@@ -266,7 +338,31 @@ fun ViewerScreen(
                     val showLoadOriginalButton = needsOriginal &&
                         (!currentPhoto.isVideo() || uiState.isPlayingTranscode) &&
                         !uiState.originalDownloaded
+                    val showStreamButton = currentPhoto.cloudId != null
 
+                    if (showStreamButton) {
+                        IconButton(
+                            onClick = {
+                                showCastDeviceDialog = true
+                                viewModel.startCastDeviceDiscovery()
+                            },
+                            enabled = !uiState.isDiscoveringCastDevices && !uiState.isCastingToDevice
+                        ) {
+                            if (uiState.isDiscoveringCastDevices || uiState.isCastingToDevice) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Cast,
+                                    contentDescription = stringResource(R.string.stream_play),
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
                     if (showLoadOriginalButton) {
                         IconButton(onClick = { viewModel.downloadOriginal(context) }) {
                             if (uiState.isDownloadingOriginal) {
@@ -305,93 +401,21 @@ fun ViewerScreen(
             }
         }
 
-        // Bottom Gradient & Floating Action HUD Bar
-        AnimatedVisibility(
+        ViewerActionHud(
             visible = isUiVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
-                        )
-                    )
-                    .navigationBarsPadding()
-                    .padding(bottom = 20.dp, top = 24.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Pager Number Indicator
-                    Text(
-                        text = "${visiblePage + 1} / ${photos.size}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Control Buttons (Narrower width, no pill background)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Share
-                        HUDButton(
-                            icon = Icons.Default.Share,
-                            label = stringResource(R.string.share),
-                            onClick = { viewModel.sharePhoto(context) }
-                        )
-
-                        // Favorite with scale animation
-                        val favScale by animateFloatAsState(
-                            targetValue = if (uiState.isFavorite) 1.25f else 1.0f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
-                            label = "favorite_scale"
-                        )
-
-                        HUDButton(
-                            icon = if (uiState.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                            label = if (uiState.isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
-                            iconColor = if (uiState.isFavorite) Color(0xFFFFD700) else Color.White,
-                            iconScale = favScale,
-                            onClick = { viewModel.toggleFavorite() }
-                        )
-
-                        // Hide / Unhide
-                        HUDButton(
-                            icon = if (uiState.isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            label = if (uiState.isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
-                            onClick = { viewModel.toggleHide() }
-                        )
-
-                        // Delete
-                        HUDButton(
-                            icon = Icons.Default.Delete,
-                            label = stringResource(R.string.delete),
-                            onClick = { showDeleteDialog = true }
-                        )
-
-                        // Info Details
-                        HUDButton(
-                            icon = Icons.Default.Info,
-                            label = stringResource(R.string.info),
-                            onClick = { showBottomSheet = true }
-                        )
-                    }
-                }
-            }
-        }
+            isLandscape = isLandscape,
+            isFavorite = uiState.isFavorite,
+            isHide = uiState.isHide,
+            canShowPeopleInfo = currentPhoto.cloudId != null,
+            isPeopleInfoVisible = uiState.isPeopleInfoVisible,
+            isLoadingPeopleDescriptors = uiState.isLoadingPeopleDescriptors,
+            onShare = { viewModel.sharePhoto(context) },
+            onToggleFavorite = { viewModel.toggleFavorite() },
+            onToggleHide = { viewModel.toggleHide() },
+            onPeople = { viewModel.togglePeopleInfo() },
+            onDelete = { showDeleteDialog = true },
+            onInfo = { showBottomSheet = true }
+        )
 
         // Sharing Overlay Indicator
         com.kqstone.mtphotos.ui.util.ShareProgressOverlay(viewModel.shareManager)
@@ -421,6 +445,17 @@ fun ViewerScreen(
                 }
             },
             onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    if (showCastDeviceDialog) {
+        CastDeviceDialog(
+            devices = uiState.castDevices,
+            isDiscovering = uiState.isDiscoveringCastDevices,
+            isCasting = uiState.isCastingToDevice,
+            onRefresh = { viewModel.startCastDeviceDiscovery() },
+            onSelectDevice = { device -> viewModel.castCurrentMedia(device) },
+            onDismiss = { showCastDeviceDialog = false }
         )
     }
 
@@ -480,6 +515,124 @@ fun ViewerScreen(
             tonalElevation = 6.dp
         )
     }
+}
+
+@Composable
+private fun CastDeviceDialog(
+    devices: List<DlnaCastDevice>,
+    isDiscovering: Boolean,
+    isCasting: Boolean,
+    onRefresh: () -> Unit,
+    onSelectDevice: (DlnaCastDevice) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!isCasting) onDismiss()
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Cast,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.cast_devices))
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                when {
+                    isDiscovering && devices.isEmpty() -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 20.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(text = stringResource(R.string.searching_cast_devices))
+                        }
+                    }
+                    devices.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.no_cast_devices_found),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp)
+                        ) {
+                            items(devices, key = { it.id }) { device ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(enabled = !isCasting) { onSelectDevice(device) }
+                                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tv,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = device.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = URIHost(device.controlUrl),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (isCasting) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onRefresh,
+                enabled = !isDiscovering && !isCasting
+            ) {
+                Text(text = stringResource(R.string.refresh_btn))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isCasting
+            ) {
+                Text(text = stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+private fun URIHost(url: String): String {
+    return runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
 }
 
 /**
@@ -562,23 +715,201 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
 }
 
 @Composable
+private fun BoxScope.ViewerActionHud(
+    visible: Boolean,
+    isLandscape: Boolean,
+    isFavorite: Boolean,
+    isHide: Boolean,
+    canShowPeopleInfo: Boolean,
+    isPeopleInfoVisible: Boolean,
+    isLoadingPeopleDescriptors: Boolean,
+    onShare: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleHide: () -> Unit,
+    onPeople: () -> Unit,
+    onDelete: () -> Unit,
+    onInfo: () -> Unit
+) {
+    val favScale by animateFloatAsState(
+        targetValue = if (isFavorite) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "favorite_scale"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier.align(if (isLandscape) Alignment.CenterEnd else Alignment.BottomCenter)
+    ) {
+        if (isLandscape) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(104.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                ) {
+                    ViewerActionButtons(
+                        isLandscape = true,
+                        isFavorite = isFavorite,
+                        isHide = isHide,
+                        canShowPeopleInfo = canShowPeopleInfo,
+                        isPeopleInfoVisible = isPeopleInfoVisible,
+                        isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+                        favScale = favScale,
+                        onShare = onShare,
+                        onToggleFavorite = onToggleFavorite,
+                        onToggleHide = onToggleHide,
+                        onPeople = onPeople,
+                        onDelete = onDelete,
+                        onInfo = onInfo
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp, top = 24.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ViewerActionButtons(
+                        isLandscape = false,
+                        isFavorite = isFavorite,
+                        isHide = isHide,
+                        canShowPeopleInfo = canShowPeopleInfo,
+                        isPeopleInfoVisible = isPeopleInfoVisible,
+                        isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+                        favScale = favScale,
+                        onShare = onShare,
+                        onToggleFavorite = onToggleFavorite,
+                        onToggleHide = onToggleHide,
+                        onPeople = onPeople,
+                        onDelete = onDelete,
+                        onInfo = onInfo
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerActionButtons(
+    isLandscape: Boolean,
+    isFavorite: Boolean,
+    isHide: Boolean,
+    canShowPeopleInfo: Boolean,
+    isPeopleInfoVisible: Boolean,
+    isLoadingPeopleDescriptors: Boolean,
+    favScale: Float,
+    onShare: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleHide: () -> Unit,
+    onPeople: () -> Unit,
+    onDelete: () -> Unit,
+    onInfo: () -> Unit
+) {
+    val content: @Composable () -> Unit = {
+        HUDButton(
+            icon = Icons.Default.Share,
+            label = stringResource(R.string.share),
+            onClick = onShare
+        )
+        HUDButton(
+            icon = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+            label = if (isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
+            iconColor = if (isFavorite) Color(0xFFFFD700) else Color.White,
+            iconScale = favScale,
+            onClick = onToggleFavorite
+        )
+        HUDButton(
+            icon = if (isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+            label = if (isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+            onClick = onToggleHide
+        )
+        HUDButton(
+            icon = Icons.Default.Person,
+            label = when {
+                isLoadingPeopleDescriptors -> stringResource(R.string.loading_people)
+                isPeopleInfoVisible -> stringResource(R.string.hide_people)
+                else -> stringResource(R.string.people)
+            },
+            iconColor = if (isPeopleInfoVisible || isLoadingPeopleDescriptors) Color(0xFFFFD166) else Color.White,
+            enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
+            onClick = onPeople
+        )
+        HUDButton(
+            icon = Icons.Default.Delete,
+            label = stringResource(R.string.delete),
+            onClick = onDelete
+        )
+        HUDButton(
+            icon = Icons.Default.Info,
+            label = stringResource(R.string.info),
+            onClick = onInfo
+        )
+    }
+
+    if (isLandscape) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            content = { content() }
+        )
+    } else {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            content = { content() }
+        )
+    }
+}
+
+@Composable
 private fun HUDButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     iconColor: Color = Color.White,
     iconScale: Float = 1.0f,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val alpha = if (enabled) 1f else 0.38f
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(8.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = iconColor,
+            tint = iconColor.copy(alpha = alpha),
             modifier = Modifier
                 .size(24.dp)
                 .graphicsLayer {
@@ -590,8 +921,107 @@ private fun HUDButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.85f)
+            color = Color.White.copy(alpha = 0.85f * alpha)
         )
+    }
+}
+
+@Composable
+private fun PeopleInfoListOverlay(
+    descriptors: List<PeopleDescriptorItem>,
+    isLoading: Boolean,
+    portraitUrlProvider: (PeopleDescriptorItem) -> String?,
+    modifier: Modifier = Modifier
+) {
+    val people = remember(descriptors) {
+        descriptors.distinctBy { descriptor ->
+            descriptor.person.id.takeIf { it > 0.0 }?.toString() ?: descriptor.person.name
+        }
+    }
+
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.68f),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        if (isLoading) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.loading_people),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        } else if (people.isEmpty()) {
+            Text(
+                text = stringResource(R.string.no_named_people),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                people.forEach { descriptor ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(58.dp)
+                    ) {
+                        val portraitUrl = portraitUrlProvider(descriptor)
+                        if (portraitUrl != null) {
+                            AsyncImage(
+                                model = portraitUrl,
+                                contentDescription = descriptor.person.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = descriptor.person.name,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = descriptor.person.name,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -601,16 +1031,25 @@ private fun ZoomableImage(
     imageUrl: String,
     contentDescription: String,
     onTap: () -> Unit,
-    onZoomedChanged: (Boolean) -> Unit
+    onZoomedChanged: (Boolean) -> Unit,
+    peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
+    isPeopleInfoVisible: Boolean = false,
+    isLoadingPeopleInfo: Boolean = false,
+    onDismissPeopleInfo: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
 
     val imageRequest = remember(imageUrl, photo.md5) {
+        val cacheKey = if (imageUrl.contains("/gateway/stream", ignoreCase = true)) {
+            "${photo.md5}_stream_${imageUrl.hashCode()}"
+        } else {
+            "${photo.md5}_full"
+        }
         coil.request.ImageRequest.Builder(context)
             .data(imageUrl)
-            .diskCacheKey("${photo.md5}_full")
-            .memoryCacheKey("${photo.md5}_full")
+            .diskCacheKey(cacheKey)
+            .memoryCacheKey(cacheKey)
             .diskCachePolicy(coil.request.CachePolicy.ENABLED)
             .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
             .build()
@@ -642,15 +1081,11 @@ private fun ZoomableImage(
         }
     }
 
-    AsyncImage(
-        model = imageRequest,
-        imageLoader = app.fullImageLoader,
-        contentDescription = contentDescription,
-        contentScale = ContentScale.Fit,
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
-            .pointerInput(photo.uniqueKey, containerSize) {
+            .pointerInput(photo.uniqueKey, containerSize, peopleDescriptors, isPeopleInfoVisible) {
                 awaitEachGesture {
                     val firstDown = awaitFirstDown(requireUnconsumed = true)
                     var isTapCandidate = true
@@ -788,18 +1223,197 @@ private fun ZoomableImage(
                             pendingTapJob?.cancel()
                             pendingTapJob = tapScope.launch {
                                 delay(DoubleTapWindowMillis)
-                                onTap()
+                                val isInsidePeopleBox = isTapInsidePeopleBox(
+                                    point = firstDown.position,
+                                    descriptors = peopleDescriptors,
+                                    containerSize = containerSize,
+                                    photo = photo,
+                                    scale = scale,
+                                    offset = offset
+                                )
+                                if (isPeopleInfoVisible && !isInsidePeopleBox) {
+                                    onDismissPeopleInfo()
+                                } else if (!isPeopleInfoVisible) {
+                                    onTap()
+                                }
                             }
                         }
                     }
                 }
             }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                translationX = offset.x
-                translationY = offset.y
+    ) {
+        AsyncImage(
+            model = imageRequest,
+            imageLoader = app.fullImageLoader,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        )
+        if (isPeopleInfoVisible || isLoadingPeopleInfo) {
+            PeopleImageOverlay(
+                descriptors = peopleDescriptors,
+                isLoading = isLoadingPeopleInfo,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeopleImageOverlay(
+    descriptors: List<PeopleDescriptorItem>,
+    isLoading: Boolean,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+) {
+    val density = LocalDensity.current
+    val boxes = remember(descriptors, containerSize, photo.uniqueKey, scale, offset) {
+        descriptors.mapNotNull { descriptor ->
+            peopleBoxLayout(
+                descriptor = descriptor,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 84.dp),
+                color = Color.Black.copy(alpha = 0.58f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.loading_people),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
+        }
+
+        boxes.forEach { box ->
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(box.left.roundToInt(), box.top.roundToInt())
+                    }
+                    .width(with(density) { box.width.toDp() })
+                    .height(with(density) { box.height.toDp() })
+                    .border(
+                        width = 2.dp,
+                        color = Color(0xFFFFD166),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+            )
+            Surface(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            box.left.roundToInt(),
+                            (box.top - 28f).coerceAtLeast(0f).roundToInt()
+                        )
+                    },
+                color = Color(0xFFFFD166).copy(alpha = 0.92f),
+                contentColor = Color.Black,
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text(
+                    text = box.name,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+private data class PeopleBoxLayout(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val name: String
+)
+
+private fun isTapInsidePeopleBox(
+    point: Offset,
+    descriptors: List<PeopleDescriptorItem>,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): Boolean {
+    return descriptors.any { descriptor ->
+        val box = peopleBoxLayout(descriptor, containerSize, photo, scale, offset) ?: return@any false
+        point.x in box.left..(box.left + box.width) &&
+            point.y in box.top..(box.top + box.height)
+    }
+}
+
+private fun peopleBoxLayout(
+    descriptor: PeopleDescriptorItem,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): PeopleBoxLayout? {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return null
+    val imageWidth = photo.width.toFloat().takeIf { it > 0f } ?: return null
+    val imageHeight = photo.height.toFloat().takeIf { it > 0f } ?: return null
+    val fitScale = minOf(
+        containerSize.width / imageWidth,
+        containerSize.height / imageHeight
+    )
+    if (fitScale <= 0f) return null
+
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+    val imageLeft = (containerSize.width - fittedWidth) / 2f
+    val imageTop = (containerSize.height - fittedHeight) / 2f
+    val baseLeft = imageLeft + descriptor.box.x.toFloat() * fitScale
+    val baseTop = imageTop + descriptor.box.y.toFloat() * fitScale
+    val baseWidth = descriptor.box.width.toFloat() * fitScale
+    val baseHeight = descriptor.box.height.toFloat() * fitScale
+    val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+
+    return PeopleBoxLayout(
+        left = center.x + (baseLeft - center.x) * scale + offset.x,
+        top = center.y + (baseTop - center.y) * scale + offset.y,
+        width = baseWidth * scale,
+        height = baseHeight * scale,
+        name = descriptor.person.name
     )
 }
 

@@ -1,4 +1,4 @@
-package com.kqstone.mtphotos.ui.gallery
+package com.kqstone.mtphotos.ui.media
 
 import android.view.MotionEvent
 import androidx.compose.foundation.background
@@ -50,7 +50,12 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
+import com.kqstone.mtphotos.ui.gallery.DayGroup
 import com.kqstone.mtphotos.ui.util.UiText
+import com.kqstone.mtphotos.ui.gallery.LazyGridVerticalFastScroller
+import com.kqstone.mtphotos.ui.gallery.MonthGroup
+import com.kqstone.mtphotos.ui.gallery.PhotoThumbnail
+import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.util.formatDayHeaderDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

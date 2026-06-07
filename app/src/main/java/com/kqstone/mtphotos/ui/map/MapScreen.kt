@@ -10,18 +10,22 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,7 +52,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,8 +75,8 @@ import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.MyLocationStyle
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
-import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
-import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.media.MediaGridHost
+import com.kqstone.mtphotos.ui.media.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -483,26 +490,14 @@ fun MapScreen(
                         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
                     )
             ) {
-                Column {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(top = 12.dp, bottom = 8.dp)
-                            .size(width = 32.dp, height = 4.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                shape = CircleShape
-                            )
-                    )
-                    ClusterPhotoGrid(
-                        cluster = cluster,
-                        photos = uiState.selectedClusterPhotos,
-                        isLoading = uiState.isResolvingSelectedCluster,
-                        thumbUrlProvider = { md5, id -> viewModel.getThumbUrl(md5, id) },
-                        onDismiss = { viewModel.selectCluster(null) },
-                        onPhotoClick = onPhotoClick
-                    )
-                }
+                ClusterPhotoGrid(
+                    cluster = cluster,
+                    photos = uiState.selectedClusterPhotos,
+                    isLoading = uiState.isResolvingSelectedCluster,
+                    thumbUrlProvider = viewModel::getThumbUrl,
+                    onDismiss = { viewModel.selectCluster(null) },
+                    onPhotoClick = onPhotoClick
+                )
             }
         }
 
@@ -550,7 +545,7 @@ private fun ClusterPhotoGrid(
     cluster: MapCluster,
     photos: List<UnifiedPhotoItem>,
     isLoading: Boolean,
-    thumbUrlProvider: (String, Double) -> String,
+    thumbUrlProvider: (UnifiedPhotoItem) -> String,
     onDismiss: () -> Unit,
     onPhotoClick: (UnifiedPhotoItem, List<UnifiedPhotoItem>) -> Unit
 ) {
@@ -567,77 +562,112 @@ private fun ClusterPhotoGrid(
         selectionManager.clearSelection()
     }
 
-    val selectedPhotoIds by selectionManager.selectedPhotoIds.collectAsState()
-    val isSelectionMode = selectedPhotoIds.isNotEmpty()
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val minGridHeight = 220.dp
+    val maxGridHeight = (configuration.screenHeightDp.dp - 140.dp).coerceAtLeast(MapClusterInitialGridHeight)
+    var gridHeight by remember(cluster.key) { mutableStateOf(MapClusterInitialGridHeight) }
     var columnCount by remember { mutableStateOf(4) }
+    val gridState = rememberLazyGridState()
 
     val timelineLayout = remember(photos) {
         buildPhotoTimelineLayout(photos)
     }
 
-    Column(
+    MediaGridHost(
+        months = timelineLayout.months,
+        columnCount = columnCount,
+        selectedPhotoIds = emptySet(),
+        isSelectionMode = false,
+        selectionManager = selectionManager,
+        getThumbUrl = thumbUrlProvider,
+        onPhotoClick = { photo -> onPhotoClick(photo, photos) },
+        onColumnCountChange = { columnCount = it },
+        onSelectAll = {},
+        onDeleteSelected = {},
+        onClearSelection = selectionManager::clearSelection,
+        normalTopBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 12.dp, bottom = 8.dp)
+                        .size(width = 44.dp, height = 16.dp)
+                        .pointerInput(minGridHeight, maxGridHeight, density) {
+                            detectVerticalDragGestures { change, dragAmount ->
+                                change.consume()
+                                val delta = with(density) { dragAmount.toDp() }
+                                gridHeight = (gridHeight - delta).coerceIn(minGridHeight, maxGridHeight)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 32.dp, height = 4.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                shape = CircleShape
+                            )
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 8.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.photos_count_format, cluster.count),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.close)
+                        )
+                    }
+                }
+            }
+        },
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            .heightIn(max = configuration.screenHeightDp.dp)
+            .height(gridHeight + MapClusterTopBarHeight)
+            .navigationBarsPadding(),
+        isLoading = isLoading,
+        isEmpty = photos.isEmpty(),
+        emptyContent = {
             Text(
-                text = stringResource(R.string.photos_count_format, cluster.count),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                text = stringResource(R.string.no_showable_photos),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
             )
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.close)
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(400.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            when {
-                isLoading -> {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-
-                photos.isEmpty() -> {
-                    Text(
-                        text = stringResource(R.string.no_showable_photos),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                else -> {
-                    TimelinePhotoGrid(
-                        months = timelineLayout.months,
-                        columnCount = columnCount,
-                        selectedPhotoIds = selectedPhotoIds,
-                        isSelectionMode = isSelectionMode,
-                        selectionManager = selectionManager,
-                        getThumbUrl = { photo -> thumbUrlProvider(photo.md5, photo.id) },
-                        onPhotoClick = { photo -> onPhotoClick(photo, photos) },
-                        onColumnCountChange = { columnCount = it },
-                        showMonthHeaders = timelineLayout.showMonthHeaders,
-                        showDayHeaders = timelineLayout.showDayHeaders,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-    }
+        },
+        contentTopPadding = MapClusterTopBarHeight,
+        showMonthHeaders = timelineLayout.showMonthHeaders,
+        showDayHeaders = timelineLayout.showDayHeaders,
+        stateKey = "map:${cluster.key}",
+        gridState = gridState,
+        contentPadding = PaddingValues(
+            top = MapClusterTopBarHeight,
+            start = 1.dp,
+            end = 1.dp,
+            bottom = 1.dp
+        ),
+        showSelectionTopBar = false,
+        handleSelectionBack = false
+    )
 }
+
+private val MapClusterInitialGridHeight = 400.dp
+private val MapClusterTopBarHeight = 76.dp
 
 private data class PendingMarkerRender(
     val clusterKey: String,

@@ -25,16 +25,25 @@ import androidx.compose.ui.res.stringResource
 import com.kqstone.mtphotos.R
 import androidx.compose.material.icons.filled.Share
 
+enum class MediaSelectionActionType {
+    SHARE,
+    FAVORITE,
+    UNFAVORITE,
+    HIDE,
+    UNHIDE
+}
+
+data class MediaSelectionAction(
+    val type: MediaSelectionActionType,
+    val onClick: () -> Unit
+)
+
 @Composable
 fun SelectionTopBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
     onDelete: () -> Unit,
-    onShare: (() -> Unit)? = null,
-    onFavorite: (() -> Unit)? = null,
-    onUnfavorite: (() -> Unit)? = null,
-    onHide: (() -> Unit)? = null,
-    onUnhide: (() -> Unit)? = null,
+    actions: List<MediaSelectionAction> = emptyList(),
     onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
     scrollAlpha: Float = 1f
@@ -58,60 +67,8 @@ fun SelectionTopBar(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.weight(1f)
         )
-        if (onShare != null) {
-            IconButton(
-                onClick = onShare,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.Share,
-                    contentDescription = stringResource(R.string.share)
-                )
-            }
-        }
-        if (onFavorite != null) {
-            IconButton(
-                onClick = onFavorite,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.Star,
-                    contentDescription = stringResource(R.string.favorite)
-                )
-            }
-        }
-        if (onUnfavorite != null) {
-            IconButton(
-                onClick = onUnfavorite,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.StarBorder,
-                    contentDescription = stringResource(R.string.unfavorite)
-                )
-            }
-        }
-        if (onHide != null) {
-            IconButton(
-                onClick = onHide,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.VisibilityOff,
-                    contentDescription = stringResource(R.string.hide)
-                )
-            }
-        }
-        if (onUnhide != null) {
-            IconButton(
-                onClick = onUnhide,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Default.Visibility,
-                    contentDescription = stringResource(R.string.unhide)
-                )
-            }
+        actions.forEach { action ->
+            SelectionActionIcon(action = action)
         }
         IconButton(
             onClick = onSelectAll,
@@ -132,6 +89,33 @@ fun SelectionTopBar(
                 tint = MaterialTheme.colorScheme.error
             )
         }
+    }
+}
+
+@Composable
+private fun SelectionActionIcon(action: MediaSelectionAction) {
+    val icon = when (action.type) {
+        MediaSelectionActionType.SHARE -> Icons.Default.Share
+        MediaSelectionActionType.FAVORITE -> Icons.Default.Star
+        MediaSelectionActionType.UNFAVORITE -> Icons.Default.StarBorder
+        MediaSelectionActionType.HIDE -> Icons.Default.VisibilityOff
+        MediaSelectionActionType.UNHIDE -> Icons.Default.Visibility
+    }
+    val label = when (action.type) {
+        MediaSelectionActionType.SHARE -> stringResource(R.string.share)
+        MediaSelectionActionType.FAVORITE -> stringResource(R.string.favorite)
+        MediaSelectionActionType.UNFAVORITE -> stringResource(R.string.unfavorite)
+        MediaSelectionActionType.HIDE -> stringResource(R.string.hide)
+        MediaSelectionActionType.UNHIDE -> stringResource(R.string.unhide)
+    }
+    IconButton(
+        onClick = action.onClick,
+        modifier = Modifier.size(32.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label
+        )
     }
 }
 
