@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -28,9 +31,12 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
+import com.kqstone.mtphotos.ui.gallery.PublishSelectionBottomBar
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
+import com.kqstone.mtphotos.ui.gallery.SelectionBottomBarHeight
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ShareProgressOverlay
@@ -74,7 +80,34 @@ fun MediaGridHost(
     selectionActions: List<MediaSelectionAction> = emptyList()
 ) {
     val context = LocalContext.current
+    val layoutDirection = LocalLayoutDirection.current
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val publishedSelectionActions = remember(selectionActions, isSelectionMode) {
+        if (isSelectionMode) {
+            selectionActions + MediaSelectionAction(MediaSelectionActionType.DELETE) {
+                showDeleteDialog = true
+            }
+        } else {
+            emptyList()
+        }
+    }
+    val selectionBottomPadding = SelectionBottomBarHeight + 16.dp
+    val contentBottomPadding = contentPadding.calculateBottomPadding()
+    val effectiveContentPadding = PaddingValues(
+        start = contentPadding.calculateStartPadding(layoutDirection),
+        top = contentPadding.calculateTopPadding(),
+        end = contentPadding.calculateEndPadding(layoutDirection),
+        bottom = if (isSelectionMode && contentBottomPadding < selectionBottomPadding) {
+            selectionBottomPadding
+        } else {
+            contentBottomPadding
+        }
+    )
+
+    PublishSelectionBottomBar(
+        visible = isSelectionMode,
+        actions = publishedSelectionActions
+    )
 
     BackHandler(enabled = handleSelectionBack && isSelectionMode) {
         onClearSelection()
@@ -143,7 +176,7 @@ fun MediaGridHost(
                         stateKey = stateKey,
                         modifier = Modifier.fillMaxSize(),
                         gridState = gridState,
-                        contentPadding = contentPadding,
+                        contentPadding = effectiveContentPadding,
                         leadingContent = leadingContent
                     )
                 }
@@ -162,8 +195,6 @@ fun MediaGridHost(
                     SelectionTopBar(
                         selectedCount = selectedPhotoIds.size,
                         onSelectAll = onSelectAll,
-                        onDelete = { showDeleteDialog = true },
-                        actions = selectionActions,
                         onClearSelection = onClearSelection,
                         scrollAlpha = scrollAlpha
                     )

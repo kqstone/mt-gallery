@@ -52,8 +52,10 @@ import com.kqstone.mtphotos.ui.folder.FolderScreen
 import com.kqstone.mtphotos.ui.folder.FolderViewModel
 import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
+import com.kqstone.mtphotos.ui.gallery.LocalSelectionBottomBarHost
 import com.kqstone.mtphotos.ui.gallery.PrivateAlbumScreen
 import com.kqstone.mtphotos.ui.gallery.PrivateAlbumViewModel
+import com.kqstone.mtphotos.ui.gallery.SelectionBottomBar
 import com.kqstone.mtphotos.ui.map.MapScreen
 import com.kqstone.mtphotos.ui.map.MapViewModel
 import com.kqstone.mtphotos.ui.search.CloudSearchOverlay
@@ -61,6 +63,7 @@ import com.kqstone.mtphotos.ui.search.CloudSearchViewModel
 import com.kqstone.mtphotos.ui.viewer.ViewerViewModel
 import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import com.kqstone.mtphotos.ui.util.LocalHazeState
+import com.kqstone.mtphotos.ui.gallery.rememberSelectionBottomBarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.res.stringResource
 import com.kqstone.mtphotos.R
@@ -102,6 +105,8 @@ fun MainScreen(
 
     val showBottomBar = currentRoute in topLevelRoutes
     val hazeState = rememberHazeState()
+    val selectionBottomBarHostState = rememberSelectionBottomBarHostState()
+    val selectionBottomBarActions = selectionBottomBarHostState.actions
 
     val folderViewModel: FolderViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = FolderViewModel.Factory(container.galleryRepository)
@@ -150,12 +155,22 @@ fun MainScreen(
     )
     var isSearchOverlayVisible by rememberSaveable { mutableStateOf(false) }
 
-    CompositionLocalProvider(LocalHazeState provides hazeState) {
+    CompositionLocalProvider(
+        LocalHazeState provides hazeState,
+        LocalSelectionBottomBarHost provides selectionBottomBarHostState
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    if (showBottomBar) {
+                    if (selectionBottomBarActions.isNotEmpty()) {
+                        SelectionBottomBar(
+                            actions = selectionBottomBarActions,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .frostedGlassEffect(state = hazeState)
+                        )
+                    } else if (showBottomBar) {
                         NavigationBar(
                             modifier = Modifier
                                 .fillMaxWidth()

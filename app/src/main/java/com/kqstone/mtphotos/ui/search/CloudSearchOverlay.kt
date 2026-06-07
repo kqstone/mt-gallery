@@ -88,6 +88,9 @@ import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
 import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
+import com.kqstone.mtphotos.ui.gallery.PublishSelectionBottomBar
+import com.kqstone.mtphotos.ui.gallery.SelectionBottomBar
+import com.kqstone.mtphotos.ui.gallery.SelectionBottomBarHeight
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
@@ -113,6 +116,21 @@ fun CloudSearchOverlay(
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isFilterPanelVisible by rememberSaveable { mutableStateOf(true) }
+    val selectionActions = if (isSelectionMode) {
+        listOf(
+            MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
+            MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() },
+            MediaSelectionAction(MediaSelectionActionType.HIDE) { viewModel.hideSelected() },
+            MediaSelectionAction(MediaSelectionActionType.DELETE) { showDeleteDialog = true }
+        )
+    } else {
+        emptyList()
+    }
+
+    PublishSelectionBottomBar(
+        visible = isSelectionMode,
+        actions = selectionActions
+    )
 
     ToastMessageEffect(
         message = uiState.toastMessage,
@@ -148,11 +166,6 @@ fun CloudSearchOverlay(
                 SelectionTopBar(
                     selectedCount = selectedIds.size,
                     onSelectAll = { viewModel.selectAll() },
-                    onDelete = { showDeleteDialog = true },
-                    actions = listOf(
-                        MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
-                        MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() }
-                    ),
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = 1f
                 )
@@ -207,7 +220,7 @@ fun CloudSearchOverlay(
                             viewModel.executeSearch()
                         },
                         modifier = Modifier.fillMaxSize(),
-                        bottomPadding = 16.dp
+                        bottomPadding = if (isSelectionMode) SelectionBottomBarHeight + 16.dp else 16.dp
                     )
                 }
 
@@ -238,6 +251,13 @@ fun CloudSearchOverlay(
                     )
                 }
             }
+        }
+
+        if (isSelectionMode) {
+            SelectionBottomBar(
+                actions = selectionActions,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 

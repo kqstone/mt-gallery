@@ -132,7 +132,8 @@ fun FolderDetailScreen(
         scrollAlpha = scrollState.scrollAlpha,
         selectionActions = listOf(
             MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
-            MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() }
+            MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() },
+            MediaSelectionAction(MediaSelectionActionType.HIDE) { viewModel.hideSelected() }
         )
     )
 }

@@ -212,6 +212,7 @@ fun CategoryFileListScreen(
             } else {
                 add(MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() })
             }
+            add(MediaSelectionAction(MediaSelectionActionType.HIDE) { viewModel.hideSelected() })
         }
     )
 

@@ -400,6 +400,27 @@ class CategoryFileListViewModel(
         }
     }
 
+    fun hideSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = _uiState.value.photos.filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            photos = _uiState.value.photos.removePhotos(selectedPhotos)
+        )
+        updateActiveCache(_uiState.value)
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueHides(selectedPhotos, isHide = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
     fun renamePerson(
         personId: String,
         currentName: String,
