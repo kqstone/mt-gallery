@@ -27,10 +27,10 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
 import com.kqstone.mtphotos.ui.gallery.MonthGroup
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
-import com.kqstone.mtphotos.ui.gallery.TimelinePhotoGrid
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ShareManager
 import com.kqstone.mtphotos.ui.util.ShareProgressOverlay
@@ -59,21 +59,19 @@ fun MediaGridHost(
     contentTopPadding: Dp = 0.dp,
     showMonthHeaders: Boolean = true,
     showDayHeaders: Boolean = true,
+    onMonthPlaceholderClick: ((MonthGroup) -> Unit)? = null,
     stateKey: String? = null,
     gridState: LazyGridState,
     contentPadding: PaddingValues = PaddingValues(1.dp),
     leadingContent: (@Composable () -> Unit)? = null,
+    gridContainer: @Composable (@Composable () -> Unit) -> Unit = { content -> content() },
     overlayContent: @Composable BoxScope.() -> Unit = {},
     shareManager: ShareManager? = null,
     scrollAlpha: Float = 1f,
     showTopBar: Boolean = true,
     showSelectionTopBar: Boolean = true,
     handleSelectionBack: Boolean = true,
-    onShare: (() -> Unit)? = null,
-    onFavorite: (() -> Unit)? = null,
-    onUnfavorite: (() -> Unit)? = null,
-    onHide: (() -> Unit)? = null,
-    onUnhide: (() -> Unit)? = null
+    selectionActions: List<MediaSelectionAction> = emptyList()
 ) {
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -129,23 +127,26 @@ fun MediaGridHost(
             }
 
             else -> {
-                TimelinePhotoGrid(
-                    months = months,
-                    columnCount = columnCount,
-                    selectedPhotoIds = selectedPhotoIds,
-                    isSelectionMode = isSelectionMode,
-                    selectionManager = selectionManager,
-                    getThumbUrl = getThumbUrl,
-                    onPhotoClick = onPhotoClick,
-                    onColumnCountChange = onColumnCountChange,
-                    showMonthHeaders = showMonthHeaders,
-                    showDayHeaders = showDayHeaders,
-                    stateKey = stateKey,
-                    modifier = Modifier.fillMaxSize(),
-                    gridState = gridState,
-                    contentPadding = contentPadding,
-                    leadingContent = leadingContent
-                )
+                gridContainer {
+                    TimelinePhotoGrid(
+                        months = months,
+                        columnCount = columnCount,
+                        selectedPhotoIds = selectedPhotoIds,
+                        isSelectionMode = isSelectionMode,
+                        selectionManager = selectionManager,
+                        getThumbUrl = getThumbUrl,
+                        onPhotoClick = onPhotoClick,
+                        onColumnCountChange = onColumnCountChange,
+                        showMonthHeaders = showMonthHeaders,
+                        showDayHeaders = showDayHeaders,
+                        onMonthPlaceholderClick = onMonthPlaceholderClick,
+                        stateKey = stateKey,
+                        modifier = Modifier.fillMaxSize(),
+                        gridState = gridState,
+                        contentPadding = contentPadding,
+                        leadingContent = leadingContent
+                    )
+                }
             }
         }
 
@@ -162,11 +163,7 @@ fun MediaGridHost(
                         selectedCount = selectedPhotoIds.size,
                         onSelectAll = onSelectAll,
                         onDelete = { showDeleteDialog = true },
-                        onShare = onShare,
-                        onFavorite = onFavorite,
-                        onUnfavorite = onUnfavorite,
-                        onHide = onHide,
-                        onUnhide = onUnhide,
+                        actions = selectionActions,
                         onClearSelection = onClearSelection,
                         scrollAlpha = scrollAlpha
                     )

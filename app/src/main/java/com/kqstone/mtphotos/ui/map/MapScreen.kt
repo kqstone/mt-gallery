@@ -75,8 +75,8 @@ import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.MyLocationStyle
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.ui.gallery.SelectionManager
-import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.media.MediaGridHost
+import com.kqstone.mtphotos.ui.media.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.SimpleTitleHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

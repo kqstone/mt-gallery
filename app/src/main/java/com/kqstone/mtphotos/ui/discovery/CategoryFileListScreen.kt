@@ -34,8 +34,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
-import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
 import com.kqstone.mtphotos.ui.media.MediaGridHost
+import com.kqstone.mtphotos.ui.media.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.TopBarActionIcon
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
@@ -203,9 +205,14 @@ fun CategoryFileListScreen(
         },
         shareManager = viewModel.shareManager,
         scrollAlpha = scrollState.scrollAlpha,
-        onShare = { viewModel.shareSelected(context) },
-        onFavorite = if (loadType == "favorites") null else ({ viewModel.favoriteSelected() }),
-        onUnfavorite = if (loadType == "favorites") ({ viewModel.unfavoriteSelected() }) else null
+        selectionActions = buildList {
+            add(MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) })
+            if (loadType == "favorites") {
+                add(MediaSelectionAction(MediaSelectionActionType.UNFAVORITE) { viewModel.unfavoriteSelected() })
+            } else {
+                add(MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() })
+            }
+        }
     )
 
     if (showRenameDialog) {

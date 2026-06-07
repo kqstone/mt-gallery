@@ -86,6 +86,8 @@ import com.kqstone.mtphotos.data.repository.SearchFilters
 import com.kqstone.mtphotos.data.repository.SearchTipItem
 import com.kqstone.mtphotos.data.repository.SearchType
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
 import com.kqstone.mtphotos.ui.gallery.SelectionTopBar
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
@@ -147,8 +149,10 @@ fun CloudSearchOverlay(
                     selectedCount = selectedIds.size,
                     onSelectAll = { viewModel.selectAll() },
                     onDelete = { showDeleteDialog = true },
-                    onShare = { viewModel.shareSelected(context) },
-                    onFavorite = { viewModel.favoriteSelected() },
+                    actions = listOf(
+                        MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
+                        MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() }
+                    ),
                     onClearSelection = { viewModel.selectionManager.clearSelection() },
                     scrollAlpha = 1f
                 )

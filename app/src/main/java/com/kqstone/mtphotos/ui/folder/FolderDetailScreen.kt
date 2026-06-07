@@ -38,8 +38,10 @@ import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.FolderItem
-import com.kqstone.mtphotos.ui.gallery.buildPhotoTimelineLayout
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionAction
+import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
 import com.kqstone.mtphotos.ui.media.MediaGridHost
+import com.kqstone.mtphotos.ui.media.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.bounceClick
@@ -128,8 +130,10 @@ fun FolderDetailScreen(
         },
         shareManager = viewModel.shareManager,
         scrollAlpha = scrollState.scrollAlpha,
-        onShare = { viewModel.shareSelected(context) },
-        onFavorite = { viewModel.favoriteSelected() }
+        selectionActions = listOf(
+            MediaSelectionAction(MediaSelectionActionType.SHARE) { viewModel.shareSelected(context) },
+            MediaSelectionAction(MediaSelectionActionType.FAVORITE) { viewModel.favoriteSelected() }
+        )
     )
 }
 
