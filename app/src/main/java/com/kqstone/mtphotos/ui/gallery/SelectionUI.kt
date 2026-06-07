@@ -154,7 +154,7 @@ fun SelectionBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .height(SelectionBottomBarHeight),
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp
     ) {
         Row(

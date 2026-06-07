@@ -168,7 +168,6 @@ fun MainScreen(
                             actions = selectionBottomBarActions,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .frostedGlassEffect(state = hazeState)
                         )
                     } else if (showBottomBar) {
                         NavigationBar(
