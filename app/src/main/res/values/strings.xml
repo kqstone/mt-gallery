@@ -182,6 +182,11 @@
     <string name="cast_sent">Cast request sent</string>
     <string name="cast_failed">Cast failed</string>
     <string name="favorited">Favorited</string>
+    <string name="people">People</string>
+    <string name="hide_people">Hide people</string>
+    <string name="loading_people">Loading people</string>
+    <string name="people_load_failed">Failed to load people</string>
+    <string name="no_named_people">No named people</string>
     <string name="info">Info</string>
     <string name="delete_this_media">Delete this media?</string>
     <string name="delete_media_confirm_desc">Determine to delete this file permanently from local storage and cloud? This action cannot be undone.</string>

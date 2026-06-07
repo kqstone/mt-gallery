@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,10 +42,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
 import com.kqstone.mtphotos.ui.util.findActivity
@@ -69,6 +73,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -161,6 +166,11 @@ fun ViewerScreen(
             Toast.makeText(context, context.getString(R.string.cast_sent), Toast.LENGTH_SHORT).show()
         }
     }
+    LaunchedEffect(uiState.peopleDescriptorFailureCount) {
+        if (uiState.peopleDescriptorFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.people_load_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -183,20 +193,43 @@ fun ViewerScreen(
 
             if (isPlayableMedia && isCurrentPage) {
                 val url = uiState.resolvedVideoUrl ?: ""
-                if (url.isNotEmpty()) {
-                    VideoPlayer(
-                        videoUrl = url,
-                        isCurrentPage = true,
-                        isUiVisible = isUiVisible,
-                        onToggleUi = { isUiVisible = !isUiVisible },
-                        onStopPlaybackReady = { stopActivePlayback = it }
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = Color.White)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (url.isNotEmpty()) {
+                        VideoPlayer(
+                            videoUrl = url,
+                            isCurrentPage = true,
+                            isUiVisible = isUiVisible,
+                            onToggleUi = { isUiVisible = !isUiVisible },
+                            onStopPlaybackReady = { stopActivePlayback = it }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color.White)
+                        }
+                    }
+                    if (uiState.isPeopleInfoVisible) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable(onClick = {
+                                    viewModel.hidePeopleInfo()
+                                    isUiVisible = false
+                                })
+                        )
+                        PeopleInfoListOverlay(
+                            descriptors = uiState.peopleDescriptors,
+                            isLoading = false,
+                            portraitUrlProvider = viewModel::getPeoplePortraitUrl,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
+                                .fillMaxWidth()
+                                .padding(top = 72.dp, start = 16.dp, end = 16.dp)
+                                .clickable(onClick = {})
+                        )
                     }
                 }
             } else if (isPlayableMedia) {
@@ -212,7 +245,18 @@ fun ViewerScreen(
                     imageUrl = imageUrl,
                     contentDescription = photo.fileName,
                     onTap = { isUiVisible = !isUiVisible },
-                    onZoomedChanged = {}
+                    onZoomedChanged = {},
+                    peopleDescriptors = if (isCurrentPage && uiState.isPeopleInfoVisible) {
+                        uiState.peopleDescriptors
+                    } else {
+                        emptyList()
+                    },
+                    isPeopleInfoVisible = isCurrentPage && uiState.isPeopleInfoVisible,
+                    isLoadingPeopleInfo = false,
+                    onDismissPeopleInfo = {
+                        viewModel.hidePeopleInfo()
+                        isUiVisible = false
+                    }
                 )
             }
         }
@@ -362,9 +406,13 @@ fun ViewerScreen(
             isLandscape = isLandscape,
             isFavorite = uiState.isFavorite,
             isHide = uiState.isHide,
+            canShowPeopleInfo = currentPhoto.cloudId != null,
+            isPeopleInfoVisible = uiState.isPeopleInfoVisible,
+            isLoadingPeopleDescriptors = uiState.isLoadingPeopleDescriptors,
             onShare = { viewModel.sharePhoto(context) },
             onToggleFavorite = { viewModel.toggleFavorite() },
             onToggleHide = { viewModel.toggleHide() },
+            onPeople = { viewModel.togglePeopleInfo() },
             onDelete = { showDeleteDialog = true },
             onInfo = { showBottomSheet = true }
         )
@@ -672,9 +720,13 @@ private fun BoxScope.ViewerActionHud(
     isLandscape: Boolean,
     isFavorite: Boolean,
     isHide: Boolean,
+    canShowPeopleInfo: Boolean,
+    isPeopleInfoVisible: Boolean,
+    isLoadingPeopleDescriptors: Boolean,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHide: () -> Unit,
+    onPeople: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit
 ) {
@@ -716,10 +768,14 @@ private fun BoxScope.ViewerActionHud(
                         isLandscape = true,
                         isFavorite = isFavorite,
                         isHide = isHide,
+                        canShowPeopleInfo = canShowPeopleInfo,
+                        isPeopleInfoVisible = isPeopleInfoVisible,
+                        isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
                         favScale = favScale,
                         onShare = onShare,
                         onToggleFavorite = onToggleFavorite,
                         onToggleHide = onToggleHide,
+                        onPeople = onPeople,
                         onDelete = onDelete,
                         onInfo = onInfo
                     )
@@ -745,10 +801,14 @@ private fun BoxScope.ViewerActionHud(
                         isLandscape = false,
                         isFavorite = isFavorite,
                         isHide = isHide,
+                        canShowPeopleInfo = canShowPeopleInfo,
+                        isPeopleInfoVisible = isPeopleInfoVisible,
+                        isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
                         favScale = favScale,
                         onShare = onShare,
                         onToggleFavorite = onToggleFavorite,
                         onToggleHide = onToggleHide,
+                        onPeople = onPeople,
                         onDelete = onDelete,
                         onInfo = onInfo
                     )
@@ -763,10 +823,14 @@ private fun ViewerActionButtons(
     isLandscape: Boolean,
     isFavorite: Boolean,
     isHide: Boolean,
+    canShowPeopleInfo: Boolean,
+    isPeopleInfoVisible: Boolean,
+    isLoadingPeopleDescriptors: Boolean,
     favScale: Float,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHide: () -> Unit,
+    onPeople: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit
 ) {
@@ -789,6 +853,17 @@ private fun ViewerActionButtons(
             onClick = onToggleHide
         )
         HUDButton(
+            icon = Icons.Default.Person,
+            label = when {
+                isLoadingPeopleDescriptors -> stringResource(R.string.loading_people)
+                isPeopleInfoVisible -> stringResource(R.string.hide_people)
+                else -> stringResource(R.string.people)
+            },
+            iconColor = if (isPeopleInfoVisible || isLoadingPeopleDescriptors) Color(0xFFFFD166) else Color.White,
+            enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
+            onClick = onPeople
+        )
+        HUDButton(
             icon = Icons.Default.Delete,
             label = stringResource(R.string.delete),
             onClick = onDelete
@@ -808,7 +883,7 @@ private fun ViewerActionButtons(
         )
     } else {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
             content = { content() }
         )
@@ -821,18 +896,20 @@ private fun HUDButton(
     label: String,
     iconColor: Color = Color.White,
     iconScale: Float = 1.0f,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val alpha = if (enabled) 1f else 0.38f
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(8.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = iconColor,
+            tint = iconColor.copy(alpha = alpha),
             modifier = Modifier
                 .size(24.dp)
                 .graphicsLayer {
@@ -844,8 +921,107 @@ private fun HUDButton(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.85f)
+            color = Color.White.copy(alpha = 0.85f * alpha)
         )
+    }
+}
+
+@Composable
+private fun PeopleInfoListOverlay(
+    descriptors: List<PeopleDescriptorItem>,
+    isLoading: Boolean,
+    portraitUrlProvider: (PeopleDescriptorItem) -> String?,
+    modifier: Modifier = Modifier
+) {
+    val people = remember(descriptors) {
+        descriptors.distinctBy { descriptor ->
+            descriptor.person.id.takeIf { it > 0.0 }?.toString() ?: descriptor.person.name
+        }
+    }
+
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.68f),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        if (isLoading) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.loading_people),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        } else if (people.isEmpty()) {
+            Text(
+                text = stringResource(R.string.no_named_people),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                people.forEach { descriptor ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(58.dp)
+                    ) {
+                        val portraitUrl = portraitUrlProvider(descriptor)
+                        if (portraitUrl != null) {
+                            AsyncImage(
+                                model = portraitUrl,
+                                contentDescription = descriptor.person.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = descriptor.person.name,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = descriptor.person.name,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -855,7 +1031,11 @@ private fun ZoomableImage(
     imageUrl: String,
     contentDescription: String,
     onTap: () -> Unit,
-    onZoomedChanged: (Boolean) -> Unit
+    onZoomedChanged: (Boolean) -> Unit,
+    peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
+    isPeopleInfoVisible: Boolean = false,
+    isLoadingPeopleInfo: Boolean = false,
+    onDismissPeopleInfo: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
@@ -901,15 +1081,11 @@ private fun ZoomableImage(
         }
     }
 
-    AsyncImage(
-        model = imageRequest,
-        imageLoader = app.fullImageLoader,
-        contentDescription = contentDescription,
-        contentScale = ContentScale.Fit,
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
-            .pointerInput(photo.uniqueKey, containerSize) {
+            .pointerInput(photo.uniqueKey, containerSize, peopleDescriptors, isPeopleInfoVisible) {
                 awaitEachGesture {
                     val firstDown = awaitFirstDown(requireUnconsumed = true)
                     var isTapCandidate = true
@@ -1047,18 +1223,197 @@ private fun ZoomableImage(
                             pendingTapJob?.cancel()
                             pendingTapJob = tapScope.launch {
                                 delay(DoubleTapWindowMillis)
-                                onTap()
+                                val isInsidePeopleBox = isTapInsidePeopleBox(
+                                    point = firstDown.position,
+                                    descriptors = peopleDescriptors,
+                                    containerSize = containerSize,
+                                    photo = photo,
+                                    scale = scale,
+                                    offset = offset
+                                )
+                                if (isPeopleInfoVisible && !isInsidePeopleBox) {
+                                    onDismissPeopleInfo()
+                                } else if (!isPeopleInfoVisible) {
+                                    onTap()
+                                }
                             }
                         }
                     }
                 }
             }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                translationX = offset.x
-                translationY = offset.y
+    ) {
+        AsyncImage(
+            model = imageRequest,
+            imageLoader = app.fullImageLoader,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        )
+        if (isPeopleInfoVisible || isLoadingPeopleInfo) {
+            PeopleImageOverlay(
+                descriptors = peopleDescriptors,
+                isLoading = isLoadingPeopleInfo,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeopleImageOverlay(
+    descriptors: List<PeopleDescriptorItem>,
+    isLoading: Boolean,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+) {
+    val density = LocalDensity.current
+    val boxes = remember(descriptors, containerSize, photo.uniqueKey, scale, offset) {
+        descriptors.mapNotNull { descriptor ->
+            peopleBoxLayout(
+                descriptor = descriptor,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 84.dp),
+                color = Color.Black.copy(alpha = 0.58f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.loading_people),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
+        }
+
+        boxes.forEach { box ->
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(box.left.roundToInt(), box.top.roundToInt())
+                    }
+                    .width(with(density) { box.width.toDp() })
+                    .height(with(density) { box.height.toDp() })
+                    .border(
+                        width = 2.dp,
+                        color = Color(0xFFFFD166),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+            )
+            Surface(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            box.left.roundToInt(),
+                            (box.top - 28f).coerceAtLeast(0f).roundToInt()
+                        )
+                    },
+                color = Color(0xFFFFD166).copy(alpha = 0.92f),
+                contentColor = Color.Black,
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text(
+                    text = box.name,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+private data class PeopleBoxLayout(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val name: String
+)
+
+private fun isTapInsidePeopleBox(
+    point: Offset,
+    descriptors: List<PeopleDescriptorItem>,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): Boolean {
+    return descriptors.any { descriptor ->
+        val box = peopleBoxLayout(descriptor, containerSize, photo, scale, offset) ?: return@any false
+        point.x in box.left..(box.left + box.width) &&
+            point.y in box.top..(box.top + box.height)
+    }
+}
+
+private fun peopleBoxLayout(
+    descriptor: PeopleDescriptorItem,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): PeopleBoxLayout? {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return null
+    val imageWidth = photo.width.toFloat().takeIf { it > 0f } ?: return null
+    val imageHeight = photo.height.toFloat().takeIf { it > 0f } ?: return null
+    val fitScale = minOf(
+        containerSize.width / imageWidth,
+        containerSize.height / imageHeight
+    )
+    if (fitScale <= 0f) return null
+
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+    val imageLeft = (containerSize.width - fittedWidth) / 2f
+    val imageTop = (containerSize.height - fittedHeight) / 2f
+    val baseLeft = imageLeft + descriptor.box.x.toFloat() * fitScale
+    val baseTop = imageTop + descriptor.box.y.toFloat() * fitScale
+    val baseWidth = descriptor.box.width.toFloat() * fitScale
+    val baseHeight = descriptor.box.height.toFloat() * fitScale
+    val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+
+    return PeopleBoxLayout(
+        left = center.x + (baseLeft - center.x) * scale + offset.x,
+        top = center.y + (baseTop - center.y) * scale + offset.y,
+        width = baseWidth * scale,
+        height = baseHeight * scale,
+        name = descriptor.person.name
     )
 }
 
