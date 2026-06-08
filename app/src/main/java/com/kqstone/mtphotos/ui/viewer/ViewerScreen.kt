@@ -63,6 +63,7 @@ import com.kqstone.mtphotos.ui.util.frostedGlassEffect
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import android.content.Context
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -96,7 +97,12 @@ fun ViewerScreen(
 
     // UI visibility state for immersive full screen
     var isUiVisible by remember { mutableStateOf(true) }
-    val restoreSystemBars = ViewerSystemBarsEffect(isUiVisible = isUiVisible)
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscapeOrientation = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val restoreSystemBars = ViewerSystemBarsEffect(
+        isUiVisible = isUiVisible,
+        isLandscape = isLandscapeOrientation
+    )
 
     val stopAndGoBack = {
         if (!isExiting) {
@@ -340,6 +346,30 @@ fun ViewerScreen(
                         !uiState.originalDownloaded
                     val showStreamButton = currentPhoto.cloudId != null
 
+                    if (isLandscape) {
+                        ViewerLandscapeActionBarActions(
+                            isFavorite = uiState.isFavorite,
+                            isHide = uiState.isHide,
+                            canShowPeopleInfo = currentPhoto.cloudId != null,
+                            isPeopleInfoVisible = uiState.isPeopleInfoVisible,
+                            isLoadingPeopleDescriptors = uiState.isLoadingPeopleDescriptors,
+                            onShare = { viewModel.sharePhoto(context) },
+                            onToggleFavorite = { viewModel.toggleFavorite() },
+                            onToggleHide = { viewModel.toggleHide() },
+                            onPeople = { viewModel.togglePeopleInfo() },
+                            onDelete = { showDeleteDialog = true },
+                            onInfo = { showBottomSheet = true }
+                        )
+                        if (showStreamButton || showLoadOriginalButton) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .height(28.dp)
+                                    .width(1.dp)
+                                    .background(Color.White.copy(alpha = 0.32f))
+                            )
+                        }
+                    }
                     if (showStreamButton) {
                         IconButton(
                             onClick = {
@@ -402,7 +432,7 @@ fun ViewerScreen(
         }
 
         ViewerActionHud(
-            visible = isUiVisible,
+            visible = isUiVisible && !isLandscape,
             isLandscape = isLandscape,
             isFavorite = uiState.isFavorite,
             isHide = uiState.isHide,
@@ -648,7 +678,10 @@ private fun URIHost(url: String): String {
  * removed without the lambda being called.
  */
 @Composable
-private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
+private fun ViewerSystemBarsEffect(
+    isUiVisible: Boolean,
+    isLandscape: Boolean
+): () -> Unit {
     val view = LocalView.current
     if (view.isInEditMode) return {}
 
@@ -696,11 +729,16 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
             insetsController.isAppearanceLightStatusBars = false
             insetsController.isAppearanceLightNavigationBars = false
 
+            val statusBars = WindowInsetsCompat.Type.statusBars()
+            val navigationBars = WindowInsetsCompat.Type.navigationBars()
             val systemBars = WindowInsetsCompat.Type.systemBars()
-            if (isUiVisible) {
-                insetsController.show(systemBars)
-            } else {
-                insetsController.hide(systemBars)
+            when {
+                !isUiVisible -> insetsController.hide(systemBars)
+                isLandscape -> {
+                    insetsController.show(navigationBars)
+                    insetsController.hide(statusBars)
+                }
+                else -> insetsController.show(systemBars)
             }
         }
     }
@@ -712,6 +750,47 @@ private fun ViewerSystemBarsEffect(isUiVisible: Boolean): () -> Unit {
     }
 
     return restore
+}
+
+@Composable
+private fun ViewerLandscapeActionBarActions(
+    isFavorite: Boolean,
+    isHide: Boolean,
+    canShowPeopleInfo: Boolean,
+    isPeopleInfoVisible: Boolean,
+    isLoadingPeopleDescriptors: Boolean,
+    onShare: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleHide: () -> Unit,
+    onPeople: () -> Unit,
+    onDelete: () -> Unit,
+    onInfo: () -> Unit
+) {
+    val favScale by animateFloatAsState(
+        targetValue = if (isFavorite) 1.25f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "favorite_actionbar_scale"
+    )
+
+    ViewerActionButtons(
+        isLandscape = false,
+        showLabels = false,
+        isFavorite = isFavorite,
+        isHide = isHide,
+        canShowPeopleInfo = canShowPeopleInfo,
+        isPeopleInfoVisible = isPeopleInfoVisible,
+        isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+        favScale = favScale,
+        onShare = onShare,
+        onToggleFavorite = onToggleFavorite,
+        onToggleHide = onToggleHide,
+        onPeople = onPeople,
+        onDelete = onDelete,
+        onInfo = onInfo
+    )
 }
 
 @Composable
@@ -821,6 +900,7 @@ private fun BoxScope.ViewerActionHud(
 @Composable
 private fun ViewerActionButtons(
     isLandscape: Boolean,
+    showLabels: Boolean = true,
     isFavorite: Boolean,
     isHide: Boolean,
     canShowPeopleInfo: Boolean,
@@ -838,6 +918,7 @@ private fun ViewerActionButtons(
         HUDButton(
             icon = Icons.Default.Share,
             label = stringResource(R.string.share),
+            showLabel = showLabels,
             onClick = onShare
         )
         HUDButton(
@@ -845,11 +926,13 @@ private fun ViewerActionButtons(
             label = if (isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
             iconColor = if (isFavorite) Color(0xFFFFD700) else Color.White,
             iconScale = favScale,
+            showLabel = showLabels,
             onClick = onToggleFavorite
         )
         HUDButton(
             icon = if (isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
             label = if (isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+            showLabel = showLabels,
             onClick = onToggleHide
         )
         HUDButton(
@@ -861,16 +944,19 @@ private fun ViewerActionButtons(
             },
             iconColor = if (isPeopleInfoVisible || isLoadingPeopleDescriptors) Color(0xFFFFD166) else Color.White,
             enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
+            showLabel = showLabels,
             onClick = onPeople
         )
         HUDButton(
             icon = Icons.Default.Delete,
             label = stringResource(R.string.delete),
+            showLabel = showLabels,
             onClick = onDelete
         )
         HUDButton(
             icon = Icons.Default.Info,
             label = stringResource(R.string.info),
+            showLabel = showLabels,
             onClick = onInfo
         )
     }
@@ -883,7 +969,10 @@ private fun ViewerActionButtons(
         )
     } else {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(
+                if (showLabels) 12.dp else 0.dp,
+                Alignment.CenterHorizontally
+            ),
             verticalAlignment = Alignment.CenterVertically,
             content = { content() }
         )
@@ -897,12 +986,14 @@ private fun HUDButton(
     iconColor: Color = Color.White,
     iconScale: Float = 1.0f,
     enabled: Boolean = true,
+    showLabel: Boolean = true,
     onClick: () -> Unit
 ) {
     val alpha = if (enabled) 1f else 0.38f
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .then(if (showLabel) Modifier else Modifier.size(40.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(8.dp)
     ) {
@@ -917,12 +1008,14 @@ private fun HUDButton(
                     scaleY = iconScale
                 }
         )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.85f * alpha)
-        )
+        if (showLabel) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.85f * alpha)
+            )
+        }
     }
 }
 

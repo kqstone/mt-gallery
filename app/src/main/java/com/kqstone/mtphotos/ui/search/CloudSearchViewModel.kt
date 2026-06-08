@@ -475,6 +475,26 @@ class CloudSearchViewModel(
         }
     }
 
+    fun hideSelected() {
+        val selectedIds = selectionManager.selectedPhotoIds.value
+        if (selectedIds.isEmpty()) return
+        val selectedPhotos = getAllLoadedPhotos().filter { it.id in selectedIds }
+        if (selectedPhotos.isEmpty()) return
+
+        _uiState.value = _uiState.value.copy(
+            resultMonths = _uiState.value.resultMonths.removePhotos(selectedPhotos)
+        )
+        selectionManager.clearSelection()
+
+        val repo = serverOpTaskRepository ?: return
+        viewModelScope.launch {
+            repo.enqueueHides(selectedPhotos, isHide = true)
+            if (selectedPhotos.any { it.cloudId != null }) {
+                appContext?.let { BackupScheduler.triggerServerOpWork(it) }
+            }
+        }
+    }
+
     fun getThumbUrl(photo: UnifiedPhotoItem): String {
         return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
