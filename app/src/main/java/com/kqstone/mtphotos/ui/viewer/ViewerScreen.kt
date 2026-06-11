@@ -956,7 +956,7 @@ private fun ViewerActionButtons(
         )
         HUDButton(
             icon = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-            label = if (isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
+            label = stringResource(R.string.favorite),
             iconColor = if (isFavorite) Color(0xFFFFD700) else Color.White,
             iconScale = favScale,
             showLabel = showLabels,
@@ -964,17 +964,13 @@ private fun ViewerActionButtons(
         )
         HUDButton(
             icon = if (isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-            label = if (isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+            label = stringResource(R.string.hide),
             showLabel = showLabels,
             onClick = onToggleHide
         )
         HUDButton(
             icon = Icons.Default.Person,
-            label = when {
-                isLoadingPeopleDescriptors -> stringResource(R.string.loading_people)
-                isPeopleInfoVisible -> stringResource(R.string.hide_people)
-                else -> stringResource(R.string.people)
-            },
+            label = stringResource(R.string.people),
             iconColor = if (isPeopleInfoVisible || isLoadingPeopleDescriptors) Color(0xFFFFD166) else Color.White,
             enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
             showLabel = showLabels,
