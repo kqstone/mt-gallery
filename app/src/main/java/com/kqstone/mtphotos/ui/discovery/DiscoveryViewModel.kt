@@ -13,6 +13,8 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
+import com.kqstone.mtphotos.data.local.PrefsManager
+import com.kqstone.mtphotos.ui.util.OrderMergeUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -32,6 +34,7 @@ data class DiscoveryUiState(
 
 class DiscoveryViewModel(
     private val galleryRepository: GalleryRepository,
+    private val prefsManager: PrefsManager,
     private val mediaUiMutationBus: MediaUiMutationBus? = null
 ) : ViewModel() {
 
@@ -50,6 +53,8 @@ class DiscoveryViewModel(
             bus.mutations.collect { mutation ->
                 if (mutation is MediaUiMutation.PersonRenamed) {
                     updatePersonName(mutation.personId, mutation.newName)
+                } else if (mutation is MediaUiMutation.DiscoveryOrderChanged) {
+                    applyCustomOrder()
                 }
             }
         }
@@ -69,10 +74,22 @@ class DiscoveryViewModel(
                         locationsDeferred.await()
                     )
                 }
+                val rawPeople = people.getOrNull() ?: emptyList()
+                val rawScenes = scenes.getOrNull() ?: emptyList()
+                val rawLocations = locations.getOrNull() ?: emptyList()
+
+                val peopleOrder = prefsManager.getPeopleOrderSync()
+                val scenesOrder = prefsManager.getScenesOrderSync()
+                val locationsOrder = prefsManager.getLocationsOrderSync()
+
+                val finalPeople = OrderMergeUtils.mergeOrder(rawPeople, peopleOrder) { it.id }
+                val finalScenes = OrderMergeUtils.mergeOrder(rawScenes, scenesOrder) { it.id }
+                val finalLocations = OrderMergeUtils.mergeOrder(rawLocations, locationsOrder) { it.city }
+
                 _uiState.value = DiscoveryUiState(
-                    people = people.getOrNull() ?: emptyList(),
-                    scenes = scenes.getOrNull() ?: emptyList(),
-                    locations = locations.getOrNull() ?: emptyList()
+                    people = finalPeople,
+                    scenes = finalScenes,
+                    locations = finalLocations
                 )
             } catch (e: Exception) {
                 _uiState.value = DiscoveryUiState(
@@ -112,10 +129,22 @@ class DiscoveryViewModel(
                     scenes.exceptionOrNull(),
                     locations.exceptionOrNull()
                 )
+                val rawPeople = people.getOrNull() ?: emptyList()
+                val rawScenes = scenes.getOrNull() ?: emptyList()
+                val rawLocations = locations.getOrNull() ?: emptyList()
+
+                val peopleOrder = prefsManager.getPeopleOrderSync()
+                val scenesOrder = prefsManager.getScenesOrderSync()
+                val locationsOrder = prefsManager.getLocationsOrderSync()
+
+                val finalPeople = OrderMergeUtils.mergeOrder(rawPeople, peopleOrder) { it.id }
+                val finalScenes = OrderMergeUtils.mergeOrder(rawScenes, scenesOrder) { it.id }
+                val finalLocations = OrderMergeUtils.mergeOrder(rawLocations, locationsOrder) { it.city }
+
                 val nextState = DiscoveryUiState(
-                    people = people.getOrNull() ?: emptyList(),
-                    scenes = scenes.getOrNull() ?: emptyList(),
-                    locations = locations.getOrNull() ?: emptyList(),
+                    people = finalPeople,
+                    scenes = finalScenes,
+                    locations = finalLocations,
                     error = null
                 )
                 if (nextState.hasContent || resultMessage == null) {
@@ -165,13 +194,39 @@ class DiscoveryViewModel(
         return galleryRepository.getPortraitUrl(personId, cover)
     }
 
+    private fun applyCustomOrder() {
+        viewModelScope.launch {
+            val peopleOrder = prefsManager.getPeopleOrderSync()
+            val scenesOrder = prefsManager.getScenesOrderSync()
+            val locationsOrder = prefsManager.getLocationsOrderSync()
+
+            val finalPeople = OrderMergeUtils.mergeOrder(_uiState.value.people, peopleOrder) { it.id }
+            val finalScenes = OrderMergeUtils.mergeOrder(_uiState.value.scenes, scenesOrder) { it.id }
+            val finalLocations = OrderMergeUtils.mergeOrder(_uiState.value.locations, locationsOrder) { it.city }
+
+            _uiState.value = _uiState.value.copy(
+                people = finalPeople,
+                scenes = finalScenes,
+                locations = finalLocations
+            )
+        }
+    }
+
+    fun saveCustomOrder(type: String, ids: List<String>) {
+        viewModelScope.launch {
+            prefsManager.saveOrder(type, ids)
+            mediaUiMutationBus?.publish(MediaUiMutation.DiscoveryOrderChanged(type))
+        }
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
+        private val prefsManager: PrefsManager,
         private val mediaUiMutationBus: MediaUiMutationBus? = null
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return DiscoveryViewModel(galleryRepository, mediaUiMutationBus) as T
+            return DiscoveryViewModel(galleryRepository, prefsManager, mediaUiMutationBus) as T
         }
     }
 }

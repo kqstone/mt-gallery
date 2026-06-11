@@ -31,9 +31,10 @@ fun AllItemsGridScreen(
     title: String,
     columns: Int,
     onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState = rememberLazyGridState(),
     content: LazyGridScope.() -> Unit
 ) {
-    val gridState = rememberLazyGridState()
     val scrollState = rememberScrollAlpha(
         firstVisibleItemIndex = { gridState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { gridState.firstVisibleItemScrollOffset }
@@ -51,7 +52,7 @@ fun AllItemsGridScreen(
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize(),
+            modifier = modifier.fillMaxSize(),
             content = content
         )
 

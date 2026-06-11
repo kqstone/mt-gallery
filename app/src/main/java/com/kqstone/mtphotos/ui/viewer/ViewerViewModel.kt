@@ -126,6 +126,7 @@ class ViewerViewModel(
                 }
             }
             is MediaUiMutation.PersonRenamed -> Unit
+            else -> Unit
         }
     }
 

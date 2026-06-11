@@ -17,6 +17,9 @@ sealed interface MediaUiMutation {
         val isHide: Boolean
     ) : MediaUiMutation
 
+    data class DiscoveryOrderChanged(val type: String) : MediaUiMutation
+    data class FolderOrderChanged(val type: String) : MediaUiMutation
+
     data class PersonRenamed(
         val personId: String,
         val newName: String

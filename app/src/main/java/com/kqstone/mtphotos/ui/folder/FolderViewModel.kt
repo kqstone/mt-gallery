@@ -10,6 +10,10 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.util.PullRefreshSupport
 import com.kqstone.mtphotos.ui.util.UiText
+import com.kqstone.mtphotos.data.local.PrefsManager
+import com.kqstone.mtphotos.data.repository.MediaUiMutation
+import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
+import com.kqstone.mtphotos.ui.util.OrderMergeUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -33,14 +37,30 @@ data class FolderUiState(
     val toastMessage: UiText? = null
 )
 
-class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewModel() {
+class FolderViewModel(
+    private val galleryRepository: GalleryRepository,
+    private val prefsManager: PrefsManager,
+    private val mediaUiMutationBus: MediaUiMutationBus? = null
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FolderUiState())
     val uiState: StateFlow<FolderUiState> = _uiState
     private var refreshJob: Job? = null
 
     init {
+        observeMediaUiMutations()
         loadFolders()
+    }
+
+    private fun observeMediaUiMutations() {
+        val bus = mediaUiMutationBus ?: return
+        viewModelScope.launch {
+            bus.mutations.collect { mutation ->
+                if (mutation is MediaUiMutation.FolderOrderChanged) {
+                    applyCustomOrder()
+                }
+            }
+        }
     }
 
     fun loadFolders() {
@@ -111,9 +131,18 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
                 val folders = async { galleryRepository.getRootFolders() }
                 albums.await() to folders.await()
             }
+            val rawAlbums = albumsResult.getOrDefault(emptyList())
+            val rawFolders = foldersResult.getOrDefault(emptyList())
+
+            val albumsOrder = prefsManager.getAlbumsOrderSync()
+            val foldersOrder = prefsManager.getFoldersOrderSync()
+
+            val finalAlbums = OrderMergeUtils.mergeOrder(rawAlbums, albumsOrder) { it.id.toString() }
+            val finalFolders = OrderMergeUtils.mergeOrder(rawFolders, foldersOrder) { it.id }
+
             CollectionLoadResult(
-                albums = albumsResult.getOrDefault(emptyList()),
-                folders = foldersResult.getOrDefault(emptyList()),
+                albums = finalAlbums,
+                folders = finalFolders,
                 error = buildError(albumsResult.exceptionOrNull(), foldersResult.exceptionOrNull())
             )
         } catch (e: Exception) {
@@ -138,10 +167,36 @@ class FolderViewModel(private val galleryRepository: GalleryRepository) : ViewMo
         }
     }
 
-    class Factory(private val galleryRepository: GalleryRepository) : ViewModelProvider.Factory {
+    private fun applyCustomOrder() {
+        viewModelScope.launch {
+            val albumsOrder = prefsManager.getAlbumsOrderSync()
+            val foldersOrder = prefsManager.getFoldersOrderSync()
+
+            val finalAlbums = OrderMergeUtils.mergeOrder(_uiState.value.albums, albumsOrder) { it.id.toString() }
+            val finalFolders = OrderMergeUtils.mergeOrder(_uiState.value.folders, foldersOrder) { it.id }
+
+            _uiState.value = _uiState.value.copy(
+                albums = finalAlbums,
+                folders = finalFolders
+            )
+        }
+    }
+
+    fun saveCustomOrder(type: String, ids: List<String>) {
+        viewModelScope.launch {
+            prefsManager.saveOrder(type, ids)
+            mediaUiMutationBus?.publish(MediaUiMutation.FolderOrderChanged(type))
+        }
+    }
+
+    class Factory(
+        private val galleryRepository: GalleryRepository,
+        private val prefsManager: PrefsManager,
+        private val mediaUiMutationBus: MediaUiMutationBus? = null
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return FolderViewModel(galleryRepository) as T
+            return FolderViewModel(galleryRepository, prefsManager, mediaUiMutationBus) as T
         }
     }
 }

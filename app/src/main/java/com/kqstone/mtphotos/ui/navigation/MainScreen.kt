@@ -111,7 +111,11 @@ fun MainScreen(
     val selectionBottomBarActions = selectionBottomBarHostState.actions
 
     val folderViewModel: FolderViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-        factory = FolderViewModel.Factory(container.galleryRepository)
+        factory = FolderViewModel.Factory(
+            container.galleryRepository,
+            container.prefsManager,
+            container.mediaUiMutationBus
+        )
     )
     val folderDetailViewModel: FolderDetailViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = FolderDetailViewModel.Factory(
@@ -125,6 +129,7 @@ fun MainScreen(
     val discoveryViewModel: DiscoveryViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = DiscoveryViewModel.Factory(
             container.galleryRepository,
+            container.prefsManager,
             container.mediaUiMutationBus
         )
     )

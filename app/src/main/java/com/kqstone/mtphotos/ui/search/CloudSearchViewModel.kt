@@ -133,6 +133,7 @@ class CloudSearchViewModel(
                     }
                 )
             }
+            else -> Unit
         }
     }
 

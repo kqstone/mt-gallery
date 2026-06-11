@@ -11,11 +11,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.graphicsLayer
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.AllItemsGridScreen
 import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.GradientPresets
 import com.kqstone.mtphotos.ui.util.PersonNameUtils
+
+import org.burnoutcrew.reorderable.detectReorderAfterLongPress
+import org.burnoutcrew.reorderable.rememberReorderableLazyGridState
+import org.burnoutcrew.reorderable.reorderable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 fun AllDiscoveryItemsScreen(
@@ -36,14 +45,44 @@ fun AllDiscoveryItemsScreen(
     }
     val columns = if (type == "people") 4 else 3
 
+    var peopleList by remember { mutableStateOf(uiState.people) }
+    var scenesList by remember { mutableStateOf(uiState.scenes) }
+    var locationsList by remember { mutableStateOf(uiState.locations) }
+
+    LaunchedEffect(uiState.people) { peopleList = uiState.people }
+    LaunchedEffect(uiState.scenes) { scenesList = uiState.scenes }
+    LaunchedEffect(uiState.locations) { locationsList = uiState.locations }
+
+    val state = rememberReorderableLazyGridState(
+        onMove = { from, to ->
+            when (type) {
+                "people" -> peopleList = peopleList.toMutableList().apply { add(to.index, removeAt(from.index)) }
+                "scenes" -> scenesList = scenesList.toMutableList().apply { add(to.index, removeAt(from.index)) }
+                "locations" -> locationsList = locationsList.toMutableList().apply { add(to.index, removeAt(from.index)) }
+            }
+        },
+        onDragEnd = { _, _ ->
+            when (type) {
+                "people" -> viewModel.saveCustomOrder("people", peopleList.map { it.id })
+                "scenes" -> viewModel.saveCustomOrder("scene", scenesList.map { it.id })
+                "locations" -> viewModel.saveCustomOrder("location", locationsList.map { it.city })
+            }
+        }
+    )
+
     AllItemsGridScreen(
         title = stringResource(titleRes),
         columns = columns,
-        onBack = onBack
+        onBack = onBack,
+        modifier = Modifier.reorderable(state),
+        gridState = state.gridState
     ) {
         when (type) {
             "people" -> {
-                items(uiState.people, key = { it.id }) { person ->
+                items(peopleList, key = { it.id }) { person ->
+                    val isDragging = state.draggingItemKey == person.id
+                    val scale = if (isDragging) 1.05f else 1f
+                    val alpha = if (isDragging) 0.8f else 1f
                     val displayName = PersonNameUtils.displayName(person.name, stringResource(R.string.person_unnamed))
                     PersonCircleItem(
                         name = displayName,
@@ -51,12 +90,23 @@ fun AllDiscoveryItemsScreen(
                         thumbUrl = if (person.coverFileId > 0) viewModel.getPortraitUrl(person.id, person.coverFileId) else null,
                         onClick = { onPersonClick(person.id, person.name) },
                         key = person.coverMd5,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .animateItem()
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                this.alpha = alpha
+                            }
+                            .detectReorderAfterLongPress(state)
                     )
                 }
             }
             "scenes" -> {
-                items(uiState.scenes, key = { it.id }) { scene ->
+                items(scenesList, key = { it.id }) { scene ->
+                    val isDragging = state.draggingItemKey == scene.id
+                    val scale = if (isDragging) 1.05f else 1f
+                    val alpha = if (isDragging) 0.8f else 1f
                     CoverCard(
                         name = scene.name,
                         subtitle = stringResource(R.string.photo_count_short, scene.count),
@@ -64,12 +114,24 @@ fun AllDiscoveryItemsScreen(
                         onClick = { onSceneClick(scene.id, scene.cid, scene.name) },
                         thumbKey = scene.coverMd5,
                         cardSize = Dp.Unspecified,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        modifier = Modifier
+                            .animateItem()
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                this.alpha = alpha
+                            }
+                            .detectReorderAfterLongPress(state)
                     )
                 }
             }
             "locations" -> {
-                items(uiState.locations, key = { it.city }) { location ->
+                items(locationsList, key = { it.city }) { location ->
+                    val isDragging = state.draggingItemKey == location.city
+                    val scale = if (isDragging) 1.05f else 1f
+                    val alpha = if (isDragging) 0.8f else 1f
                     CoverCard(
                         name = location.city,
                         subtitle = stringResource(R.string.photo_count_short, location.count),
@@ -79,7 +141,16 @@ fun AllDiscoveryItemsScreen(
                         fallbackGradient = GradientPresets.Location,
                         thumbKey = location.coverMd5,
                         cardSize = Dp.Unspecified,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        modifier = Modifier
+                            .animateItem()
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                this.alpha = alpha
+                            }
+                            .detectReorderAfterLongPress(state)
                     )
                 }
             }
