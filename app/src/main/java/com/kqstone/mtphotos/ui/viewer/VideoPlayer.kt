@@ -29,7 +29,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
@@ -41,32 +43,25 @@ import kotlinx.coroutines.delay
 @Composable
 fun VideoPlayer(
     videoUrl: String,
+    videoCacheKey: String? = stableVideoCacheKey(videoUrl),
+    playerPool: VideoPlayerPool? = null,
     isCurrentPage: Boolean,
     isUiVisible: Boolean,
     onToggleUi: () -> Unit,
+    onPlaybackError: (PlaybackException) -> Unit = {},
+    onFirstFrameRendered: () -> Unit = {},
     onStopPlaybackReady: ((() -> Unit)?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
-    val exoPlayer = remember(videoUrl) {
-        ExoPlayer.Builder(context).build().apply {
-            if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
-                val app = context.applicationContext as MTPhotosApp
-                val simpleCache = app.videoCache
-                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                val cacheDataSourceFactory = CacheDataSource.Factory()
-                    .setCache(simpleCache)
-                    .setUpstreamDataSourceFactory(httpDataSourceFactory)
-                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(videoUrl))
-                setMediaSource(mediaSource)
-            } else {
-                setMediaItem(MediaItem.fromUri(videoUrl))
-            }
-            prepare()
-        }
+    val mediaItem = remember(videoUrl, videoCacheKey) {
+        buildVideoMediaItem(videoUrl, videoCacheKey)
+    }
+
+    val exoPlayer = remember(videoUrl, videoCacheKey) {
+        playerPool?.take(videoUrl, videoCacheKey)
+            ?: createPreparedVideoPlayer(context, videoUrl, mediaItem)
     }
 
     var isPlaying by remember { mutableStateOf(false) }
@@ -83,6 +78,12 @@ fun VideoPlayer(
                 if (state == androidx.media3.common.Player.STATE_READY) {
                     duration = exoPlayer.duration.coerceAtLeast(0L)
                 }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                onPlaybackError(error)
+            }
+            override fun onRenderedFirstFrame() {
+                onFirstFrameRendered()
             }
         }
     }
@@ -264,6 +265,111 @@ fun VideoPlayer(
             }
         }
     }
+}
+
+class VideoPlayerPool(private val context: android.content.Context) {
+    private val players = linkedMapOf<String, ExoPlayer>()
+
+    fun prepare(sources: List<ViewerVideoSource>, activeIdentity: String?) {
+        val desired = sources
+            .asSequence()
+            .filter { it.url.isNotEmpty() }
+            .map { identityFor(it.url, it.cacheKey) to it }
+            .filter { (identity, _) -> identity != activeIdentity }
+            .distinctBy { it.first }
+            .take(MAX_PREPARED_PLAYERS)
+            .toList()
+        val desiredIdentities = desired.map { it.first }.toSet()
+
+        players.keys
+            .filter { it !in desiredIdentities }
+            .toList()
+            .forEach { identity ->
+                players.remove(identity)?.release()
+            }
+
+        desired.forEach { (identity, source) ->
+            if (!players.containsKey(identity)) {
+                val mediaItem = buildVideoMediaItem(source.url, source.cacheKey)
+                players[identity] = createPreparedVideoPlayer(context, source.url, mediaItem)
+            }
+        }
+    }
+
+    fun take(videoUrl: String, videoCacheKey: String?): ExoPlayer? {
+        return players.remove(identityFor(videoUrl, videoCacheKey))
+    }
+
+    fun releaseAll() {
+        players.values.forEach { it.release() }
+        players.clear()
+    }
+
+    private companion object {
+        private const val MAX_PREPARED_PLAYERS = 2
+    }
+}
+
+@Composable
+fun rememberVideoPlayerPool(): VideoPlayerPool {
+    val context = LocalContext.current.applicationContext
+    val pool = remember { VideoPlayerPool(context) }
+    DisposableEffect(pool) {
+        onDispose { pool.releaseAll() }
+    }
+    return pool
+}
+
+private fun createPreparedVideoPlayer(
+    context: android.content.Context,
+    videoUrl: String,
+    mediaItem: MediaItem
+): ExoPlayer {
+    return ExoPlayer.Builder(context)
+        .setLoadControl(defaultVideoLoadControl())
+        .build()
+        .apply {
+            playWhenReady = false
+            if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
+                val app = context.applicationContext as MTPhotosApp
+                val cacheDataSourceFactory = CacheDataSource.Factory()
+                    .setCache(app.videoCache)
+                    .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
+                    .createMediaSource(mediaItem)
+                setMediaSource(mediaSource)
+            } else {
+                setMediaItem(mediaItem)
+            }
+            prepare()
+        }
+}
+
+private fun buildVideoMediaItem(videoUrl: String, videoCacheKey: String?): MediaItem {
+    return MediaItem.Builder()
+        .setUri(videoUrl)
+        .apply {
+            if (!videoCacheKey.isNullOrBlank()) {
+                setCustomCacheKey(videoCacheKey)
+            }
+        }
+        .build()
+}
+
+private fun defaultVideoLoadControl(): DefaultLoadControl {
+    return DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            15_000,
+            50_000,
+            500,
+            1_000
+        )
+        .build()
+}
+
+private fun identityFor(videoUrl: String, videoCacheKey: String?): String {
+    return videoCacheKey ?: videoUrl
 }
 
 private fun formatTime(ms: Long): String {

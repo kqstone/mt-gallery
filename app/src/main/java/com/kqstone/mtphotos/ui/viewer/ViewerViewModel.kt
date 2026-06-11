@@ -1,11 +1,16 @@
 package com.kqstone.mtphotos.ui.viewer
 
-import android.content.ContentValues
 import android.content.Context
-import android.provider.MediaStore
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.data.local.db.SyncStatus
 import com.kqstone.mtphotos.data.repository.OcrInfoItem
 import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
@@ -14,6 +19,7 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.gallery.removePhotos
 import com.kqstone.mtphotos.ui.gallery.updateFavorite
 import com.kqstone.mtphotos.ui.gallery.updateHide
@@ -21,14 +27,13 @@ import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import com.kqstone.mtphotos.ui.util.ShareManager
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.File
-import java.io.FileOutputStream
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 data class ViewerUiState(
     val photos: List<UnifiedPhotoItem> = emptyList(),
@@ -42,6 +47,8 @@ data class ViewerUiState(
     val downloadProgress: Float? = null,
     val originalDownloaded: Boolean = false,
     val resolvedVideoUrl: String? = null,
+    val resolvedVideoCacheKey: String? = null,
+    val nearbyVideoSources: Map<String, ViewerVideoSource> = emptyMap(),
     val isPlayingTranscode: Boolean = false,
     val streamMediaUrl: String? = null,
     val isResolvingStreamUrl: Boolean = false,
@@ -63,6 +70,12 @@ data class ViewerUiState(
     val ocrInfoFailureCount: Int = 0
 )
 
+data class ViewerVideoSource(
+    val url: String,
+    val isPlayingTranscode: Boolean,
+    val cacheKey: String? = stableVideoCacheKey(url)
+)
+
 class ViewerViewModel(
     private val galleryRepository: GalleryRepository,
     private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
@@ -76,6 +89,10 @@ class ViewerViewModel(
 
     val shareManager = ShareManager(galleryRepository, viewModelScope)
     private val dlnaCastClient = DlnaCastClient(appContext)
+    private val resolvedVideoSources = mutableMapOf<String, ViewerVideoSource>()
+    private var currentVideoResolveJob: Job? = null
+    private var nearbyVideoResolveJob: Job? = null
+    private val videoDataPreloadJobs = mutableMapOf<String, Job>()
 
     init {
         observeMediaUiMutations()
@@ -105,6 +122,7 @@ class ViewerViewModel(
                 val hasRemaining = removePhotosFromViewer(mutation.photos)
                 if (hasRemaining && beforeKey != getCurrentPhoto()?.uniqueKey) {
                     syncDownloadState()
+                    preparePlayableMediaForIndex(_uiState.value.currentIndex)
                     loadExifAndFavoriteForCurrent()
                 }
             }
@@ -172,6 +190,7 @@ class ViewerViewModel(
             isHide = photos.getOrNull(index)?.isHide ?: false
         )
         syncDownloadState()
+        preparePlayableMediaForIndex(index)
         loadExifAndFavoriteForCurrent()
     }
 
@@ -186,6 +205,8 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
+                resolvedVideoCacheKey = null,
+                nearbyVideoSources = nearbySourcesForIndex(boundedIndex),
                 isPlayingTranscode = false,
                 streamMediaUrl = null,
                 isResolvingStreamUrl = false,
@@ -202,6 +223,7 @@ class ViewerViewModel(
             )
         }
         syncDownloadState()
+        preparePlayableMediaForIndex(_uiState.value.currentIndex)
         loadExifAndFavoriteForCurrent()
     }
 
@@ -228,50 +250,101 @@ class ViewerViewModel(
                     fileDetailInfo = detailResult.getOrNull()
                 )
             }
-            if (photo.isPlayableMedia()) {
-                resolveVideoUrl(photo)
+        }
+    }
+
+    private fun preparePlayableMediaForIndex(index: Int) {
+        val photo = _uiState.value.photos.getOrNull(index) ?: return
+        if (!photo.isPlayableMedia()) return
+
+        preloadNearbyVideoSources(index)
+        val cachedSource = resolvedVideoSources[photo.uniqueKey]
+        currentVideoResolveJob?.cancel()
+        if (cachedSource != null) {
+            updateResolvedVideoSource(photo, cachedSource)
+            preloadVideoData(cachedSource, isCurrent = true)
+            return
+        }
+
+        currentVideoResolveJob = viewModelScope.launch {
+            val source = resolveVideoSource(photo)
+            resolvedVideoSources[photo.uniqueKey] = source
+            updateResolvedVideoSource(photo, source)
+            preloadVideoData(source, isCurrent = true)
+        }
+    }
+
+    private fun preloadNearbyVideoSources(index: Int) {
+        val photos = _uiState.value.photos
+        nearbyVideoResolveJob?.cancel()
+        nearbyVideoResolveJob = viewModelScope.launch {
+            val nearbyIndexes = (index - VIDEO_PRELOAD_RADIUS..index + VIDEO_PRELOAD_RADIUS)
+                .filter { it != index && it in photos.indices }
+            for (nearbyIndex in nearbyIndexes) {
+                val photo = photos[nearbyIndex]
+                if (!photo.isPlayableMedia() || resolvedVideoSources.containsKey(photo.uniqueKey)) continue
+                val source = resolveVideoSource(photo)
+                resolvedVideoSources[photo.uniqueKey] = source
+                publishNearbyVideoSource(photo, source)
+                preloadVideoData(source, isCurrent = false)
             }
         }
     }
 
-    private suspend fun resolveVideoUrl(photo: UnifiedPhotoItem) {
+    private suspend fun resolveVideoSource(photo: UnifiedPhotoItem): ViewerVideoSource {
         if (!photo.isMotionPhoto() && photo.localUri?.isNotEmpty() == true && !photo.isStorageOptimized) {
-            updateResolvedVideoUrl(photo, photo.localUri, isPlayingTranscode = false)
-            return
+            return ViewerVideoSource(photo.localUri, isPlayingTranscode = false, cacheKey = null)
         }
         val cloudId = photo.cloudId
         if (cloudId == null) {
-            updateResolvedVideoUrl(photo, "", isPlayingTranscode = false)
-            return
+            return ViewerVideoSource("", isPlayingTranscode = false, cacheKey = null)
         }
         galleryRepository.ensureAuthCode()
         if (photo.isMotionPhoto()) {
             val url = galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
-            updateResolvedVideoUrl(photo, url, isPlayingTranscode = false)
-            return
+            return ViewerVideoSource(url, isPlayingTranscode = false)
         }
-        
-        withContext(Dispatchers.IO) {
-            val transcodeUrl = galleryRepository.getTranscodeVideoUrl(cloudId, photo.md5)
-            val request = Request.Builder().url(transcodeUrl).head().build()
-            try {
-                val client = OkHttpClient()
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        updateResolvedVideoUrl(photo, transcodeUrl, isPlayingTranscode = true)
-                        return@withContext
-                    }
-                }
-            } catch (e: Exception) {}
-            
-            val originalUrl = galleryRepository.getFullImageUrl(cloudId, photo.md5)
-            updateResolvedVideoUrl(photo, originalUrl, isPlayingTranscode = false)
+
+        val transcodeUrl = galleryRepository.getTranscodeVideoUrl(cloudId, photo.md5)
+        return ViewerVideoSource(transcodeUrl, isPlayingTranscode = true)
+    }
+
+    private fun updateResolvedVideoSource(photo: UnifiedPhotoItem, source: ViewerVideoSource) {
+        updateResolvedVideoUrl(
+            photo = photo,
+            url = source.url,
+            cacheKey = source.cacheKey,
+            isPlayingTranscode = source.isPlayingTranscode
+        )
+    }
+
+    private fun publishNearbyVideoSource(photo: UnifiedPhotoItem, source: ViewerVideoSource) {
+        _uiState.update { state ->
+            val currentIndex = state.currentIndex
+            val photoIndex = state.photos.indexOfFirst { it.uniqueKey == photo.uniqueKey }
+            if (photoIndex < 0 || kotlin.math.abs(photoIndex - currentIndex) > VIDEO_PRELOAD_RADIUS) {
+                state
+            } else {
+                state.copy(nearbyVideoSources = nearbySourcesForIndex(currentIndex))
+            }
         }
+    }
+
+    private fun nearbySourcesForIndex(index: Int): Map<String, ViewerVideoSource> {
+        val photos = _uiState.value.photos
+        return (index - VIDEO_PRELOAD_RADIUS..index + VIDEO_PRELOAD_RADIUS)
+            .filter { it != index && it in photos.indices }
+            .mapNotNull { nearbyIndex ->
+                val photo = photos[nearbyIndex]
+                resolvedVideoSources[photo.uniqueKey]?.let { photo.uniqueKey to it }
+            }
+            .toMap()
     }
 
     private fun updateResolvedVideoUrl(
         photo: UnifiedPhotoItem,
         url: String?,
+        cacheKey: String? = stableVideoCacheKey(url.orEmpty()),
         isPlayingTranscode: Boolean
     ) {
         _uiState.update { state ->
@@ -281,10 +354,73 @@ class ViewerViewModel(
             } else {
                 state.copy(
                     resolvedVideoUrl = url,
+                    resolvedVideoCacheKey = cacheKey,
                     isPlayingTranscode = isPlayingTranscode
                 )
             }
         }
+    }
+
+    private fun preloadVideoData(source: ViewerVideoSource, isCurrent: Boolean) {
+        if (!source.url.isRemoteVideoUrl() || source.cacheKey.isNullOrBlank()) return
+        val key = source.cacheKey
+        if (videoDataPreloadJobs[key]?.isActive == true) return
+        videoDataPreloadJobs[key] = viewModelScope.launch(Dispatchers.IO) {
+            readVideoPrefixIntoCache(source, preloadBytesFor(isCurrent))
+            videoDataPreloadJobs.remove(key)
+        }
+    }
+
+    private suspend fun readVideoPrefixIntoCache(
+        source: ViewerVideoSource,
+        preloadBytes: Long
+    ) = withContext(Dispatchers.IO) {
+        val app = appContext.applicationContext as? MTPhotosApp ?: return@withContext
+        val cacheDataSource = CacheDataSource.Factory()
+            .setCache(app.videoCache)
+            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .createDataSource()
+        val dataSpec = DataSpec.Builder()
+            .setUri(Uri.parse(source.url))
+            .setKey(source.cacheKey)
+            .setPosition(0)
+            .setLength(preloadBytes)
+            .build()
+
+        try {
+            cacheDataSource.open(dataSpec)
+            val buffer = ByteArray(VIDEO_PRELOAD_BUFFER_BYTES)
+            var remaining = preloadBytes
+            while (remaining > 0) {
+                currentCoroutineContext().ensureActive()
+                val readSize = minOf(buffer.size.toLong(), remaining).toInt()
+                val read = cacheDataSource.read(buffer, 0, readSize)
+                if (read <= 0) break
+                remaining -= read
+            }
+        } catch (_: Exception) {
+            // Preloading is opportunistic; playback will still fetch normally on demand.
+        } finally {
+            runCatching { cacheDataSource.close() }
+        }
+    }
+
+    private fun preloadBytesFor(isCurrent: Boolean): Long {
+        if (isCurrent) return CURRENT_VIDEO_PRELOAD_BYTES
+        return if (isUnmeteredConnection()) {
+            NEARBY_VIDEO_PRELOAD_BYTES_UNMETERED
+        } else {
+            NEARBY_VIDEO_PRELOAD_BYTES_METERED
+        }
+    }
+
+    private fun isUnmeteredConnection(): Boolean {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
     fun toggleFavorite() {
@@ -342,6 +478,7 @@ class ViewerViewModel(
                 val hasRemainingPhotos = removeDeletedPhoto(photo)
                 if (hasRemainingPhotos) {
                     syncDownloadState()
+                    preparePlayableMediaForIndex(_uiState.value.currentIndex)
                     loadExifAndFavoriteForCurrent()
                 }
                 onDeleted(hasRemainingPhotos)
@@ -378,6 +515,7 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
+                resolvedVideoCacheKey = null,
                 isPlayingTranscode = false,
                 streamMediaUrl = null,
                 isResolvingStreamUrl = false,
@@ -428,6 +566,7 @@ class ViewerViewModel(
                 fileDetailInfo = null,
                 originalDownloaded = false,
                 resolvedVideoUrl = null,
+                resolvedVideoCacheKey = null,
                 isPlayingTranscode = false,
                 streamMediaUrl = null,
                 isResolvingStreamUrl = false,
@@ -602,6 +741,10 @@ class ViewerViewModel(
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
     }
 
+    fun getViewerThumbUrl(photo: UnifiedPhotoItem): String {
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
+    }
+
     fun getOriginalImageUrl(photo: UnifiedPhotoItem): String {
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getOriginalImageUrl(cloudId, photo.md5)
@@ -721,6 +864,7 @@ class ViewerViewModel(
                                 isPlayingStreamUrl = true,
                                 streamMediaUrl = url,
                                 resolvedVideoUrl = url,
+                                resolvedVideoCacheKey = null,
                                 isPlayingTranscode = false
                             )
                         } else {
@@ -751,6 +895,19 @@ class ViewerViewModel(
                 )
             }
         }
+    }
+
+    fun fallbackCurrentVideoToOriginal() {
+        val state = _uiState.value
+        if (!state.isPlayingTranscode) return
+        val photo = state.photos.getOrNull(state.currentIndex) ?: return
+        val cloudId = photo.cloudId ?: return
+
+        val originalUrl = galleryRepository.getFullImageUrl(cloudId, photo.md5)
+        val source = ViewerVideoSource(originalUrl, isPlayingTranscode = false)
+        resolvedVideoSources[photo.uniqueKey] = source
+        updateResolvedVideoSource(photo, source)
+        preloadVideoData(source, isCurrent = true)
     }
 
     fun getVideoUrl(photo: UnifiedPhotoItem): String {
@@ -785,6 +942,14 @@ class ViewerViewModel(
         return state.photos.getOrNull(state.currentIndex)
     }
 
+    companion object {
+        private const val VIDEO_PRELOAD_RADIUS = 1
+        private const val CURRENT_VIDEO_PRELOAD_BYTES = 8L * 1024L * 1024L
+        private const val NEARBY_VIDEO_PRELOAD_BYTES_UNMETERED = 16L * 1024L * 1024L
+        private const val NEARBY_VIDEO_PRELOAD_BYTES_METERED = 2L * 1024L * 1024L
+        private const val VIDEO_PRELOAD_BUFFER_BYTES = 64 * 1024
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
         private val originalDownloadManager: com.kqstone.mtphotos.data.local.OriginalDownloadManager,
@@ -803,4 +968,8 @@ class ViewerViewModel(
             ) as T
         }
     }
+}
+
+private fun String.isRemoteVideoUrl(): Boolean {
+    return startsWith("http://") || startsWith("https://")
 }
