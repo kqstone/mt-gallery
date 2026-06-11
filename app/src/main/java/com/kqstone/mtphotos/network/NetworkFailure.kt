@@ -3,11 +3,12 @@ package com.kqstone.mtphotos.network
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 
 object NetworkFailure {
     fun isDeviceOffline(context: Context): Boolean {
@@ -19,10 +20,19 @@ object NetworkFailure {
     }
 
     fun isServerUnreachable(error: Throwable): Boolean {
+        if (isRequestCanceled(error)) return false
         return error is UnknownHostException ||
             error is ConnectException ||
             error is SocketTimeoutException ||
-            error is SocketException ||
-            error is IOException
+            error is SocketException
+    }
+
+    fun isRequestCanceled(error: Throwable): Boolean {
+        return generateSequence(error) { it.cause }.any { candidate ->
+            candidate is CancellationException ||
+                candidate.message?.trim()
+                    ?.lowercase(Locale.US)
+                    ?.let { it == "canceled" || it == "cancelled" } == true
+        }
     }
 }

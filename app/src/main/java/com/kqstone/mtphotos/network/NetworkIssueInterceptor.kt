@@ -15,6 +15,9 @@ class NetworkIssueInterceptor(
             chain.proceed(chain.request())
         } catch (e: IOException) {
             runBlocking {
+                if (chain.call().isCanceled() || NetworkFailure.isRequestCanceled(e)) {
+                    return@runBlocking
+                }
                 if (NetworkFailure.isDeviceOffline(prefsManager.context)) {
                     prefsManager.setNetworkRetryPending(true)
                 } else if (NetworkFailure.isServerUnreachable(e)) {
