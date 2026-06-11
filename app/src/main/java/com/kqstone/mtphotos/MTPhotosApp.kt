@@ -18,6 +18,7 @@ import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
 import com.kqstone.mtphotos.data.local.ThumbnailCacheManager
+import com.kqstone.mtphotos.data.local.ThumbnailCachePaths
 import com.kqstone.mtphotos.data.local.OriginalDownloadManager
 import com.kqstone.mtphotos.data.local.db.AppDatabase
 import com.kqstone.mtphotos.data.repository.AuthRepository
@@ -28,7 +29,9 @@ import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
 import com.kqstone.mtphotos.network.AuthInterceptor
 import com.kqstone.mtphotos.network.AuthRecovery
+import com.kqstone.mtphotos.network.MediaAuthInterceptor
 import com.kqstone.mtphotos.network.NetworkResumeMonitor
+import com.kqstone.mtphotos.network.NetworkIssueInterceptor
 import com.kqstone.mtphotos.network.RetrofitClient
 import com.kqstone.mtphotos.worker.BackupScheduler
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -56,15 +59,12 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
         private set
 
     override fun newImageLoader(): ImageLoader {
-        val maxCacheMb = PrefsManager(this).getCoilDiskCacheMbSync()
+        val prefsManager = PrefsManager(this)
+        val authRecovery = AuthRecovery(prefsManager)
+        val maxCacheMb = prefsManager.getCoilDiskCacheMbSync()
         return ImageLoader.Builder(this)
             .okHttpClient {
-                OkHttpClient.Builder()
-                    .addNetworkInterceptor { chain ->
-                        val response = chain.proceed(chain.request())
-                        response.withThumbnailCacheControl()
-                    }
-                    .build()
+                mediaOkHttpClient(prefsManager, authRecovery)
             }
             .memoryCachePolicy(CachePolicy.ENABLED)
             .memoryCache {
@@ -75,7 +75,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
             .diskCachePolicy(CachePolicy.ENABLED)
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("coil_image_cache"))
+                    .directory(ThumbnailCachePaths.coilImageCacheDir(this))
                     .maxSizeBytes(maxCacheMb * 1024L * 1024L)
                     .build()
             }
@@ -87,16 +87,13 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        val prefsManager = container.prefsManager
+        val authRecovery = container.authRecovery
 
         // 初始化全尺寸大图 ImageLoader 实例，使用独立的磁盘缓存，防止挤压缩略图缓存
         fullImageLoader = ImageLoader.Builder(this)
             .okHttpClient {
-                OkHttpClient.Builder()
-                    .addNetworkInterceptor { chain ->
-                        val response = chain.proceed(chain.request())
-                        response.withThumbnailCacheControl()
-                    }
-                    .build()
+                mediaOkHttpClient(prefsManager, authRecovery)
             }
             .memoryCachePolicy(CachePolicy.ENABLED)
             .memoryCache {
@@ -140,8 +137,23 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
 }
 
 private fun Response.withThumbnailCacheControl(): Response {
+    if (!isSuccessful) return this
     return newBuilder()
         .header("Cache-Control", "public, max-age=31536000")
+        .build()
+}
+
+private fun mediaOkHttpClient(
+    prefsManager: PrefsManager,
+    authRecovery: AuthRecovery
+): OkHttpClient {
+    return OkHttpClient.Builder()
+        .addInterceptor(MediaAuthInterceptor(prefsManager, authRecovery))
+        .addInterceptor(NetworkIssueInterceptor(prefsManager))
+        .addNetworkInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            response.withThumbnailCacheControl()
+        }
         .build()
 }
 

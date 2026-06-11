@@ -7,10 +7,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val TAG = "ThumbCacheManager"
-private const val THUMB_DIR = "thumbs"
-private const val DEFAULT_MAX_CACHE_SIZE = 500L * 1024 * 1024 // 500MB
 private const val TRIM_INTERVAL_MS = 5 * 60 * 1000L
 private const val TRIM_WRITE_THRESHOLD = 32
+private const val TRIM_TARGET_PERCENT = 95
 
 /**
  * 缩略图本地缓存管理器。
@@ -23,7 +22,7 @@ class ThumbnailCacheManager(private val context: Context) {
     private var writesSinceTrim = 0
 
     private val cacheDir: File by lazy {
-        File(context.cacheDir, THUMB_DIR).also { it.mkdirs() }
+        ThumbnailCachePaths.localThumbsDir(context)
     }
 
     /**
@@ -66,7 +65,7 @@ class ThumbnailCacheManager(private val context: Context) {
     /**
      * 清理缓存到指定大小限制（LRU 淘汰）
      */
-    suspend fun trimToSize(maxSize: Long = DEFAULT_MAX_CACHE_SIZE) = withContext(Dispatchers.IO) {
+    suspend fun trimToSize(maxSize: Long = maxCacheSize()) = withContext(Dispatchers.IO) {
         markTrimAttempt()
         val files = cacheDir.listFiles()?.toList() ?: return@withContext
         val totalSize = files.sumOf { it.length() }
@@ -75,9 +74,10 @@ class ThumbnailCacheManager(private val context: Context) {
         // 按最后修改时间排序（最旧的先删）
         val sorted = files.sortedBy { it.lastModified() }
         var currentSize = totalSize
+        val targetSize = maxSize * TRIM_TARGET_PERCENT / 100
 
         for (file in sorted) {
-            if (currentSize <= maxSize * 0.8) break // 清理到 80% 以下
+            if (currentSize <= targetSize) break
             val fileSize = file.length()
             if (file.delete()) {
                 currentSize -= fileSize
@@ -99,9 +99,13 @@ class ThumbnailCacheManager(private val context: Context) {
         return File(cacheDir, "$md5.webp")
     }
 
-    private suspend fun maybeTrimToSize(maxSize: Long = DEFAULT_MAX_CACHE_SIZE) {
+    private suspend fun maybeTrimToSize(maxSize: Long = maxCacheSize()) {
         if (!shouldTrim()) return
         trimToSize(maxSize)
+    }
+
+    private fun maxCacheSize(): Long {
+        return PrefsManager(context).getCoilDiskCacheMbSync() * 1024L * 1024L
     }
 
     private fun shouldTrim(): Boolean {

@@ -233,6 +233,7 @@ class ViewerViewModel(
             updateResolvedVideoUrl(photo, "", isPlayingTranscode = false)
             return
         }
+        galleryRepository.ensureAuthCode()
         if (photo.isMotionPhoto()) {
             val url = galleryRepository.getMotionPhotoUrl(cloudId, photo.md5)
             updateResolvedVideoUrl(photo, url, isPlayingTranscode = false)
@@ -244,10 +245,11 @@ class ViewerViewModel(
             val request = Request.Builder().url(transcodeUrl).head().build()
             try {
                 val client = OkHttpClient()
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    updateResolvedVideoUrl(photo, transcodeUrl, isPlayingTranscode = true)
-                    return@withContext
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        updateResolvedVideoUrl(photo, transcodeUrl, isPlayingTranscode = true)
+                        return@withContext
+                    }
                 }
             } catch (e: Exception) {}
             
