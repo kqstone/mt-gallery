@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kqstone.mtphotos.data.local.db.SyncStatus
+import com.kqstone.mtphotos.data.repository.OcrInfoItem
 import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
@@ -54,7 +55,11 @@ data class ViewerUiState(
     val peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
     val isPeopleInfoVisible: Boolean = false,
     val isLoadingPeopleDescriptors: Boolean = false,
-    val peopleDescriptorFailureCount: Int = 0
+    val peopleDescriptorFailureCount: Int = 0,
+    val ocrItems: List<OcrInfoItem> = emptyList(),
+    val isOcrInfoVisible: Boolean = false,
+    val isLoadingOcrInfo: Boolean = false,
+    val ocrInfoFailureCount: Int = 0
 )
 
 class ViewerViewModel(
@@ -187,7 +192,10 @@ class ViewerViewModel(
                 isCastingToDevice = false,
                 peopleDescriptors = emptyList(),
                 isPeopleInfoVisible = false,
-                isLoadingPeopleDescriptors = false
+                isLoadingPeopleDescriptors = false,
+                ocrItems = emptyList(),
+                isOcrInfoVisible = false,
+                isLoadingOcrInfo = false
             )
         }
         syncDownloadState()
@@ -376,7 +384,10 @@ class ViewerViewModel(
                 isCastingToDevice = false,
                 peopleDescriptors = emptyList(),
                 isPeopleInfoVisible = false,
-                isLoadingPeopleDescriptors = false
+                isLoadingPeopleDescriptors = false,
+                ocrItems = emptyList(),
+                isOcrInfoVisible = false,
+                isLoadingOcrInfo = false
             )
         }
 
@@ -423,7 +434,10 @@ class ViewerViewModel(
                 isCastingToDevice = false,
                 peopleDescriptors = emptyList(),
                 isPeopleInfoVisible = false,
-                isLoadingPeopleDescriptors = false
+                isLoadingPeopleDescriptors = false,
+                ocrItems = emptyList(),
+                isOcrInfoVisible = false,
+                isLoadingOcrInfo = false
             )
         }
         return hasRemainingPhotos
@@ -446,7 +460,9 @@ class ViewerViewModel(
         _uiState.update {
             it.copy(
                 isLoadingPeopleDescriptors = true,
-                isPeopleInfoVisible = false
+                isPeopleInfoVisible = false,
+                isOcrInfoVisible = false,
+                isLoadingOcrInfo = false
             )
         }
 
@@ -485,6 +501,75 @@ class ViewerViewModel(
             it.copy(
                 isPeopleInfoVisible = false,
                 isLoadingPeopleDescriptors = false
+            )
+        }
+    }
+
+    fun toggleOcrInfo() {
+        val photo = getCurrentPhoto() ?: return
+        if (photo.isPlayableMedia()) return
+        val fileId = photo.cloudId ?: return
+        val state = _uiState.value
+        if (state.isOcrInfoVisible) {
+            hideOcrInfo()
+            return
+        }
+        if (state.ocrItems.isNotEmpty()) {
+            _uiState.update {
+                it.copy(
+                    isOcrInfoVisible = true,
+                    isPeopleInfoVisible = false,
+                    isLoadingPeopleDescriptors = false
+                )
+            }
+            return
+        }
+        if (state.isLoadingOcrInfo) return
+
+        _uiState.update {
+            it.copy(
+                isLoadingOcrInfo = true,
+                isOcrInfoVisible = false,
+                isPeopleInfoVisible = false,
+                isLoadingPeopleDescriptors = false
+            )
+        }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                galleryRepository.getOcrInfoOfFile(fileId)
+            }
+            _uiState.update { current ->
+                val currentPhoto = current.photos.getOrNull(current.currentIndex)
+                if (currentPhoto?.uniqueKey != photo.uniqueKey) {
+                    current
+                } else {
+                    result.fold(
+                        onSuccess = { items ->
+                            current.copy(
+                                ocrItems = items,
+                                isOcrInfoVisible = true,
+                                isLoadingOcrInfo = false
+                            )
+                        },
+                        onFailure = {
+                            current.copy(
+                                isOcrInfoVisible = false,
+                                isLoadingOcrInfo = false,
+                                ocrInfoFailureCount = current.ocrInfoFailureCount + 1
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    fun hideOcrInfo() {
+        _uiState.update {
+            it.copy(
+                isOcrInfoVisible = false,
+                isLoadingOcrInfo = false
             )
         }
     }

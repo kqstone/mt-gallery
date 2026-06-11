@@ -22,6 +22,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -32,6 +33,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -55,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import coil.compose.AsyncImage
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
+import com.kqstone.mtphotos.data.repository.OcrInfoItem
 import com.kqstone.mtphotos.data.repository.PeopleDescriptorItem
 import com.kqstone.mtphotos.ui.gallery.DeleteConfirmDialog
 import com.kqstone.mtphotos.ui.util.PermissionHelper
@@ -177,6 +180,11 @@ fun ViewerScreen(
             Toast.makeText(context, context.getString(R.string.people_load_failed), Toast.LENGTH_SHORT).show()
         }
     }
+    LaunchedEffect(uiState.ocrInfoFailureCount) {
+        if (uiState.ocrInfoFailureCount > 0) {
+            Toast.makeText(context, context.getString(R.string.ocr_load_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -259,8 +267,19 @@ fun ViewerScreen(
                     },
                     isPeopleInfoVisible = isCurrentPage && uiState.isPeopleInfoVisible,
                     isLoadingPeopleInfo = false,
+                    ocrItems = if (isCurrentPage && uiState.isOcrInfoVisible) {
+                        uiState.ocrItems
+                    } else {
+                        emptyList()
+                    },
+                    isOcrInfoVisible = isCurrentPage && uiState.isOcrInfoVisible,
+                    isLoadingOcrInfo = isCurrentPage && uiState.isLoadingOcrInfo,
                     onDismissPeopleInfo = {
                         viewModel.hidePeopleInfo()
+                        isUiVisible = false
+                    },
+                    onDismissOcrInfo = {
+                        viewModel.hideOcrInfo()
                         isUiVisible = false
                     }
                 )
@@ -353,10 +372,14 @@ fun ViewerScreen(
                             canShowPeopleInfo = currentPhoto.cloudId != null,
                             isPeopleInfoVisible = uiState.isPeopleInfoVisible,
                             isLoadingPeopleDescriptors = uiState.isLoadingPeopleDescriptors,
+                            canShowOcrInfo = currentPhoto.cloudId != null && !currentPhoto.isPlayableMedia(),
+                            isOcrInfoVisible = uiState.isOcrInfoVisible,
+                            isLoadingOcrInfo = uiState.isLoadingOcrInfo,
                             onShare = { viewModel.sharePhoto(context) },
                             onToggleFavorite = { viewModel.toggleFavorite() },
                             onToggleHide = { viewModel.toggleHide() },
                             onPeople = { viewModel.togglePeopleInfo() },
+                            onOcr = { viewModel.toggleOcrInfo() },
                             onDelete = { showDeleteDialog = true },
                             onInfo = { showBottomSheet = true }
                         )
@@ -439,10 +462,14 @@ fun ViewerScreen(
             canShowPeopleInfo = currentPhoto.cloudId != null,
             isPeopleInfoVisible = uiState.isPeopleInfoVisible,
             isLoadingPeopleDescriptors = uiState.isLoadingPeopleDescriptors,
+            canShowOcrInfo = currentPhoto.cloudId != null && !currentPhoto.isPlayableMedia(),
+            isOcrInfoVisible = uiState.isOcrInfoVisible,
+            isLoadingOcrInfo = uiState.isLoadingOcrInfo,
             onShare = { viewModel.sharePhoto(context) },
             onToggleFavorite = { viewModel.toggleFavorite() },
             onToggleHide = { viewModel.toggleHide() },
             onPeople = { viewModel.togglePeopleInfo() },
+            onOcr = { viewModel.toggleOcrInfo() },
             onDelete = { showDeleteDialog = true },
             onInfo = { showBottomSheet = true }
         )
@@ -759,10 +786,14 @@ private fun ViewerLandscapeActionBarActions(
     canShowPeopleInfo: Boolean,
     isPeopleInfoVisible: Boolean,
     isLoadingPeopleDescriptors: Boolean,
+    canShowOcrInfo: Boolean,
+    isOcrInfoVisible: Boolean,
+    isLoadingOcrInfo: Boolean,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHide: () -> Unit,
     onPeople: () -> Unit,
+    onOcr: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit
 ) {
@@ -783,11 +814,15 @@ private fun ViewerLandscapeActionBarActions(
         canShowPeopleInfo = canShowPeopleInfo,
         isPeopleInfoVisible = isPeopleInfoVisible,
         isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+        canShowOcrInfo = canShowOcrInfo,
+        isOcrInfoVisible = isOcrInfoVisible,
+        isLoadingOcrInfo = isLoadingOcrInfo,
         favScale = favScale,
         onShare = onShare,
         onToggleFavorite = onToggleFavorite,
         onToggleHide = onToggleHide,
         onPeople = onPeople,
+        onOcr = onOcr,
         onDelete = onDelete,
         onInfo = onInfo
     )
@@ -802,10 +837,14 @@ private fun BoxScope.ViewerActionHud(
     canShowPeopleInfo: Boolean,
     isPeopleInfoVisible: Boolean,
     isLoadingPeopleDescriptors: Boolean,
+    canShowOcrInfo: Boolean,
+    isOcrInfoVisible: Boolean,
+    isLoadingOcrInfo: Boolean,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHide: () -> Unit,
     onPeople: () -> Unit,
+    onOcr: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit
 ) {
@@ -850,11 +889,15 @@ private fun BoxScope.ViewerActionHud(
                         canShowPeopleInfo = canShowPeopleInfo,
                         isPeopleInfoVisible = isPeopleInfoVisible,
                         isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+                        canShowOcrInfo = canShowOcrInfo,
+                        isOcrInfoVisible = isOcrInfoVisible,
+                        isLoadingOcrInfo = isLoadingOcrInfo,
                         favScale = favScale,
                         onShare = onShare,
                         onToggleFavorite = onToggleFavorite,
                         onToggleHide = onToggleHide,
                         onPeople = onPeople,
+                        onOcr = onOcr,
                         onDelete = onDelete,
                         onInfo = onInfo
                     )
@@ -883,11 +926,15 @@ private fun BoxScope.ViewerActionHud(
                         canShowPeopleInfo = canShowPeopleInfo,
                         isPeopleInfoVisible = isPeopleInfoVisible,
                         isLoadingPeopleDescriptors = isLoadingPeopleDescriptors,
+                        canShowOcrInfo = canShowOcrInfo,
+                        isOcrInfoVisible = isOcrInfoVisible,
+                        isLoadingOcrInfo = isLoadingOcrInfo,
                         favScale = favScale,
                         onShare = onShare,
                         onToggleFavorite = onToggleFavorite,
                         onToggleHide = onToggleHide,
                         onPeople = onPeople,
+                        onOcr = onOcr,
                         onDelete = onDelete,
                         onInfo = onInfo
                     )
@@ -906,11 +953,15 @@ private fun ViewerActionButtons(
     canShowPeopleInfo: Boolean,
     isPeopleInfoVisible: Boolean,
     isLoadingPeopleDescriptors: Boolean,
+    canShowOcrInfo: Boolean,
+    isOcrInfoVisible: Boolean,
+    isLoadingOcrInfo: Boolean,
     favScale: Float,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleHide: () -> Unit,
     onPeople: () -> Unit,
+    onOcr: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit
 ) {
@@ -946,6 +997,18 @@ private fun ViewerActionButtons(
             enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
             showLabel = showLabels,
             onClick = onPeople
+        )
+        HUDButton(
+            icon = Icons.Default.TextFields,
+            label = when {
+                isLoadingOcrInfo -> stringResource(R.string.loading_ocr)
+                isOcrInfoVisible -> stringResource(R.string.hide_ocr)
+                else -> stringResource(R.string.ocr)
+            },
+            iconColor = if (isOcrInfoVisible || isLoadingOcrInfo) Color(0xFFFFD166) else Color.White,
+            enabled = canShowOcrInfo && !isLoadingOcrInfo,
+            showLabel = showLabels,
+            onClick = onOcr
         )
         HUDButton(
             icon = Icons.Default.Delete,
@@ -1128,7 +1191,11 @@ private fun ZoomableImage(
     peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
     isPeopleInfoVisible: Boolean = false,
     isLoadingPeopleInfo: Boolean = false,
-    onDismissPeopleInfo: () -> Unit = {}
+    ocrItems: List<OcrInfoItem> = emptyList(),
+    isOcrInfoVisible: Boolean = false,
+    isLoadingOcrInfo: Boolean = false,
+    onDismissPeopleInfo: () -> Unit = {},
+    onDismissOcrInfo: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as com.kqstone.mtphotos.MTPhotosApp
@@ -1178,9 +1245,24 @@ private fun ZoomableImage(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
-            .pointerInput(photo.uniqueKey, containerSize, peopleDescriptors, isPeopleInfoVisible) {
+            .pointerInput(photo.uniqueKey, containerSize, peopleDescriptors, isPeopleInfoVisible, ocrItems, isOcrInfoVisible) {
                 awaitEachGesture {
                     val firstDown = awaitFirstDown(requireUnconsumed = true)
+                    val gestureStartedInOcrBox = isOcrInfoVisible && isTapInsideOcrBox(
+                        point = firstDown.position,
+                        items = ocrItems,
+                        containerSize = containerSize,
+                        photo = photo,
+                        scale = scale,
+                        offset = offset
+                    )
+                    if (gestureStartedInOcrBox) {
+                        do {
+                            val event = awaitPointerEvent()
+                        } while (event.changes.any { it.pressed })
+                        return@awaitEachGesture
+                    }
+
                     var isTapCandidate = true
                     var wasTransforming = false
                     var totalPan = Offset.Zero
@@ -1324,8 +1406,18 @@ private fun ZoomableImage(
                                     scale = scale,
                                     offset = offset
                                 )
+                                val isInsideOcrBox = isTapInsideOcrBox(
+                                    point = firstDown.position,
+                                    items = ocrItems,
+                                    containerSize = containerSize,
+                                    photo = photo,
+                                    scale = scale,
+                                    offset = offset
+                                )
                                 if (isPeopleInfoVisible && !isInsidePeopleBox) {
                                     onDismissPeopleInfo()
+                                } else if (isOcrInfoVisible && !isInsideOcrBox) {
+                                    onDismissOcrInfo()
                                 } else if (!isPeopleInfoVisible) {
                                     onTap()
                                 }
@@ -1353,6 +1445,16 @@ private fun ZoomableImage(
             PeopleImageOverlay(
                 descriptors = peopleDescriptors,
                 isLoading = isLoadingPeopleInfo,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+        if (isOcrInfoVisible || isLoadingOcrInfo) {
+            OcrImageOverlay(
+                items = ocrItems,
+                isLoading = isLoadingOcrInfo,
                 containerSize = containerSize,
                 photo = photo,
                 scale = scale,
@@ -1452,12 +1554,111 @@ private fun PeopleImageOverlay(
     }
 }
 
+@Composable
+private fun OcrImageOverlay(
+    items: List<OcrInfoItem>,
+    isLoading: Boolean,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+) {
+    val density = LocalDensity.current
+    val boxes = remember(items, containerSize, photo.uniqueKey, scale, offset) {
+        items.mapNotNull { item ->
+            ocrBoxLayout(
+                item = item,
+                containerSize = containerSize,
+                photo = photo,
+                scale = scale,
+                offset = offset
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (isLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 84.dp),
+                color = Color.Black.copy(alpha = 0.58f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.loading_ocr),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+
+        SelectionContainer {
+            Box(modifier = Modifier.fillMaxSize()) {
+                boxes.forEach { box ->
+                    val fontSize = with(density) { box.fontSizePx.toSp() }
+                    val lineHeight = with(density) { (box.fontSizePx * 1.08f).toSp() }
+                    val maxLines = (box.height / (box.fontSizePx * 1.08f))
+                        .toInt()
+                        .coerceAtLeast(1)
+
+                    Box(
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(box.left.roundToInt(), box.top.roundToInt())
+                            }
+                            .width(with(density) { box.width.toDp() })
+                            .height(with(density) { box.height.toDp() })
+                            .clipToBounds()
+                            .background(Color.White)
+                            .padding(horizontal = 1.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = box.text,
+                            color = Color.Black,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize,
+                                lineHeight = lineHeight,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 private data class PeopleBoxLayout(
     val left: Float,
     val top: Float,
     val width: Float,
     val height: Float,
     val name: String
+)
+
+private data class OcrBoxLayout(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val text: String,
+    val fontSizePx: Float
 )
 
 private fun isTapInsidePeopleBox(
@@ -1470,6 +1671,21 @@ private fun isTapInsidePeopleBox(
 ): Boolean {
     return descriptors.any { descriptor ->
         val box = peopleBoxLayout(descriptor, containerSize, photo, scale, offset) ?: return@any false
+        point.x in box.left..(box.left + box.width) &&
+            point.y in box.top..(box.top + box.height)
+    }
+}
+
+private fun isTapInsideOcrBox(
+    point: Offset,
+    items: List<OcrInfoItem>,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): Boolean {
+    return items.any { item ->
+        val box = ocrBoxLayout(item, containerSize, photo, scale, offset) ?: return@any false
         point.x in box.left..(box.left + box.width) &&
             point.y in box.top..(box.top + box.height)
     }
@@ -1507,6 +1723,49 @@ private fun peopleBoxLayout(
         width = baseWidth * scale,
         height = baseHeight * scale,
         name = descriptor.person.name
+    )
+}
+
+private fun ocrBoxLayout(
+    item: OcrInfoItem,
+    containerSize: IntSize,
+    photo: UnifiedPhotoItem,
+    scale: Float,
+    offset: Offset
+): OcrBoxLayout? {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return null
+    val imageWidth = photo.width.toFloat().takeIf { it > 0f } ?: return null
+    val imageHeight = photo.height.toFloat().takeIf { it > 0f } ?: return null
+    val fitScale = minOf(
+        containerSize.width / imageWidth,
+        containerSize.height / imageHeight
+    )
+    if (fitScale <= 0f) return null
+
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+    val imageLeft = (containerSize.width - fittedWidth) / 2f
+    val imageTop = (containerSize.height - fittedHeight) / 2f
+    val baseLeft = imageLeft + item.x.toFloat() * fitScale
+    val baseTop = imageTop + item.y.toFloat() * fitScale
+    val baseWidth = item.width.toFloat() * fitScale
+    val baseHeight = item.height.toFloat() * fitScale
+    val center = Offset(containerSize.width / 2f, containerSize.height / 2f)
+    val textLength = item.text.length.coerceAtLeast(1)
+    val width = baseWidth * scale
+    val height = baseHeight * scale
+    val fontSizePx = minOf(
+        height * 0.78f,
+        width / (textLength * 0.62f)
+    ).coerceIn(8f, 160f)
+
+    return OcrBoxLayout(
+        left = center.x + (baseLeft - center.x) * scale + offset.x,
+        top = center.y + (baseTop - center.y) * scale + offset.y,
+        width = width,
+        height = height,
+        text = item.text,
+        fontSizePx = fontSizePx
     )
 }
 

@@ -99,6 +99,16 @@ data class PeopleDescriptorItem(
     val person: PeopleDescriptorPerson
 )
 
+data class OcrInfoItem(
+    val id: Double,
+    val text: String,
+    val x: Double,
+    val y: Double,
+    val width: Double,
+    val height: Double,
+    val fileId: Double
+)
+
 data class SceneItem(
     val id: String,
     val name: String,
@@ -716,6 +726,15 @@ class GalleryRepository(private val container: AppContainer) {
         return try {
             val response = container.peopleDescriptorAdminApi.PeopleDescriptorControllerFindDescriptorOfFile(fileId)
             Result.success(response.mapNotNull(::parsePeopleDescriptorItem))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getOcrInfoOfFile(fileId: Double): Result<List<OcrInfoItem>> {
+        return try {
+            val response = container.gatewayApi.GatewayControllerPart2FileOcrInfo(fileIdPath(fileId))
+            Result.success(response.mapNotNull(::parseOcrInfoItem))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1347,6 +1366,23 @@ class GalleryRepository(private val container: AppContainer) {
                 name = personName,
                 cover = parseNumericValue(personMap["cover"]) ?: 0.0
             )
+        )
+    }
+
+    private fun parseOcrInfoItem(item: Map<String, Any>): OcrInfoItem? {
+        val text = (item["text"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+        val width = parseNumericValue(item["w"]) ?: parseNumericValue(item["width"]) ?: return null
+        val height = parseNumericValue(item["h"]) ?: parseNumericValue(item["height"]) ?: return null
+        if (width <= 0.0 || height <= 0.0) return null
+
+        return OcrInfoItem(
+            id = parseNumericValue(item["id"]) ?: 0.0,
+            text = text,
+            x = parseNumericValue(item["x"]) ?: return null,
+            y = parseNumericValue(item["y"]) ?: return null,
+            width = width,
+            height = height,
+            fileId = parseNumericValue(item["fileId"]) ?: 0.0
         )
     }
 

@@ -187,6 +187,10 @@
     <string name="loading_people">加载人物</string>
     <string name="people_load_failed">人物加载失败</string>
     <string name="no_named_people">没有已命名人物</string>
+    <string name="ocr">OCR</string>
+    <string name="hide_ocr">隐藏 OCR</string>
+    <string name="loading_ocr">加载 OCR</string>
+    <string name="ocr_load_failed">OCR 加载失败</string>
     <string name="info">信息</string>
     <string name="delete_this_media">删除此媒体？</string>
     <string name="delete_media_confirm_desc">确定要从本地存储与云端服务器永久删除此文件吗？该操作不可撤销。</string>
