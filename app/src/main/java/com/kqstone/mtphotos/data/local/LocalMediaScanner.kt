@@ -34,15 +34,16 @@ class LocalMediaScanner(private val context: Context) {
      */
     suspend fun scanMedia(
         folderPaths: Set<String>? = null,
-        computeMd5: Boolean = true
+        computeMd5: Boolean = true,
+        modifiedSinceMillis: Long? = null
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
         if (folderPaths != null && folderPaths.isEmpty()) {
             Log.d(TAG, "Folder filter is empty, returning no media")
             return@withContext emptyList()
         }
         val results = mutableListOf<MediaEntity>()
-        results.addAll(scanImages(folderPaths, computeMd5))
-        results.addAll(scanVideos(folderPaths, computeMd5))
+        results.addAll(scanImages(folderPaths, computeMd5, modifiedSinceMillis))
+        results.addAll(scanVideos(folderPaths, computeMd5, modifiedSinceMillis))
         Log.d(TAG, "Scanned ${results.size} media files (${results.count { it.fileType.startsWith("image") }} images, ${results.count { it.fileType.startsWith("video") }} videos)")
         results
     }
@@ -295,7 +296,8 @@ class LocalMediaScanner(private val context: Context) {
 
     private suspend fun scanImages(
         folderPaths: Set<String>?,
-        computeMd5: Boolean
+        computeMd5: Boolean,
+        modifiedSinceMillis: Long? = null
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
         val collection = imageCollectionUri()
 
@@ -311,12 +313,13 @@ class LocalMediaScanner(private val context: Context) {
             MediaStore.Images.Media.DATA
         )
 
-        queryMedia(collection, projection, folderPaths, computeMd5, isVideo = false)
+        queryMedia(collection, projection, folderPaths, computeMd5, isVideo = false, modifiedSinceMillis)
     }
 
     private suspend fun scanVideos(
         folderPaths: Set<String>?,
-        computeMd5: Boolean
+        computeMd5: Boolean,
+        modifiedSinceMillis: Long? = null
     ): List<MediaEntity> = withContext(Dispatchers.IO) {
         val collection = videoCollectionUri()
 
@@ -333,7 +336,7 @@ class LocalMediaScanner(private val context: Context) {
             MediaStore.Video.Media.DURATION
         )
 
-        queryMedia(collection, projection, folderPaths, computeMd5, isVideo = true)
+        queryMedia(collection, projection, folderPaths, computeMd5, isVideo = true, modifiedSinceMillis)
     }
 
     @Suppress("DEPRECATION")
@@ -342,7 +345,8 @@ class LocalMediaScanner(private val context: Context) {
         projection: Array<String>,
         folderPaths: Set<String>?,
         computeMd5: Boolean,
-        isVideo: Boolean
+        isVideo: Boolean,
+        modifiedSinceMillis: Long? = null
     ): List<MediaEntity> {
         if (folderPaths != null && folderPaths.isEmpty()) return emptyList()
         val results = mutableListOf<MediaEntity>()
@@ -359,6 +363,11 @@ class LocalMediaScanner(private val context: Context) {
         val pendingFilter = visibleMediaSelection()
         if (pendingFilter != null) {
             selection = if (selection != null) "($selection) AND $pendingFilter" else pendingFilter
+        }
+        modifiedSinceMillis?.let { since ->
+            val dateFilter = "${MediaStore.MediaColumns.DATE_MODIFIED} >= ?"
+            selection = if (selection != null) "($selection) AND $dateFilter" else dateFilter
+            selectionArgs = (selectionArgs ?: emptyArray()) + (since / 1000).toString()
         }
 
         val sortOrder = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"

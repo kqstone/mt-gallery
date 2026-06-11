@@ -1,6 +1,8 @@
 package com.kqstone.mtphotos.data.repository
 
 import android.content.ContentUris
+import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
@@ -25,6 +27,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val TAG = "SyncRepo"
+private const val LOCAL_SCAN_PREFS = "local_media_scan"
+private const val KEY_LAST_LOCAL_SCAN_AT = "last_local_scan_at"
+private const val KEY_LAST_ORPHAN_CHECK_AT = "last_orphan_check_at"
+private const val INCREMENTAL_SCAN_LOOKBACK_MS = 2 * 60 * 1000L
+private const val INCREMENTAL_ORPHAN_CHECK_INTERVAL_MS = 30 * 1000L
 
 class SyncRepository(
     private val container: AppContainer,
@@ -36,6 +43,9 @@ class SyncRepository(
     private val localScanner: LocalMediaScanner by lazy { LocalMediaScanner(container.prefsManager.context) }
     private val localVideoThumbnailGenerator: LocalVideoThumbnailGenerator by lazy {
         LocalVideoThumbnailGenerator(container.prefsManager.context, container.thumbnailCacheManager)
+    }
+    private val scanPrefs by lazy {
+        container.prefsManager.context.getSharedPreferences(LOCAL_SCAN_PREFS, Context.MODE_PRIVATE)
     }
 
     suspend fun performFullSync(localFolders: Set<String>? = null) = withContext(Dispatchers.IO) {
@@ -196,12 +206,13 @@ class SyncRepository(
                     emptySet()
                 }
 
-                val newEntities = prepareLocalEntities(
-                    localMedia = batch.filter { it.localMediaStoreId !in existingLocalIds },
-                    cloudMd5Map = cloudMd5Map,
-                    seenMd5s = seenLocalMd5s,
-                    useCloudFavorite = cloudResult.favoriteStateKnown
-                )
+            val newEntities = prepareLocalEntities(
+                localMedia = batch.filter { it.localMediaStoreId !in existingLocalIds },
+                cloudMd5Map = cloudMd5Map,
+                seenMd5s = seenLocalMd5s,
+                useCloudFavorite = cloudResult.favoriteStateKnown,
+                computeMissingMd5 = false
+            )
 
                 if (newEntities.isNotEmpty()) {
                     mediaDao.insertAll(newEntities)
@@ -235,11 +246,43 @@ class SyncRepository(
         val changed: Int get() = deletedCloudOnly + localRetained
     }
 
-    suspend fun syncLocalMedia(folders: Set<String>? = null): SyncResult = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "Starting local-only sync...")
+    suspend fun handleMediaStoreChanged(
+        uris: List<Uri>,
+        folders: Set<String>? = null
+    ): SyncResult = withContext(Dispatchers.IO) {
+        val quickRemoved = cleanupDeletedMediaUris(uris)
+        val result = syncLocalMedia(
+            folders = folders,
+            incremental = true,
+            forceOrphanCheck = quickRemoved == 0
+        )
+        SyncResult(
+            newCount = result.newCount,
+            removedCount = result.removedCount + quickRemoved
+        )
+    }
 
-            val localMedia = localScanner.scanMedia(folders, computeMd5 = false)
+    suspend fun syncLocalMedia(
+        folders: Set<String>? = null,
+        incremental: Boolean = false,
+        forceOrphanCheck: Boolean = false
+    ): SyncResult = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting local-only sync (incremental=$incremental)...")
+
+            val scanStartedAt = System.currentTimeMillis()
+            val modifiedSince = if (incremental) {
+                (scanPrefs.getLong(KEY_LAST_LOCAL_SCAN_AT, 0L) - INCREMENTAL_SCAN_LOOKBACK_MS)
+                    .coerceAtLeast(0L)
+                    .takeIf { it > 0L }
+            } else {
+                null
+            }
+            val localMedia = localScanner.scanMedia(
+                folderPaths = folders,
+                computeMd5 = false,
+                modifiedSinceMillis = modifiedSince
+            )
             Log.d(TAG, "Local scan found ${localMedia.size} files")
 
             val existingLocalIds = if (localMedia.isNotEmpty()) {
@@ -250,14 +293,21 @@ class SyncRepository(
             }
 
             val newEntities = prepareLocalEntities(
-                localMedia = localMedia.filter { it.localMediaStoreId !in existingLocalIds }
+                localMedia = localMedia.filter { it.localMediaStoreId !in existingLocalIds },
+                computeMissingMd5 = false
             )
             if (newEntities.isNotEmpty()) {
                 mediaDao.insertAll(newEntities)
                 Log.d(TAG, "Inserted ${newEntities.size} new local files")
             }
 
-            val removed = cleanupOrphanedLocalRecords()
+            val removed = if (incremental) {
+                cleanupMissingLocalRecords(localMedia, newEntities.size, forceOrphanCheck)
+            } else {
+                cleanupOrphanedLocalRecords()
+            }
+            scanPrefs.edit().putLong(KEY_LAST_LOCAL_SCAN_AT, scanStartedAt).apply()
+            MediaChangeObserver.clearDirty()
             SyncResult(newEntities.size, removed)
         } catch (e: Exception) {
             Log.e(TAG, "Local sync failed", e)
@@ -297,15 +347,7 @@ class SyncRepository(
                     if (md5.isEmpty()) continue
 
                     val cloud = cloudMd5Map[md5]
-                    val localWithMd5 = entity.copy(md5 = md5)
-                    val existing = findExistingEntity(md5, cloud?.cloudId, entity.localMediaStoreId)
-                    val target = if (existing != null && existing.id != entity.id) existing else entity
-                    val merged = mergeMedia(target, local = localWithMd5, cloud = cloud)
-
-                    if (existing != null && existing.id != entity.id) {
-                        mediaDao.deleteById(entity.id)
-                    }
-                    mediaDao.insert(merged)
+                    mergeComputedMd5(entity, md5, cloud)
                     updated++
                 }
                 onBatchComplete()
@@ -558,7 +600,8 @@ class SyncRepository(
         localMedia: List<MediaEntity>,
         cloudMd5Map: Map<String, MediaEntity> = emptyMap(),
         seenMd5s: MutableSet<String> = mutableSetOf(),
-        useCloudFavorite: Boolean = false
+        useCloudFavorite: Boolean = false,
+        computeMissingMd5: Boolean = true
     ): List<MediaEntity> {
         val result = mutableListOf<MediaEntity>()
         val pendingFavoriteCloudIds = if (useCloudFavorite) {
@@ -570,13 +613,13 @@ class SyncRepository(
         for (local in localMedia) {
             val md5 = local.md5.ifEmpty {
                 val path = local.localPath
-                if (path.isNullOrEmpty()) "" else LocalMediaScanner.computeFileMd5(path)
+                if (computeMissingMd5 && !path.isNullOrEmpty()) {
+                    LocalMediaScanner.computeFileMd5(path)
+                } else {
+                    ""
+                }
             }
-            if (md5.isEmpty()) {
-                Log.w(TAG, "Skipping local item without md5: ${local.localPath}")
-                continue
-            }
-            if (!seenMd5s.add(md5)) continue
+            if (md5.isNotEmpty() && !seenMd5s.add(md5)) continue
 
             val normalizedLocal = local.copy(md5 = md5)
             val cloud = cloudMd5Map[md5]
@@ -899,9 +942,37 @@ class SyncRepository(
         }
     }
 
-    fun getAllMediaFlow(): Flow<List<UnifiedPhotoItem>> {
+    fun getAllMediaFlow(localFolders: Set<String>? = null): Flow<List<UnifiedPhotoItem>> {
         return mediaDao.getAllMediaFlow().map { entities ->
-            entities.map { it.toUnifiedPhotoItem() }
+            entities
+                .filter { entity ->
+                    localFolders == null ||
+                        entity.cloudId != null ||
+                        FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
+                }
+                .map { it.toUnifiedPhotoItem(localFolders) }
+        }
+    }
+
+    private suspend fun mergeComputedMd5(
+        entity: MediaEntity,
+        md5: String,
+        cloud: MediaEntity?
+    ) {
+        val localWithMd5 = entity.copy(md5 = md5)
+        val existing = findExistingEntity(md5, cloud?.cloudId, entity.localMediaStoreId)
+        val target = if (existing != null && existing.id != entity.id) existing else entity
+        val merged = mergeMedia(target, local = localWithMd5, cloud = cloud)
+
+        if (existing != null && existing.id != entity.id) {
+            mediaDao.deleteById(entity.id)
+        }
+        mediaDao.insert(merged)
+        val duplicateIds = mediaDao.findByMd5List(listOf(md5))
+            .map { it.id }
+            .filter { it != merged.id }
+        if (duplicateIds.isNotEmpty()) {
+            mediaDao.deleteByIds(duplicateIds)
         }
     }
 
@@ -1201,6 +1272,44 @@ class SyncRepository(
         }
     }
 
+    private suspend fun cleanupDeletedMediaUris(uris: List<Uri>): Int {
+        var changed = 0
+        for (hint in uris.mapNotNull { it.toLocalMediaHint() }.distinct()) {
+            val contentUri = ContentUris.withAppendedId(
+                if (hint.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                hint.localMediaStoreId
+            )
+            if (mediaStoreUriExists(contentUri)) continue
+
+            val uriPattern = if (hint.isVideo) "%/video/%" else "%/images/%"
+            changed += mediaDao.deleteLocalOnlyByLocalId(hint.localMediaStoreId, uriPattern)
+            changed += mediaDao.clearCloudBackedLocalFieldsByLocalId(hint.localMediaStoreId, uriPattern)
+        }
+        if (changed > 0) {
+            Log.d(TAG, "Fast-cleared $changed deleted local media binding(s)")
+            MediaChangeObserver.clearDirty()
+        }
+        return changed
+    }
+
+    private data class LocalMediaHint(
+        val localMediaStoreId: Long,
+        val isVideo: Boolean
+    )
+
+    private fun Uri.toLocalMediaHint(): LocalMediaHint? {
+        val uriText = toString().lowercase()
+        val isVideo = uriText.contains("/video/")
+        val isImage = uriText.contains("/images/")
+        if (!isVideo && !isImage) return null
+
+        val localId = runCatching { ContentUris.parseId(this) }.getOrNull()
+            ?.takeIf { it > 0 }
+            ?: return null
+        return LocalMediaHint(localMediaStoreId = localId, isVideo = isVideo)
+    }
+
     private fun deleteLocalPathFallback(entity: MediaEntity): Boolean {
         val path = entity.localPath ?: return false
         return try {
@@ -1222,13 +1331,29 @@ class SyncRepository(
             fileName.endsWith(".mkv", true)
     }
 
+    private suspend fun cleanupMissingLocalRecords(
+        scannedMedia: List<MediaEntity>,
+        newCount: Int,
+        forceCheck: Boolean = false
+    ): Int {
+        val now = System.currentTimeMillis()
+        val lastCheckAt = scanPrefs.getLong(KEY_LAST_ORPHAN_CHECK_AT, 0L)
+        val shouldCheck = forceCheck ||
+            scannedMedia.isEmpty() ||
+            newCount == 0 ||
+            now - lastCheckAt >= INCREMENTAL_ORPHAN_CHECK_INTERVAL_MS
+        if (!shouldCheck) return 0
+
+        scanPrefs.edit().putLong(KEY_LAST_ORPHAN_CHECK_AT, now).apply()
+        return cleanupOrphanedLocalRecords()
+    }
+
     suspend fun cleanupOrphanedLocalRecords(): Int {
         val refs = mediaDao.getLocalFileRefs()
         if (refs.isEmpty()) return 0
 
-        val trackedIds = refs.map { it.localMediaStoreId }.toSet()
-        val existingIds = localScanner.verifyIdsExist(trackedIds)
-        val orphanedRefs = refs.filter { it.localMediaStoreId !in existingIds }
+        val existingRefIds = findExistingLocalRefIds(refs)
+        val orphanedRefs = refs.filter { it.id !in existingRefIds }
         if (orphanedRefs.isEmpty()) return 0
 
         Log.d(TAG, "Found ${orphanedRefs.size} orphaned local records")
@@ -1268,6 +1393,45 @@ class SyncRepository(
 
         MediaChangeObserver.clearDirty()
         return orphanedRefs.size
+    }
+
+    private fun findExistingLocalRefIds(refs: List<LocalFileRef>): Set<Long> {
+        if (refs.isEmpty()) return emptySet()
+        val existing = mutableSetOf<Long>()
+        val refsByVideo = refs.groupBy { it.isVideoRef() }
+
+        for ((isVideo, groupedRefs) in refsByVideo) {
+            val collection = if (isVideo) {
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+            groupedRefs.chunked(950).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                val byLocalId = chunk.groupBy { it.localMediaStoreId }
+                container.prefsManager.context.contentResolver.query(
+                    collection,
+                    arrayOf(MediaStore.MediaColumns._ID),
+                    "${MediaStore.MediaColumns._ID} IN ($placeholders)",
+                    chunk.map { it.localMediaStoreId.toString() }.toTypedArray(),
+                    null
+                )?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    while (cursor.moveToNext()) {
+                        val localId = cursor.getLong(idColumn)
+                        byLocalId[localId].orEmpty().mapTo(existing) { it.id }
+                    }
+                }
+            }
+        }
+
+        return existing
+    }
+
+    private fun LocalFileRef.isVideoRef(): Boolean {
+        return localUri?.contains("/video/", ignoreCase = true) == true ||
+            fileType.startsWith("video", ignoreCase = true) ||
+            fileType in setOf("mp4", "mov", "avi", "mkv")
     }
 }
 

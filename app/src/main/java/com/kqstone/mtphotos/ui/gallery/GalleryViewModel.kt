@@ -34,6 +34,8 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.UiText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -86,6 +88,7 @@ class GalleryViewModel(
     private var localVideoThumbJob: Job? = null
     private var initialSyncJob: Job? = null
     private var roomTimelineExpandJob: Job? = null
+    private var roomTimelineObserveJob: Job? = null
     private val monthLoadJobs = mutableMapOf<String, Job>()
     private var timelineMonthsByYearMonth: Map<String, TimelineMonth> = emptyMap()
     private var currentLocalFolders: Set<String>? = null
@@ -184,6 +187,7 @@ class GalleryViewModel(
                     if (syncRepository.hasData()) {
                         val folders = folderSelection.effectiveFolders
                         loadInitialRoomPreview(folders)
+                        startRoomTimelineObservation(folders)
                         launch {
                             syncRepository.reconcileFolderSelection(folders)
                             startRoomTimelineExpansion(folders)
@@ -277,6 +281,7 @@ class GalleryViewModel(
                         }
                         "done" -> {
                             _uiState.value = _uiState.value.copy(isSyncing = false, syncProgressText = null)
+                            startRoomTimelineObservation(folders)
                             startRoomTimelineExpansion(folders)
                             launch {
                                 syncRepository.computeMd5InBackground()
@@ -355,6 +360,27 @@ class GalleryViewModel(
         roomTimelineExpandJob?.cancel()
         roomTimelineExpandJob = viewModelScope.launch {
             expandRoomTimelineIncrementally(repo, folders)
+        }
+    }
+
+    private fun startRoomTimelineObservation(folders: Set<String>?) {
+        val repo = syncRepository ?: return
+        currentLocalFolders = folders
+        roomTimelineObserveJob?.cancel()
+        roomTimelineObserveJob = viewModelScope.launch {
+            repo.getAllMediaFlow(folders)
+                .conflate()
+                .collectLatest { photos ->
+                    val months = withContext(Dispatchers.Default) { buildMonthGroups(photos) }
+                    _uiState.value = _uiState.value.copy(
+                        months = months,
+                        isLoading = false,
+                        isHybridMode = true
+                    )
+                    if (photos.isNotEmpty()) {
+                        warmLocalVideoThumbnails(photos)
+                    }
+                }
         }
     }
 
@@ -837,9 +863,13 @@ class GalleryViewModel(
                 if (folderChanged) {
                     syncRepository.reconcileFolderSelection(folders)
                     lastFolderSelectionKey = folderKey
+                    startRoomTimelineObservation(folders)
                 }
                 if (mediaChanged) {
                     syncRepository.syncLocalMedia(folders)
+                    viewModelScope.launch {
+                        syncRepository.computeMd5InBackground()
+                    }
                 }
                 startRoomTimelineExpansion(folders)
             } catch (e: Exception) {
