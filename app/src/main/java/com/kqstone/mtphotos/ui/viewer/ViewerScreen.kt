@@ -97,6 +97,7 @@ fun ViewerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val photos = uiState.photos
     val initialIndex = uiState.currentIndex
+    val videoPlayerPool = rememberVideoPlayerPool()
 
     var stopActivePlayback by remember { mutableStateOf<(() -> Unit)?>(null) }
     var isExiting by remember { mutableStateOf(false) }
@@ -156,6 +157,19 @@ fun ViewerScreen(
 
     val visiblePage = pagerState.settledPage.coerceIn(0, photos.lastIndex)
     val currentPhoto = photos[visiblePage]
+    val nearbyVideoSources = remember(visiblePage, photos, uiState.nearbyVideoSources) {
+        listOf(visiblePage + 1, visiblePage - 1)
+            .filter { it in photos.indices }
+            .mapNotNull { index -> uiState.nearbyVideoSources[photos[index].uniqueKey] }
+    }
+    val activeVideoIdentity = uiState.resolvedVideoCacheKey ?: uiState.resolvedVideoUrl
+
+    LaunchedEffect(activeVideoIdentity, nearbyVideoSources) {
+        videoPlayerPool.prepare(
+            sources = nearbyVideoSources,
+            activeIdentity = activeVideoIdentity
+        )
+    }
 
     var showBottomSheet by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -200,7 +214,7 @@ fun ViewerScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 0,
+            beyondViewportPageCount = 1,
             pageSpacing = ViewerPageSpacing,
             userScrollEnabled = !showBottomSheet
         ) { page ->
@@ -215,6 +229,7 @@ fun ViewerScreen(
                         VideoPlayer(
                             videoUrl = url,
                             videoCacheKey = uiState.resolvedVideoCacheKey,
+                            playerPool = videoPlayerPool,
                             isCurrentPage = true,
                             isUiVisible = isUiVisible,
                             onToggleUi = { isUiVisible = !isUiVisible },
