@@ -36,9 +36,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
@@ -230,7 +235,12 @@ fun ViewerScreen(
                             CircularProgressIndicator(color = Color.White)
                         }
                     }
-                    if (uiState.isPeopleInfoVisible) {
+                    AnimatedVisibility(
+                        visible = uiState.isPeopleInfoVisible,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier.matchParentSize()
+                    ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -239,16 +249,33 @@ fun ViewerScreen(
                                     isUiVisible = false
                                 })
                         )
-                        PeopleInfoListOverlay(
-                            descriptors = uiState.peopleDescriptors,
-                            isLoading = false,
-                            portraitUrlProvider = viewModel::getPeoplePortraitUrl,
-                            modifier = Modifier
+                    }
+                    AnimatedVisibility(
+                        visible = uiState.isPeopleInfoVisible,
+                        enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = 0.95f),
+                        exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.95f),
+                        modifier = if (isLandscape) {
+                            Modifier
+                                .align(Alignment.CenterEnd)
+                                .statusBarsPadding()
+                                .padding(end = 112.dp, top = 68.dp, bottom = 24.dp)
+                                .fillMaxHeight()
+                                .width(96.dp)
+                        } else {
+                            Modifier
                                 .align(Alignment.TopCenter)
                                 .statusBarsPadding()
                                 .fillMaxWidth()
                                 .padding(top = 72.dp, start = 16.dp, end = 16.dp)
-                                .clickable(onClick = {})
+                        }
+                    ) {
+                        PeopleInfoListOverlay(
+                            descriptors = uiState.peopleDescriptors,
+                            isLoading = false,
+                            portraitUrlProvider = viewModel::getPeoplePortraitUrl,
+                            isLandscape = isLandscape,
+                            hazeState = hazeState,
+                            modifier = Modifier.clickable(onClick = {})
                         )
                     }
                 }
@@ -980,7 +1007,7 @@ private fun ViewerActionButtons(
         )
         HUDButton(
             icon = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-            label = if (isFavorite) stringResource(R.string.favorited) else stringResource(R.string.favorite),
+            label = stringResource(R.string.favorite),
             iconColor = if (isFavorite) Color(0xFFFFD700) else Color.White,
             iconScale = favScale,
             showLabel = showLabels,
@@ -988,17 +1015,13 @@ private fun ViewerActionButtons(
         )
         HUDButton(
             icon = if (isHide) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-            label = if (isHide) stringResource(R.string.unhide) else stringResource(R.string.hide),
+            label = stringResource(R.string.hide),
             showLabel = showLabels,
             onClick = onToggleHide
         )
         HUDButton(
             icon = Icons.Default.Person,
-            label = when {
-                isLoadingPeopleDescriptors -> stringResource(R.string.loading_people)
-                isPeopleInfoVisible -> stringResource(R.string.hide_people)
-                else -> stringResource(R.string.people)
-            },
+            label = stringResource(R.string.people),
             iconColor = if (isPeopleInfoVisible || isLoadingPeopleDescriptors) Color(0xFFFFD166) else Color.White,
             enabled = canShowPeopleInfo && !isLoadingPeopleDescriptors,
             showLabel = showLabels,
@@ -1006,11 +1029,7 @@ private fun ViewerActionButtons(
         )
         HUDButton(
             icon = Icons.Default.TextFields,
-            label = when {
-                isLoadingOcrInfo -> stringResource(R.string.loading_ocr)
-                isOcrInfoVisible -> stringResource(R.string.hide_ocr)
-                else -> stringResource(R.string.ocr)
-            },
+            label = stringResource(R.string.ocr),
             iconColor = if (isOcrInfoVisible || isLoadingOcrInfo) Color(0xFFFFD166) else Color.White,
             enabled = canShowOcrInfo && !isLoadingOcrInfo,
             showLabel = showLabels,
@@ -1093,6 +1112,8 @@ private fun PeopleInfoListOverlay(
     descriptors: List<PeopleDescriptorItem>,
     isLoading: Boolean,
     portraitUrlProvider: (PeopleDescriptorItem) -> String?,
+    isLandscape: Boolean = false,
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier
 ) {
     val people = remember(descriptors) {
@@ -1101,89 +1122,118 @@ private fun PeopleInfoListOverlay(
         }
     }
 
+    val glassModifier = if (hazeState != null) {
+        modifier.frostedGlassEffect(
+            state = hazeState,
+            tintAlpha = 0.4f,
+            blurRadius = 24.dp,
+            showTopDivider = false
+        )
+    } else {
+        modifier.background(Color.Black.copy(alpha = 0.68f), RoundedCornerShape(24.dp))
+    }
+
     Surface(
-        modifier = modifier,
-        color = Color.Black.copy(alpha = 0.68f),
+        modifier = glassModifier,
+        color = Color.Transparent,
         contentColor = Color.White,
         shape = RoundedCornerShape(24.dp)
     ) {
         if (isLoading) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier.padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     color = Color.White,
                     strokeWidth = 2.dp
                 )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = stringResource(R.string.loading_people),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
             }
         } else if (people.isEmpty()) {
             Text(
                 text = stringResource(R.string.no_named_people),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
         } else {
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                people.forEach { descriptor ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(58.dp)
-                    ) {
-                        val portraitUrl = portraitUrlProvider(descriptor)
-                        if (portraitUrl != null) {
-                            AsyncImage(
-                                model = portraitUrl,
-                                contentDescription = descriptor.person.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.16f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = descriptor.person.name,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = descriptor.person.name,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
+            if (isLandscape) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 14.dp, horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(people) { descriptor ->
+                        PeoplePortraitItem(descriptor, portraitUrlProvider)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    people.forEach { descriptor ->
+                        PeoplePortraitItem(descriptor, portraitUrlProvider)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PeoplePortraitItem(
+    descriptor: PeopleDescriptorItem,
+    portraitUrlProvider: (PeopleDescriptorItem) -> String?
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(58.dp)
+    ) {
+        val portraitUrl = portraitUrlProvider(descriptor)
+        if (portraitUrl != null) {
+            AsyncImage(
+                model = portraitUrl,
+                contentDescription = descriptor.person.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = descriptor.person.name,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = descriptor.person.name,
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1492,7 +1542,30 @@ private fun PeopleImageOverlay(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                val maskPath = Path().apply {
+                    addRect(Rect(0f, 0f, size.width, size.height))
+                    boxes.forEach { box ->
+                        addRoundRect(
+                            RoundRect(
+                                rect = Rect(
+                                    left = box.left,
+                                    top = box.top,
+                                    right = box.left + box.width,
+                                    bottom = box.top + box.height
+                                ),
+                                cornerRadius = CornerRadius(12.dp.toPx())
+                            )
+                        )
+                    }
+                    fillType = PathFillType.EvenOdd
+                }
+                drawPath(maskPath, Color.Black.copy(alpha = 0.65f))
+            }
+    ) {
         if (isLoading) {
             Surface(
                 modifier = Modifier
@@ -1535,16 +1608,27 @@ private fun PeopleImageOverlay(
                         cornerLengthRatio = 0.2f
                     )
             )
+            val pillHeightPx = with(density) { 26.dp.toPx() }
+            val pillPaddingPx = with(density) { 6.dp.toPx() }
+            val pillTop = when {
+                box.top >= pillHeightPx + pillPaddingPx -> {
+                    box.top - pillHeightPx - pillPaddingPx
+                }
+                box.top + box.height + pillHeightPx + pillPaddingPx <= containerSize.height -> {
+                    box.top + box.height + pillPaddingPx
+                }
+                else -> {
+                    box.top + pillPaddingPx
+                }
+            }
+            val safeLeft = box.left.coerceIn(8f, (containerSize.width - 60f).coerceAtLeast(8f))
             Surface(
                 modifier = Modifier
                     .offset {
-                        IntOffset(
-                            box.left.roundToInt(),
-                            (box.top - 28f).coerceAtLeast(0f).roundToInt()
-                        )
+                        IntOffset(safeLeft.roundToInt(), pillTop.roundToInt())
                     },
-                color = Color(0xFFFFD166).copy(alpha = 0.92f),
-                contentColor = Color.Black,
+                color = Color.Black.copy(alpha = 0.6f),
+                contentColor = Color(0xFFFFD166),
                 shape = RoundedCornerShape(999.dp)
             ) {
                 Text(
