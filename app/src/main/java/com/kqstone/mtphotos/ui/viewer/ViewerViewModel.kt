@@ -17,6 +17,7 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
+import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.gallery.removePhotos
 import com.kqstone.mtphotos.ui.gallery.updateFavorite
 import com.kqstone.mtphotos.ui.gallery.updateHide
@@ -645,6 +646,10 @@ class ViewerViewModel(
         photo.localUri?.let { if (it.isNotEmpty() && !photo.isStorageOptimized) return it }
         val cloudId = photo.cloudId ?: return ""
         return galleryRepository.getFullImageUrl(cloudId, photo.md5)
+    }
+
+    fun getViewerThumbUrl(photo: UnifiedPhotoItem): String {
+        return MediaThumbnailResolver.resolveTimelineThumb(photo, galleryRepository)
     }
 
     fun getOriginalImageUrl(photo: UnifiedPhotoItem): String {

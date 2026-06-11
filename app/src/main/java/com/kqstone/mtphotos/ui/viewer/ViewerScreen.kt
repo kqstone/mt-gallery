@@ -224,6 +224,10 @@ fun ViewerScreen(
 
             if (isPlayableMedia && isCurrentPage) {
                 val url = uiState.resolvedVideoUrl ?: ""
+                val posterUrl = remember(photo.uniqueKey, photo.thumbCachePath, photo.md5, photo.cloudId, photo.localUri) {
+                    viewModel.getViewerThumbUrl(photo)
+                }
+                var isVideoFrameRendered by remember(photo.uniqueKey, url) { mutableStateOf(false) }
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (url.isNotEmpty()) {
                         VideoPlayer(
@@ -234,15 +238,29 @@ fun ViewerScreen(
                             isUiVisible = isUiVisible,
                             onToggleUi = { isUiVisible = !isUiVisible },
                             onPlaybackError = { viewModel.fallbackCurrentVideoToOriginal() },
+                            onFirstFrameRendered = { isVideoFrameRendered = true },
                             onStopPlaybackReady = { stopActivePlayback = it }
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
+                        AnimatedVisibility(
+                            visible = !isVideoFrameRendered,
+                            enter = fadeIn(),
+                            exit = fadeOut(),
+                            modifier = Modifier.matchParentSize()
                         ) {
-                            CircularProgressIndicator(color = Color.White)
+                            VideoPoster(
+                                photo = photo,
+                                thumbUrl = posterUrl,
+                                showLoading = true,
+                                onTap = { isUiVisible = !isUiVisible }
+                            )
                         }
+                    } else {
+                        VideoPoster(
+                            photo = photo,
+                            thumbUrl = posterUrl,
+                            showLoading = true,
+                            onTap = { isUiVisible = !isUiVisible }
+                        )
                     }
                     androidx.compose.animation.AnimatedVisibility(
                         visible = uiState.isPeopleInfoVisible,
@@ -289,7 +307,15 @@ fun ViewerScreen(
                     }
                 }
             } else if (isPlayableMedia) {
-                Box(modifier = Modifier.fillMaxSize())
+                val posterUrl = remember(photo.uniqueKey, photo.thumbCachePath, photo.md5, photo.cloudId, photo.localUri) {
+                    viewModel.getViewerThumbUrl(photo)
+                }
+                VideoPoster(
+                    photo = photo,
+                    thumbUrl = posterUrl,
+                    showLoading = false,
+                    onTap = { isUiVisible = !isUiVisible }
+                )
             } else {
                 val imageUrl = if (isCurrentPage && uiState.isPlayingStreamUrl && !photo.isPlayableMedia()) {
                     uiState.streamMediaUrl ?: viewModel.getFullImageUrl(photo)
@@ -1192,6 +1218,53 @@ private fun PeoplePortraitItem(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun VideoPoster(
+    photo: UnifiedPhotoItem,
+    thumbUrl: String,
+    showLoading: Boolean,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable(onClick = onTap),
+        contentAlignment = Alignment.Center
+    ) {
+        if (thumbUrl.isNotEmpty()) {
+            AsyncImage(
+                model = thumbUrl,
+                contentDescription = photo.fileName,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.Movie,
+                contentDescription = photo.fileName,
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(56.dp)
+            )
+        }
+
+        if (showLoading) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(32.dp)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.86f),
+                modifier = Modifier.size(56.dp)
+            )
+        }
     }
 }
 

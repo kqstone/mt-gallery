@@ -49,6 +49,7 @@ fun VideoPlayer(
     isUiVisible: Boolean,
     onToggleUi: () -> Unit,
     onPlaybackError: (PlaybackException) -> Unit = {},
+    onFirstFrameRendered: () -> Unit = {},
     onStopPlaybackReady: ((() -> Unit)?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -80,6 +81,9 @@ fun VideoPlayer(
             }
             override fun onPlayerError(error: PlaybackException) {
                 onPlaybackError(error)
+            }
+            override fun onRenderedFirstFrame() {
+                onFirstFrameRendered()
             }
         }
     }
