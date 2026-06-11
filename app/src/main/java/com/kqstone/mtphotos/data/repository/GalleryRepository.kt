@@ -734,6 +734,11 @@ class GalleryRepository(private val container: AppContainer) {
         return result
     }
 
+    suspend fun ensureAuthCode(): Boolean {
+        if (authRepository.getAuthCode().isNotBlank()) return true
+        return refreshAuthCode().isSuccess
+    }
+
     suspend fun markRecoverableFailure(error: Throwable) {
         if (NetworkFailure.isDeviceOffline(prefsManager.context)) {
             prefsManager.setNetworkRetryPending(true)

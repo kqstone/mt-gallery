@@ -14,6 +14,7 @@ import com.kqstone.mtphotos.data.local.LocalMediaScanner
 import com.kqstone.mtphotos.data.local.MediaChangeObserver
 import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.local.StorageOptimizer
+import com.kqstone.mtphotos.data.local.ThumbnailCachePaths
 import com.kqstone.mtphotos.data.repository.BackupDestinationNode
 import com.kqstone.mtphotos.data.repository.BackupDestinationRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
@@ -213,8 +214,8 @@ class BackupSettingsViewModel(
             try {
                 val stats = withContext(Dispatchers.IO) {
                     val context = prefsManager.context
-                    val coilCacheDir = context.cacheDir.resolve("coil_image_cache")
-                    val localThumbsDir = context.cacheDir.resolve("thumbs")
+                    val coilCacheDir = ThumbnailCachePaths.coilImageCacheDir(context)
+                    val localThumbsDir = ThumbnailCachePaths.localThumbsDir(context)
                     val fullCacheDir = context.cacheDir.resolve("full_image_cache")
                     val videoCacheDir = context.cacheDir.resolve("video_cache")
                     CacheStats(
@@ -669,7 +670,7 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             prefsManager.saveCoilDiskCacheMb(mb)
             MTPhotosApp.updateImageLoader(prefsManager.context)
-            loadStats()
+            loadCacheStats(delayMillis = 0)
         }
     }
 
@@ -683,6 +684,8 @@ class BackupSettingsViewModel(
                 imageLoader.diskCache?.clear()
                 imageLoader.memoryCache?.clear()
                 app?.container?.thumbnailCacheManager?.clearAll()
+                deleteDirectoryContents(ThumbnailCachePaths.legacyCoilImageCacheDir(context))
+                deleteDirectoryContents(ThumbnailCachePaths.legacyLocalThumbsDir(context))
                 loadCacheStats(delayMillis = 0)
             } catch (e: Exception) {
                 Log.e(TAG, "clearThumbnailCache failed", e)
