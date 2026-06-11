@@ -50,6 +50,8 @@ import com.kqstone.mtphotos.ui.folder.FolderDetailScreen
 import com.kqstone.mtphotos.ui.folder.FolderDetailViewModel
 import com.kqstone.mtphotos.ui.folder.FolderScreen
 import com.kqstone.mtphotos.ui.folder.FolderViewModel
+import com.kqstone.mtphotos.ui.folder.AllFolderItemsScreen
+import com.kqstone.mtphotos.ui.discovery.AllDiscoveryItemsScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryScreen
 import com.kqstone.mtphotos.ui.gallery.GalleryViewModel
 import com.kqstone.mtphotos.ui.gallery.LocalSelectionBottomBarHost
@@ -275,7 +277,10 @@ fun MainScreen(
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
                         onAboutClick = onNavigateToAbout,
-                        onOpLogClick = onNavigateToOpLog
+                        onOpLogClick = onNavigateToOpLog,
+                        onMoreClick = { type ->
+                            innerNavController.navigate("all_folder/$type")
+                        }
                     )
                 }
 
@@ -295,7 +300,44 @@ fun MainScreen(
                         onOpenSearch = { isSearchOverlayVisible = true },
                         onSettingsClick = onNavigateToSettings,
                         onAboutClick = onNavigateToAbout,
-                        onOpLogClick = onNavigateToOpLog
+                        onOpLogClick = onNavigateToOpLog,
+                        onMoreClick = { type ->
+                            innerNavController.navigate("all_discovery/$type")
+                        }
+                    )
+                }
+
+                composable("all_discovery/{type}") { backStackEntry ->
+                    val type = backStackEntry.arguments?.getString("type") ?: return@composable
+                    AllDiscoveryItemsScreen(
+                        viewModel = discoveryViewModel,
+                        type = type,
+                        onPersonClick = { peopleId, title ->
+                            innerNavController.navigate("people/${Uri.encode(peopleId)}?title=${Uri.encode(title)}")
+                        },
+                        onSceneClick = { id, cid, title ->
+                            val cidQuery = cid?.let { "&cid=${Uri.encode(it)}" }.orEmpty()
+                            innerNavController.navigate("scene/${Uri.encode(id)}?title=${Uri.encode(title)}$cidQuery")
+                        },
+                        onLocationClick = { city ->
+                            innerNavController.navigate("location/${Uri.encode(city)}")
+                        },
+                        onBack = { innerNavController.popBackStack() }
+                    )
+                }
+
+                composable("all_folder/{type}") { backStackEntry ->
+                    val type = backStackEntry.arguments?.getString("type") ?: return@composable
+                    AllFolderItemsScreen(
+                        viewModel = folderViewModel,
+                        type = type,
+                        onAlbumClick = { albumId, title ->
+                            innerNavController.navigate("album/$albumId/${Uri.encode(title)}")
+                        },
+                        onFolderClick = { folderId ->
+                            innerNavController.navigate("folder/$folderId")
+                        },
+                        onBack = { innerNavController.popBackStack() }
                     )
                 }
 

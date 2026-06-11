@@ -39,6 +39,7 @@ import com.kqstone.mtphotos.ui.gallery.MediaSelectionActionType
 import com.kqstone.mtphotos.ui.media.MediaGridHost
 import com.kqstone.mtphotos.ui.media.buildPhotoTimelineLayout
 import com.kqstone.mtphotos.ui.util.BackTitleTopBar
+import com.kqstone.mtphotos.ui.util.PersonNameUtils
 import com.kqstone.mtphotos.ui.util.TopBarActionIcon
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 
@@ -70,7 +71,7 @@ fun CategoryFileListScreen(
     var showRenameDialog by remember(loadType, loadParam) { mutableStateOf(false) }
     var renameInput by remember(loadType, loadParam) { mutableStateOf("") }
     val displayTitle = if (loadType == "people") {
-        personDisplayName(currentTitle, unnamedPersonName)
+        PersonNameUtils.displayName(currentTitle, unnamedPersonName)
     } else {
         currentTitle
     }
@@ -142,7 +143,7 @@ fun CategoryFileListScreen(
                             imageVector = Icons.Default.Edit,
                             contentDescription = stringResource(R.string.edit_person_name),
                             onClick = {
-                                renameInput = editablePersonName(currentTitle)
+                                renameInput = PersonNameUtils.editableName(currentTitle)
                                 showRenameDialog = true
                             }
                         )
@@ -254,21 +255,4 @@ fun CategoryFileListScreen(
             }
         )
     }
-}
-
-private fun personDisplayName(name: String, unnamedName: String): String {
-    return if (isPersonNameMissing(name)) unnamedName else name
-}
-
-private fun editablePersonName(name: String): String {
-    return if (isPersonNameMissing(name)) "" else name
-}
-
-private fun isPersonNameMissing(name: String): Boolean {
-    val normalized = name.trim()
-    return normalized.isBlank() ||
-        normalized == "未知" ||
-        normalized == "未命名" ||
-        normalized.equals("unknown", ignoreCase = true) ||
-        normalized.equals("unnamed", ignoreCase = true)
 }

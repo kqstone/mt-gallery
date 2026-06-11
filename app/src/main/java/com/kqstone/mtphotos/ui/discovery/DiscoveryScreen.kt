@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
@@ -44,12 +46,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
 import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
+import com.kqstone.mtphotos.ui.util.GradientPresets
+import com.kqstone.mtphotos.ui.util.PersonNameUtils
+import com.kqstone.mtphotos.ui.util.SectionHeader
 import com.kqstone.mtphotos.ui.util.ThumbnailImage
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
@@ -65,7 +71,8 @@ fun DiscoveryScreen(
     onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit,
     onAboutClick: () -> Unit,
-    onOpLogClick: () -> Unit = {}
+    onOpLogClick: () -> Unit = {},
+    onMoreClick: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -138,6 +145,7 @@ fun DiscoveryScreen(
                                 PeopleSection(
                                     people = uiState.people,
                                     onItemClick = { onPersonClick(it.id, it.name) },
+                                    onMoreClick = { onMoreClick("people") },
                                     portraitUrlProvider = { person ->
                                         if (person.coverFileId > 0) {
                                             viewModel.getPortraitUrl(person.id, person.coverFileId)
@@ -151,21 +159,43 @@ fun DiscoveryScreen(
 
                         if (uiState.scenes.isNotEmpty()) {
                             item {
-                                SceneSection(
-                                    scenes = uiState.scenes,
-                                    onItemClick = { onSceneClick(it.id, it.cid, it.name) },
-                                    thumbUrlProvider = { md5, _ -> viewModel.getThumbUrlByMd5(md5) }
-                                )
+                                CoverCardRowSection(
+                                    title = stringResource(R.string.section_scenes),
+                                    items = uiState.scenes,
+                                    onMoreClick = { onMoreClick("scenes") },
+                                    itemKey = { it.id }
+                                ) { scene, cardSize ->
+                                    CoverCard(
+                                        name = scene.name,
+                                        subtitle = stringResource(R.string.photo_count_short, scene.count),
+                                        thumbUrl = if (scene.coverMd5.isNotEmpty()) viewModel.getThumbUrlByMd5(scene.coverMd5) else null,
+                                        onClick = { onSceneClick(scene.id, scene.cid, scene.name) },
+                                        thumbKey = scene.coverMd5,
+                                        cardSize = cardSize
+                                    )
+                                }
                             }
                         }
 
                         if (uiState.locations.isNotEmpty()) {
                             item {
-                                LocationSection(
-                                    locations = uiState.locations,
-                                    onItemClick = { onLocationClick(it.city) },
-                                    thumbUrlProvider = { md5 -> viewModel.getThumbUrlByMd5(md5) }
-                                )
+                                CoverCardRowSection(
+                                    title = stringResource(R.string.section_locations),
+                                    items = uiState.locations,
+                                    onMoreClick = { onMoreClick("locations") },
+                                    itemKey = { it.city }
+                                ) { location, cardSize ->
+                                    CoverCard(
+                                        name = location.city,
+                                        subtitle = stringResource(R.string.photo_count_short, location.count),
+                                        thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let { viewModel.getThumbUrlByMd5(it) },
+                                        onClick = { onLocationClick(location.city) },
+                                        fallbackIcon = Icons.Default.Place,
+                                        fallbackGradient = GradientPresets.Location,
+                                        thumbKey = location.coverMd5,
+                                        cardSize = cardSize
+                                    )
+                                }
                             }
                         }
 
@@ -204,121 +234,95 @@ fun DiscoveryScreen(
 private fun PeopleSection(
     people: List<PersonItem>,
     onItemClick: (PersonItem) -> Unit,
+    onMoreClick: () -> Unit,
     portraitUrlProvider: (PersonItem) -> String?
 ) {
-    val unnamedPersonName = stringResource(R.string.person_unnamed)
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.section_people),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+    val unnamed = stringResource(R.string.person_unnamed)
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val itemWidth = (screenWidth - 32.dp - 36.dp) / 4
+
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        SectionHeader(
+            title = stringResource(R.string.section_people),
+            showMore = people.size > 4,
+            onMoreClick = onMoreClick
         )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = people,
+                items = people.take(4),
                 key = { it.id }
             ) { person ->
-                val displayName = personDisplayName(person.name, unnamedPersonName)
+                val displayName = PersonNameUtils.displayName(person.name, unnamed)
                 PersonCircleItem(
                     name = displayName,
                     count = person.count,
                     thumbUrl = portraitUrlProvider(person),
                     onClick = { onItemClick(person) },
-                    key = person.coverMd5
+                    key = person.coverMd5,
+                    modifier = Modifier.width(itemWidth)
                 )
             }
         }
     }
 }
 
+/**
+ * Generic section that shows a [SectionHeader] + horizontal [LazyRow] of [CoverCard]s.
+ * Used for Scenes and Locations (and extensible to any category backed by CoverCard).
+ */
 @Composable
-private fun SceneSection(
-    scenes: List<SceneItem>,
-    onItemClick: (SceneItem) -> Unit,
-    thumbUrlProvider: (String, Double) -> String
+private fun <T> CoverCardRowSection(
+    title: String,
+    items: List<T>,
+    maxVisible: Int = 3,
+    onMoreClick: () -> Unit,
+    itemKey: (T) -> Any,
+    itemContent: @Composable (item: T, cardSize: Dp) -> Unit
 ) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.section_scenes),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val cardSize = (screenWidth - 32.dp - 24.dp) / maxVisible
+
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        SectionHeader(
+            title = title,
+            showMore = items.size > maxVisible,
+            onMoreClick = onMoreClick
         )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = scenes,
-                key = { it.id }
-            ) { scene ->
-                CoverCard(
-                    name = scene.name,
-                    subtitle = stringResource(R.string.photo_count_short, scene.count),
-                    thumbUrl = if (scene.coverMd5.isNotEmpty()) {
-                        thumbUrlProvider(scene.coverMd5, scene.coverFileId)
-                    } else null,
-                    onClick = { onItemClick(scene) },
-                    thumbKey = scene.coverMd5
-                )
+                items = items.take(maxVisible),
+                key = itemKey
+            ) { item ->
+                itemContent(item, cardSize)
             }
         }
     }
 }
 
 @Composable
-private fun LocationSection(
-    locations: List<LocationItem>,
-    onItemClick: (LocationItem) -> Unit,
-    thumbUrlProvider: (String) -> String
-) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.section_locations),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(
-                items = locations,
-                key = { it.city }
-            ) { location ->
-                CoverCard(
-                    name = location.city,
-                    subtitle = stringResource(R.string.photo_count_short, location.count),
-                    thumbUrl = location.coverMd5.takeIf { it.isNotBlank() }?.let(thumbUrlProvider),
-                    onClick = { onItemClick(location) },
-                    fallbackIcon = Icons.Default.Place,
-                    fallbackGradient = LocationGradient,
-                    thumbKey = location.coverMd5
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PersonCircleItem(
+fun PersonCircleItem(
     name: String,
     count: Int,
     thumbUrl: String?,
     onClick: () -> Unit,
-    key: String? = null
+    key: String? = null,
+    modifier: Modifier = Modifier.width(90.dp)
 ) {
     Column(
-        modifier = Modifier
-            .width(90.dp)
+        modifier = modifier
             .bounceClick(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
-                .size(76.dp)
+                .fillMaxWidth()
+                .aspectRatio(1f)
                 .background(
                     brush = Brush.linearGradient(
                         colors = listOf(
@@ -373,15 +377,3 @@ private fun PersonCircleItem(
     }
 }
 
-// Gradient preset for location cards
-private val LocationGradient = listOf(Color(0xFF8E9DFB), Color(0xFFEDACF7))
-
-private fun personDisplayName(name: String, unnamedName: String): String {
-    val normalized = name.trim()
-    val isMissing = normalized.isBlank() ||
-        normalized == "未知" ||
-        normalized == "未命名" ||
-        normalized.equals("unknown", ignoreCase = true) ||
-        normalized.equals("unnamed", ignoreCase = true)
-    return if (isMissing) unnamedName else name
-}
