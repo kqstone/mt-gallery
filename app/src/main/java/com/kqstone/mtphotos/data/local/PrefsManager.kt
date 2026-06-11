@@ -65,6 +65,13 @@ class PrefsManager(val context: Context) {
         private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
         private val KEY_SYNC_INTERVAL = intPreferencesKey("sync_interval_minutes") // 默认 60
         private val KEY_COIL_DISK_CACHE_MB = intPreferencesKey("coil_disk_cache_mb") // 默认 512MB
+
+        // 排序相关
+        private val KEY_PEOPLE_ORDER = stringPreferencesKey("people_order")
+        private val KEY_SCENES_ORDER = stringPreferencesKey("scenes_order")
+        private val KEY_LOCATIONS_ORDER = stringPreferencesKey("locations_order")
+        private val KEY_ALBUMS_ORDER = stringPreferencesKey("albums_order")
+        private val KEY_FOLDERS_ORDER = stringPreferencesKey("folders_order")
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { it[KEY_SERVER_URL] ?: "" }
@@ -105,6 +112,12 @@ class PrefsManager(val context: Context) {
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
     val syncInterval: Flow<Int> = context.dataStore.data.map { it[KEY_SYNC_INTERVAL] ?: 60 }
     val coilDiskCacheMb: Flow<Int> = context.dataStore.data.map { it[KEY_COIL_DISK_CACHE_MB] ?: 512 }
+
+    val peopleOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_PEOPLE_ORDER] ?: "") }
+    val scenesOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_SCENES_ORDER] ?: "") }
+    val locationsOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_LOCATIONS_ORDER] ?: "") }
+    val albumsOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_ALBUMS_ORDER] ?: "") }
+    val foldersOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_FOLDERS_ORDER] ?: "") }
 
     fun getServerUrlSync(): String = runBlocking {
         val prefs = context.dataStore.data.first()
@@ -184,6 +197,12 @@ class PrefsManager(val context: Context) {
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
     fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
     fun getCoilDiskCacheMbSync(): Int = runBlocking { coilDiskCacheMb.first() }
+
+    fun getPeopleOrderSync(): List<String> = runBlocking { peopleOrder.first() }
+    fun getScenesOrderSync(): List<String> = runBlocking { scenesOrder.first() }
+    fun getLocationsOrderSync(): List<String> = runBlocking { locationsOrder.first() }
+    fun getAlbumsOrderSync(): List<String> = runBlocking { albumsOrder.first() }
+    fun getFoldersOrderSync(): List<String> = runBlocking { foldersOrder.first() }
 
     suspend fun saveCredentials(serverUrl: String, username: String, password: String) {
         context.dataStore.edit { prefs ->
@@ -368,6 +387,20 @@ class PrefsManager(val context: Context) {
         }
     }
 
+    suspend fun saveOrder(type: String, order: List<String>) {
+        val key = when (type) {
+            "people" -> KEY_PEOPLE_ORDER
+            "scene" -> KEY_SCENES_ORDER
+            "location" -> KEY_LOCATIONS_ORDER
+            "album" -> KEY_ALBUMS_ORDER
+            "folder" -> KEY_FOLDERS_ORDER
+            else -> return
+        }
+        context.dataStore.edit { prefs ->
+            prefs[key] = Gson().toJson(order)
+        }
+    }
+
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
     }
@@ -404,6 +437,17 @@ class PrefsManager(val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse string set", e)
             emptySet()
+        }
+    }
+
+    private fun parseStringList(json: String): List<String> {
+        if (json.isBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<String>>() {}.type
+            Gson().fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse string list", e)
+            emptyList()
         }
     }
 

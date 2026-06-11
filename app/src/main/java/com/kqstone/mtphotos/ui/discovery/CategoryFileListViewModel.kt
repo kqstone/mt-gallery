@@ -102,6 +102,7 @@ class CategoryFileListViewModel(
                 }
             }
             is MediaUiMutation.PersonRenamed -> Unit
+            else -> Unit
         }
     }
 

@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.platform.LocalConfiguration
+import com.kqstone.mtphotos.ui.util.SectionHeader
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kqstone.mtphotos.ui.search.SearchEntryTopBar
 import com.kqstone.mtphotos.ui.util.CoverCard
+import com.kqstone.mtphotos.ui.util.GradientPresets
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
@@ -62,7 +65,8 @@ fun FolderScreen(
     onOpenSearch: () -> Unit,
     onSettingsClick: () -> Unit,
     onAboutClick: () -> Unit,
-    onOpLogClick: () -> Unit = {}
+    onOpLogClick: () -> Unit = {},
+    onMoreClick: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val lazyListState = rememberLazyListState()
@@ -76,6 +80,9 @@ fun FolderScreen(
         firstVisibleItemIndex = { lazyListState.firstVisibleItemIndex },
         firstVisibleItemScrollOffset = { lazyListState.firstVisibleItemScrollOffset }
     )
+
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val cardSize = (screenWidth - 32.dp - 16.dp) / 3
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
@@ -109,13 +116,16 @@ fun FolderScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = scrollState.topBarHeight, bottom = 80.dp)
                     ) {
+
                         if (uiState.albums.isNotEmpty()) {
                             item {
                                 CollectionRowSection(
-                                    title = stringResource(R.string.section_albums)
+                                    title = stringResource(R.string.section_albums),
+                                    showMore = uiState.albums.size > 3,
+                                    onMoreClick = { onMoreClick("albums") }
                                 ) {
                                     items(
-                                        items = uiState.albums,
+                                        items = uiState.albums.take(3),
                                         key = { it.id }
                                     ) { album ->
                                         CoverCard(
@@ -123,9 +133,10 @@ fun FolderScreen(
                                             subtitle = stringResource(R.string.item_count_short, album.fileCount),
                                             thumbUrl = album.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Collections,
-                                            fallbackGradient = AlbumGradient,
+                                            fallbackGradient = GradientPresets.Album,
                                             onClick = { onAlbumClick(album.id, album.name) },
-                                            thumbKey = album.coverMd5
+                                            thumbKey = album.coverMd5,
+                                            cardSize = cardSize
                                         )
                                     }
                                 }
@@ -135,10 +146,12 @@ fun FolderScreen(
                         if (uiState.folders.isNotEmpty()) {
                             item {
                                 CollectionRowSection(
-                                    title = stringResource(R.string.section_folders)
+                                    title = stringResource(R.string.section_folders),
+                                    showMore = uiState.folders.size > 3,
+                                    onMoreClick = { onMoreClick("folders") }
                                 ) {
                                     items(
-                                        items = uiState.folders,
+                                        items = uiState.folders.take(3),
                                         key = { it.id }
                                     ) { folder ->
                                         CoverCard(
@@ -146,9 +159,10 @@ fun FolderScreen(
                                             subtitle = stringResource(R.string.item_count_short, folder.fileCount),
                                             thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
                                             fallbackIcon = Icons.Default.Folder,
-                                            fallbackGradient = FolderGradient,
+                                            fallbackGradient = GradientPresets.Folder,
                                             onClick = { onFolderClick(folder.id) },
-                                            thumbKey = folder.coverMd5
+                                            thumbKey = folder.coverMd5,
+                                            cardSize = cardSize
                                         )
                                     }
                                 }
@@ -191,13 +205,15 @@ fun FolderScreen(
 @Composable
 private fun CollectionRowSection(
     title: String,
+    showMore: Boolean,
+    onMoreClick: () -> Unit,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
 ) {
-    Column(modifier = Modifier.padding(top = 8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        SectionHeader(
+            title = title,
+            showMore = showMore,
+            onMoreClick = onMoreClick
         )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 12.dp),
@@ -206,10 +222,6 @@ private fun CollectionRowSection(
         )
     }
 }
-
-// Gradient presets for collection cover cards
-private val AlbumGradient = listOf(Color(0xFFFDA085), Color(0xFFF6D365))
-private val FolderGradient = listOf(Color(0xFF38EF7D), Color(0xFF11998E))
 
 @Composable
 private fun CategorySection(

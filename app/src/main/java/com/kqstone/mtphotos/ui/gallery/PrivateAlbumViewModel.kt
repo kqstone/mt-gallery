@@ -106,6 +106,7 @@ class PrivateAlbumViewModel(
                 )
             }
             is MediaUiMutation.PersonRenamed -> Unit
+            else -> Unit
         }
     }
 

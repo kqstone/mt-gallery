@@ -145,6 +145,7 @@ class GalleryViewModel(
                 )
             }
             is MediaUiMutation.PersonRenamed -> Unit
+            else -> Unit
         }
     }
 

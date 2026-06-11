@@ -185,6 +185,11 @@ fun ViewerScreen(
             Toast.makeText(context, context.getString(R.string.ocr_load_failed), Toast.LENGTH_SHORT).show()
         }
     }
+    LaunchedEffect(uiState.noPeopleDetectedCount) {
+        if (uiState.noPeopleDetectedCount > 0) {
+            Toast.makeText(context, "未检出到人物", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -1523,10 +1528,10 @@ private fun PeopleImageOverlay(
                     }
                     .width(with(density) { box.width.toDp() })
                     .height(with(density) { box.height.toDp() })
-                    .border(
-                        width = 2.dp,
+                    .drawFocusBrackets(
                         color = Color(0xFFFFD166),
-                        shape = RoundedCornerShape(12.dp)
+                        strokeWidthDp = 2.dp,
+                        cornerLengthRatio = 0.2f
                     )
             )
             Surface(
@@ -1552,6 +1557,24 @@ private fun PeopleImageOverlay(
             }
         }
     }
+}
+
+private fun Modifier.drawFocusBrackets(
+    color: Color,
+    strokeWidthDp: androidx.compose.ui.unit.Dp,
+    cornerLengthRatio: Float
+): Modifier = this.drawBehind {
+    val strokeWidth = strokeWidthDp.toPx()
+    val cornerLength = minOf(size.width, size.height) * cornerLengthRatio
+
+    drawLine(color, Offset(0f, strokeWidth / 2), Offset(cornerLength, strokeWidth / 2), strokeWidth)
+    drawLine(color, Offset(strokeWidth / 2, 0f), Offset(strokeWidth / 2, cornerLength), strokeWidth)
+    drawLine(color, Offset(size.width - cornerLength, strokeWidth / 2), Offset(size.width, strokeWidth / 2), strokeWidth)
+    drawLine(color, Offset(size.width - strokeWidth / 2, 0f), Offset(size.width - strokeWidth / 2, cornerLength), strokeWidth)
+    drawLine(color, Offset(0f, size.height - strokeWidth / 2), Offset(cornerLength, size.height - strokeWidth / 2), strokeWidth)
+    drawLine(color, Offset(strokeWidth / 2, size.height - cornerLength), Offset(strokeWidth / 2, size.height), strokeWidth)
+    drawLine(color, Offset(size.width - cornerLength, size.height - strokeWidth / 2), Offset(size.width, size.height - strokeWidth / 2), strokeWidth)
+    drawLine(color, Offset(size.width - strokeWidth / 2, size.height - cornerLength), Offset(size.width - strokeWidth / 2, size.height), strokeWidth)
 }
 
 @Composable

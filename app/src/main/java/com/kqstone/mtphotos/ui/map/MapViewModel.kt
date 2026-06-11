@@ -96,6 +96,7 @@ class MapViewModel(
                     }
                     is MediaUiMutation.FavoriteChanged,
                     is MediaUiMutation.PersonRenamed -> Unit
+                    else -> Unit
                 }
             }
         }

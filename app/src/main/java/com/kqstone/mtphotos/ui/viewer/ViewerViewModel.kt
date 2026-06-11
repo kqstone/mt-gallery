@@ -56,6 +56,7 @@ data class ViewerUiState(
     val isPeopleInfoVisible: Boolean = false,
     val isLoadingPeopleDescriptors: Boolean = false,
     val peopleDescriptorFailureCount: Int = 0,
+    val noPeopleDetectedCount: Int = 0,
     val ocrItems: List<OcrInfoItem> = emptyList(),
     val isOcrInfoVisible: Boolean = false,
     val isLoadingOcrInfo: Boolean = false,
@@ -477,11 +478,19 @@ class ViewerViewModel(
                 } else {
                     result.fold(
                         onSuccess = { descriptors ->
-                            current.copy(
-                                peopleDescriptors = descriptors,
-                                isPeopleInfoVisible = true,
-                                isLoadingPeopleDescriptors = false
-                            )
+                            if (descriptors.isEmpty()) {
+                                current.copy(
+                                    isPeopleInfoVisible = false,
+                                    isLoadingPeopleDescriptors = false,
+                                    noPeopleDetectedCount = current.noPeopleDetectedCount + 1
+                                )
+                            } else {
+                                current.copy(
+                                    peopleDescriptors = descriptors,
+                                    isPeopleInfoVisible = true,
+                                    isLoadingPeopleDescriptors = false
+                                )
+                            }
                         },
                         onFailure = {
                             current.copy(

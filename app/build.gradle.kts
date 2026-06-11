@@ -113,6 +113,7 @@ dependencies {
         exclude(group = "androidx.activity")
         exclude(group = "androidx.navigationevent")
     }
+    implementation(libs.reorderable)
 
     // Room
     implementation(libs.androidx.room.runtime)
