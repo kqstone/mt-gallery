@@ -23,6 +23,8 @@ private const val ONE_TIME_BACKUP_WORK = "one_time_backup"
 private const val ONE_TIME_SERVER_OP_WORK = "one_time_server_op"
 private const val DELAYED_SERVER_OP_WORK = "delayed_server_op"
 const val KEY_FORCE_SERVER_OP_RETRY_NOW = "force_server_op_retry_now"
+const val KEY_SYNC_INCREMENTAL = "sync_incremental"
+const val KEY_SYNC_RETRY_COUNT = "sync_retry_count"
 private const val DEFAULT_SYNC_INTERVAL_MINUTES = 60L
 
 /**
@@ -36,19 +38,36 @@ object BackupScheduler {
      * 触发一次本地同步（由 MediaChangeObserver 调用）。
      * 使用 KEEP 策略，避免重复排队。
      */
-    fun triggerSyncWork(context: Context) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+    fun triggerSyncWork(
+        context: Context,
+        incremental: Boolean = true,
+        retryCount: Int = 0,
+        delayMillis: Long = 0L
+    ) {
+        val builder = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInputData(
+                workDataOf(
+                    KEY_SYNC_INCREMENTAL to incremental,
+                    KEY_SYNC_RETRY_COUNT to retryCount
+                )
+            )
+        if (delayMillis > 0L) {
+            builder.setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+        }
+        if (delayMillis <= 0L) {
+            builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        }
+        val workRequest = builder.build()
 
-        val workRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-            .setConstraints(constraints)
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .build()
+        val workName = if (delayMillis > 0L || retryCount > 0) {
+            "$ONE_TIME_SYNC_WORK.retry.$retryCount"
+        } else {
+            ONE_TIME_SYNC_WORK
+        }
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            ONE_TIME_SYNC_WORK,
-            ExistingWorkPolicy.KEEP,
+            workName,
+            ExistingWorkPolicy.REPLACE,
             workRequest
         )
         Log.d(TAG, "Triggered sync work")

@@ -391,7 +391,7 @@ interface MediaDao {
     // ===== 孤立记录清理 =====
 
     /** 查询所有有 localMediaStoreId 的记录（仅返回清理所需字段） */
-    @Query("SELECT id, localMediaStoreId, syncStatus, cloudId FROM media WHERE localMediaStoreId IS NOT NULL")
+    @Query("SELECT id, localMediaStoreId, syncStatus, cloudId, localUri, fileType FROM media WHERE localMediaStoreId IS NOT NULL")
     suspend fun getLocalFileRefs(): List<LocalFileRef>
 
     /** 批量清除本地文件字段（SYNCED → CLOUD_ONLY） */
@@ -417,5 +417,7 @@ data class LocalFileRef(
     val id: Long,
     val localMediaStoreId: Long,
     val syncStatus: SyncStatus,
-    val cloudId: Double?
+    val cloudId: Double?,
+    val localUri: String?,
+    val fileType: String
 )
