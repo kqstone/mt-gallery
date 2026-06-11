@@ -131,6 +131,8 @@ class ViewerViewModel(
                     )
                 }
             }
+            is MediaUiMutation.DiscoveryOrderChanged -> Unit
+            is MediaUiMutation.FolderOrderChanged -> Unit
             is MediaUiMutation.PersonRenamed -> Unit
         }
     }
@@ -453,7 +455,13 @@ class ViewerViewModel(
             return
         }
         if (state.peopleDescriptors.isNotEmpty()) {
-            _uiState.update { it.copy(isPeopleInfoVisible = true) }
+            _uiState.update {
+                it.copy(
+                    isPeopleInfoVisible = true,
+                    isOcrInfoVisible = false,
+                    isLoadingOcrInfo = false
+                )
+            }
             return
         }
         if (state.isLoadingPeopleDescriptors) return
