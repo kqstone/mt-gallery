@@ -18,9 +18,9 @@ import com.kqstone.mtphotos.ui.util.AllItemsGridScreen
 import com.kqstone.mtphotos.ui.util.CoverCard
 import com.kqstone.mtphotos.ui.util.GradientPresets
 
-import org.burnoutcrew.reorderable.detectReorderAfterLongPress
-import org.burnoutcrew.reorderable.rememberReorderableLazyGridState
-import org.burnoutcrew.reorderable.reorderable
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyGridState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -48,17 +48,13 @@ fun AllFolderItemsScreen(
     LaunchedEffect(uiState.albums) { albumsList = uiState.albums }
     LaunchedEffect(uiState.folders) { foldersList = uiState.folders }
 
+    val gridState = rememberLazyGridState()
     val state = rememberReorderableLazyGridState(
+        lazyGridState = gridState,
         onMove = { from, to ->
             when (type) {
                 "albums" -> albumsList = albumsList.toMutableList().apply { add(to.index, removeAt(from.index)) }
                 "folders" -> foldersList = foldersList.toMutableList().apply { add(to.index, removeAt(from.index)) }
-            }
-        },
-        onDragEnd = { _, _ ->
-            when (type) {
-                "albums" -> viewModel.saveCustomOrder("album", albumsList.map { it.id.toString() })
-                "folders" -> viewModel.saveCustomOrder("folder", foldersList.map { it.id })
             }
         }
     )
@@ -67,62 +63,72 @@ fun AllFolderItemsScreen(
         title = stringResource(titleRes),
         columns = 3,
         onBack = onBack,
-        modifier = Modifier.reorderable(state),
-        gridState = state.gridState
+        modifier = Modifier,
+        gridState = gridState
     ) {
         when (type) {
             "albums" -> {
                 items(albumsList, key = { it.id }) { album ->
-                    val isDragging = state.draggingItemKey == album.id
-                    val scale = if (isDragging) 1.05f else 1f
-                    val alpha = if (isDragging) 0.8f else 1f
-                    CoverCard(
-                        name = album.name,
-                        subtitle = stringResource(R.string.item_count_short, album.fileCount),
-                        thumbUrl = album.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
-                        fallbackIcon = Icons.Default.Collections,
-                        fallbackGradient = GradientPresets.Album,
-                        onClick = { onAlbumClick(album.id, album.name) },
-                        thumbKey = album.coverMd5,
-                        cardSize = Dp.Unspecified,
-                        modifier = Modifier
-                            .animateItem()
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                this.alpha = alpha
-                            }
-                            .detectReorderAfterLongPress(state)
-                    )
+                    ReorderableItem(state, key = album.id) { isDragging ->
+                        val scale = if (isDragging) 1.05f else 1f
+                        val alpha = if (isDragging) 0.8f else 1f
+                        CoverCard(
+                            name = album.name,
+                            subtitle = stringResource(R.string.item_count_short, album.fileCount),
+                            thumbUrl = album.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
+                            fallbackIcon = Icons.Default.Collections,
+                            fallbackGradient = GradientPresets.Album,
+                            onClick = { onAlbumClick(album.id, album.name) },
+                            thumbKey = album.coverMd5,
+                            cardSize = Dp.Unspecified,
+                            modifier = Modifier
+                                .longPressDraggableHandle(
+                                    onDragStopped = {
+                                        viewModel.saveCustomOrder("album", albumsList.map { it.id.toString() })
+                                    }
+                                )
+                                .animateItem()
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    this.alpha = alpha
+                                }
+                        )
+                    }
                 }
             }
             "folders" -> {
                 items(foldersList, key = { it.id }) { folder ->
-                    val isDragging = state.draggingItemKey == folder.id
-                    val scale = if (isDragging) 1.05f else 1f
-                    val alpha = if (isDragging) 0.8f else 1f
-                    CoverCard(
-                        name = folder.name,
-                        subtitle = stringResource(R.string.item_count_short, folder.fileCount),
-                        thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
-                        fallbackIcon = Icons.Default.Folder,
-                        fallbackGradient = GradientPresets.Folder,
-                        onClick = { onFolderClick(folder.id) },
-                        thumbKey = folder.coverMd5,
-                        cardSize = Dp.Unspecified,
-                        modifier = Modifier
-                            .animateItem()
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                this.alpha = alpha
-                            }
-                            .detectReorderAfterLongPress(state)
-                    )
+                    ReorderableItem(state, key = folder.id) { isDragging ->
+                        val scale = if (isDragging) 1.05f else 1f
+                        val alpha = if (isDragging) 0.8f else 1f
+                        CoverCard(
+                            name = folder.name,
+                            subtitle = stringResource(R.string.item_count_short, folder.fileCount),
+                            thumbUrl = folder.coverMd5.takeIf { it.isNotBlank() }?.let(viewModel::getThumbUrlByMd5),
+                            fallbackIcon = Icons.Default.Folder,
+                            fallbackGradient = GradientPresets.Folder,
+                            onClick = { onFolderClick(folder.id) },
+                            thumbKey = folder.coverMd5,
+                            cardSize = Dp.Unspecified,
+                            modifier = Modifier
+                                .longPressDraggableHandle(
+                                    onDragStopped = {
+                                        viewModel.saveCustomOrder("folder", foldersList.map { it.id })
+                                    }
+                                )
+                                .animateItem()
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    this.alpha = alpha
+                                }
+                        )
+                    }
                 }
             }
         }
