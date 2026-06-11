@@ -54,7 +54,8 @@ data class ViewerUiState(
     val peopleDescriptors: List<PeopleDescriptorItem> = emptyList(),
     val isPeopleInfoVisible: Boolean = false,
     val isLoadingPeopleDescriptors: Boolean = false,
-    val peopleDescriptorFailureCount: Int = 0
+    val peopleDescriptorFailureCount: Int = 0,
+    val noPeopleDetectedCount: Int = 0
 )
 
 class ViewerViewModel(
@@ -462,11 +463,19 @@ class ViewerViewModel(
                 } else {
                     result.fold(
                         onSuccess = { descriptors ->
-                            current.copy(
-                                peopleDescriptors = descriptors,
-                                isPeopleInfoVisible = true,
-                                isLoadingPeopleDescriptors = false
-                            )
+                            if (descriptors.isEmpty()) {
+                                current.copy(
+                                    isPeopleInfoVisible = false,
+                                    isLoadingPeopleDescriptors = false,
+                                    noPeopleDetectedCount = current.noPeopleDetectedCount + 1
+                                )
+                            } else {
+                                current.copy(
+                                    peopleDescriptors = descriptors,
+                                    isPeopleInfoVisible = true,
+                                    isLoadingPeopleDescriptors = false
+                                )
+                            }
                         },
                         onFailure = {
                             current.copy(
