@@ -2,6 +2,7 @@ package com.kqstone.mtphotos.data.repository
 
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
@@ -245,9 +246,26 @@ class SyncRepository(
         val changed: Int get() = deletedCloudOnly + localRetained
     }
 
+    suspend fun handleMediaStoreChanged(
+        uris: List<Uri>,
+        folders: Set<String>? = null
+    ): SyncResult = withContext(Dispatchers.IO) {
+        val quickRemoved = cleanupDeletedMediaUris(uris)
+        val result = syncLocalMedia(
+            folders = folders,
+            incremental = true,
+            forceOrphanCheck = quickRemoved == 0
+        )
+        SyncResult(
+            newCount = result.newCount,
+            removedCount = result.removedCount + quickRemoved
+        )
+    }
+
     suspend fun syncLocalMedia(
         folders: Set<String>? = null,
-        incremental: Boolean = false
+        incremental: Boolean = false,
+        forceOrphanCheck: Boolean = false
     ): SyncResult = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting local-only sync (incremental=$incremental)...")
@@ -284,7 +302,7 @@ class SyncRepository(
             }
 
             val removed = if (incremental) {
-                cleanupMissingLocalRecords(localMedia, newEntities.size)
+                cleanupMissingLocalRecords(localMedia, newEntities.size, forceOrphanCheck)
             } else {
                 cleanupOrphanedLocalRecords()
             }
@@ -1254,6 +1272,44 @@ class SyncRepository(
         }
     }
 
+    private suspend fun cleanupDeletedMediaUris(uris: List<Uri>): Int {
+        var changed = 0
+        for (hint in uris.mapNotNull { it.toLocalMediaHint() }.distinct()) {
+            val contentUri = ContentUris.withAppendedId(
+                if (hint.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                hint.localMediaStoreId
+            )
+            if (mediaStoreUriExists(contentUri)) continue
+
+            val uriPattern = if (hint.isVideo) "%/video/%" else "%/images/%"
+            changed += mediaDao.deleteLocalOnlyByLocalId(hint.localMediaStoreId, uriPattern)
+            changed += mediaDao.clearCloudBackedLocalFieldsByLocalId(hint.localMediaStoreId, uriPattern)
+        }
+        if (changed > 0) {
+            Log.d(TAG, "Fast-cleared $changed deleted local media binding(s)")
+            MediaChangeObserver.clearDirty()
+        }
+        return changed
+    }
+
+    private data class LocalMediaHint(
+        val localMediaStoreId: Long,
+        val isVideo: Boolean
+    )
+
+    private fun Uri.toLocalMediaHint(): LocalMediaHint? {
+        val uriText = toString().lowercase()
+        val isVideo = uriText.contains("/video/")
+        val isImage = uriText.contains("/images/")
+        if (!isVideo && !isImage) return null
+
+        val localId = runCatching { ContentUris.parseId(this) }.getOrNull()
+            ?.takeIf { it > 0 }
+            ?: return null
+        return LocalMediaHint(localMediaStoreId = localId, isVideo = isVideo)
+    }
+
     private fun deleteLocalPathFallback(entity: MediaEntity): Boolean {
         val path = entity.localPath ?: return false
         return try {
@@ -1277,11 +1333,13 @@ class SyncRepository(
 
     private suspend fun cleanupMissingLocalRecords(
         scannedMedia: List<MediaEntity>,
-        newCount: Int
+        newCount: Int,
+        forceCheck: Boolean = false
     ): Int {
         val now = System.currentTimeMillis()
         val lastCheckAt = scanPrefs.getLong(KEY_LAST_ORPHAN_CHECK_AT, 0L)
-        val shouldCheck = scannedMedia.isEmpty() ||
+        val shouldCheck = forceCheck ||
+            scannedMedia.isEmpty() ||
             newCount == 0 ||
             now - lastCheckAt >= INCREMENTAL_ORPHAN_CHECK_INTERVAL_MS
         if (!shouldCheck) return 0

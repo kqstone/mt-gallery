@@ -10,7 +10,7 @@ import android.util.Log
 import com.kqstone.mtphotos.worker.BackupScheduler
 
 private const val TAG = "MediaChangeObserver"
-private const val DEBOUNCE_MS = 1000L
+private const val DEBOUNCE_MS = 250L
 
 /**
  * Observes MediaStore changes and triggers a local Room index refresh.
@@ -20,7 +20,8 @@ private const val DEBOUNCE_MS = 1000L
  */
 class MediaChangeObserver(
     private val context: Context,
-    private val isBackupEnabled: () -> Boolean = { false }
+    private val isBackupEnabled: () -> Boolean = { false },
+    private val onDebouncedChange: (List<Uri>) -> Unit = {}
 ) {
 
     companion object {
@@ -38,15 +39,20 @@ class MediaChangeObserver(
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private val pendingUris = mutableListOf<Uri>()
 
     private val debounceRunnable = Runnable {
         Log.d(TAG, "Debounce fired, backupEnabled=${isBackupEnabled()}")
+        val uris = pendingUris.toList()
+        pendingUris.clear()
+        onDebouncedChange(uris)
         triggerLocalIndexSync()
     }
 
-    private fun onMediaChanged() {
+    private fun onMediaChanged(uri: Uri?) {
         Log.d(TAG, "MediaStore changed, backupEnabled=${isBackupEnabled()}")
         markDirty()
+        uri?.let(pendingUris::add)
         handler.removeCallbacks(debounceRunnable)
         handler.postDelayed(debounceRunnable, DEBOUNCE_MS)
     }
@@ -62,13 +68,13 @@ class MediaChangeObserver(
 
     private val imageObserver = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
-            onMediaChanged()
+            onMediaChanged(uri)
         }
     }
 
     private val videoObserver = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
-            onMediaChanged()
+            onMediaChanged(uri)
         }
     }
 

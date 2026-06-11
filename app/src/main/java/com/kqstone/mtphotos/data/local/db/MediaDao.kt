@@ -398,6 +398,34 @@ interface MediaDao {
     @Query("UPDATE media SET syncStatus = 'CLOUD_ONLY', localUri = NULL, localPath = NULL, localMediaStoreId = NULL, updatedAt = :now WHERE id IN (:ids)")
     suspend fun clearLocalFields(ids: List<Long>, now: Long = System.currentTimeMillis())
 
+    @Query("""
+        UPDATE media
+        SET syncStatus = 'CLOUD_ONLY',
+            localUri = NULL,
+            localPath = NULL,
+            localMediaStoreId = NULL,
+            updatedAt = :now
+        WHERE localMediaStoreId = :localMediaStoreId
+        AND cloudId IS NOT NULL
+        AND localUri LIKE :localUriPattern
+    """)
+    suspend fun clearCloudBackedLocalFieldsByLocalId(
+        localMediaStoreId: Long,
+        localUriPattern: String,
+        now: Long = System.currentTimeMillis()
+    ): Int
+
+    @Query("""
+        DELETE FROM media
+        WHERE localMediaStoreId = :localMediaStoreId
+        AND (syncStatus = 'LOCAL_ONLY' OR cloudId IS NULL)
+        AND localUri LIKE :localUriPattern
+    """)
+    suspend fun deleteLocalOnlyByLocalId(
+        localMediaStoreId: Long,
+        localUriPattern: String
+    ): Int
+
     @Query("UPDATE media SET syncStatus = 'LOCAL_ONLY', backupStatus = 'REMOTE_DELETED', cloudId = NULL, cloudMd5 = NULL, updatedAt = :now WHERE id IN (:ids)")
     suspend fun clearCloudFieldsAsRemoteDeleted(ids: List<Long>, now: Long = System.currentTimeMillis())
 }

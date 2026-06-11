@@ -38,6 +38,10 @@ import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class MTPhotosApp : Application(), ImageLoaderFactory {
 
@@ -52,6 +56,7 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
         private set
     private var mediaChangeObserver: MediaChangeObserver? = null
     private var networkResumeMonitor: NetworkResumeMonitor? = null
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     lateinit var fullImageLoader: ImageLoader
         private set
@@ -119,9 +124,16 @@ class MTPhotosApp : Application(), ImageLoaderFactory {
         videoCache = SimpleCache(videoCacheDir, evictor, databaseProvider)
 
         // 注册 MediaStore 变化监听（备份启用时自动触发同步）
-        mediaChangeObserver = MediaChangeObserver(this) {
-            container.prefsManager.getBackupEnabledSync()
-        }.also { it.register() }
+        mediaChangeObserver = MediaChangeObserver(
+            context = this,
+            isBackupEnabled = { container.prefsManager.getBackupEnabledSync() },
+            onDebouncedChange = { uris ->
+                appScope.launch {
+                    val folders = container.prefsManager.getBackupFolderSelectionSync().effectiveFolders
+                    container.syncRepository.handleMediaStoreChanged(uris, folders)
+                }
+            }
+        ).also { it.register() }
         networkResumeMonitor = NetworkResumeMonitor(this, container.prefsManager).also { it.register() }
 
         // 启动时自动恢复调度（备份已启用的情况下）
