@@ -29,7 +29,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
@@ -41,16 +43,40 @@ import kotlinx.coroutines.delay
 @Composable
 fun VideoPlayer(
     videoUrl: String,
+    videoCacheKey: String? = stableVideoCacheKey(videoUrl),
     isCurrentPage: Boolean,
     isUiVisible: Boolean,
     onToggleUi: () -> Unit,
+    onPlaybackError: (PlaybackException) -> Unit = {},
     onStopPlaybackReady: ((() -> Unit)?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
-    val exoPlayer = remember(videoUrl) {
-        ExoPlayer.Builder(context).build().apply {
+    val mediaItem = remember(videoUrl, videoCacheKey) {
+        MediaItem.Builder()
+            .setUri(videoUrl)
+            .apply {
+                if (!videoCacheKey.isNullOrBlank()) {
+                    setCustomCacheKey(videoCacheKey)
+                }
+            }
+            .build()
+    }
+
+    val exoPlayer = remember(videoUrl, videoCacheKey) {
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15_000,
+                50_000,
+                500,
+                1_000
+            )
+            .build()
+        ExoPlayer.Builder(context)
+            .setLoadControl(loadControl)
+            .build()
+            .apply {
             if (videoUrl.startsWith("http://") || videoUrl.startsWith("https://")) {
                 val app = context.applicationContext as MTPhotosApp
                 val simpleCache = app.videoCache
@@ -60,10 +86,10 @@ fun VideoPlayer(
                     .setUpstreamDataSourceFactory(httpDataSourceFactory)
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                 val mediaSource = ProgressiveMediaSource.Factory(cacheDataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri(videoUrl))
+                    .createMediaSource(mediaItem)
                 setMediaSource(mediaSource)
             } else {
-                setMediaItem(MediaItem.fromUri(videoUrl))
+                setMediaItem(mediaItem)
             }
             prepare()
         }
@@ -83,6 +109,9 @@ fun VideoPlayer(
                 if (state == androidx.media3.common.Player.STATE_READY) {
                     duration = exoPlayer.duration.coerceAtLeast(0L)
                 }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                onPlaybackError(error)
             }
         }
     }

@@ -214,9 +214,11 @@ fun ViewerScreen(
                     if (url.isNotEmpty()) {
                         VideoPlayer(
                             videoUrl = url,
+                            videoCacheKey = uiState.resolvedVideoCacheKey,
                             isCurrentPage = true,
                             isUiVisible = isUiVisible,
                             onToggleUi = { isUiVisible = !isUiVisible },
+                            onPlaybackError = { viewModel.fallbackCurrentVideoToOriginal() },
                             onStopPlaybackReady = { stopActivePlayback = it }
                         )
                     } else {
