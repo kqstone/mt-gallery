@@ -8,6 +8,7 @@ import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.PersonItem
+import com.kqstone.mtphotos.data.repository.PersonId
 import com.kqstone.mtphotos.data.repository.SceneItem
 import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
@@ -171,9 +172,10 @@ class DiscoveryViewModel(
     }
 
     fun updatePersonName(personId: String, newName: String) {
+        val normalizedPersonId = PersonId.normalize(personId)
         _uiState.value = _uiState.value.copy(
             people = _uiState.value.people.map { person ->
-                if (person.id == personId) {
+                if (PersonId.normalize(person.id) == normalizedPersonId) {
                     person.copy(name = newName)
                 } else {
                     person

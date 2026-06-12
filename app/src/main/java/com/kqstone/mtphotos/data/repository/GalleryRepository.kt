@@ -1046,7 +1046,7 @@ class GalleryRepository(private val container: AppContainer) {
             val md5Map = if (coverFileIds.isNotEmpty()) getFileMd5ByIds(coverFileIds) else emptyMap()
             android.util.Log.d("DiscRepo", "md5Map=$md5Map")
             val people = list.mapNotNull { item ->
-                val id = (item["id"] as? Double)?.toInt()?.toString() ?: return@mapNotNull null
+                val id = PersonId.from(item["id"]) ?: return@mapNotNull null
                 val name = item["name"] as? String ?: "未知"
                 val coverFileId = item["cover"] as? Double ?: 0.0
                 val count = (item["fileNums"] as? Double)?.toInt() ?: (item["count"] as? Double)?.toInt() ?: 0

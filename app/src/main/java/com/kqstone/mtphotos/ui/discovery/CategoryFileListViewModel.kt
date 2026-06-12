@@ -9,6 +9,7 @@ import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
+import com.kqstone.mtphotos.data.repository.PersonId
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.data.repository.SyncRepository
@@ -122,8 +123,9 @@ class CategoryFileListViewModel(
     }
 
     fun loadPeopleFiles(peopleId: String, force: Boolean = false) {
-        loadFiles(cacheKey = pageKey("people", peopleId), force = force) {
-            galleryRepository.getPeopleFiles(peopleId)
+        val normalizedPeopleId = PersonId.normalize(peopleId)
+        loadFiles(cacheKey = pageKey("people", normalizedPeopleId), force = force) {
+            galleryRepository.getPeopleFiles(normalizedPeopleId)
         }
     }
 
@@ -483,6 +485,7 @@ class CategoryFileListViewModel(
                 "recent" -> "recent:"
                 "videos" -> "videos:"
                 "trash" -> "trash:"
+                "people" -> "people:${PersonId.normalize(loadParam)}:${loadParam2.orEmpty()}"
                 else -> "$loadType:$loadParam:${loadParam2.orEmpty()}"
             }
         }
