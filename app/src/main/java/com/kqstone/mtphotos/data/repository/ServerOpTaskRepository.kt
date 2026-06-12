@@ -403,7 +403,7 @@ class ServerOpTaskRepository(
             )
         }
         container.mediaUiMutationBus.publish(
-            MediaUiMutation.PersonRenamed(personId.toString(), newName)
+            MediaUiMutation.PersonRenamed(PersonId.normalize(personId), newName)
         )
         Log.d(TAG, "Enqueued rename person task: $personName -> $newName")
     }

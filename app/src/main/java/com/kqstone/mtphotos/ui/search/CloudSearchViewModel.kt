@@ -14,6 +14,7 @@ import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
 import com.kqstone.mtphotos.data.repository.PersonItem
+import com.kqstone.mtphotos.data.repository.PersonId
 import com.kqstone.mtphotos.data.repository.PhotoItem
 import com.kqstone.mtphotos.data.repository.SearchFilters
 import com.kqstone.mtphotos.data.repository.SearchRequest
@@ -152,15 +153,16 @@ class CloudSearchViewModel(
             }
             is MediaUiMutation.PersonRenamed -> {
                 val state = _uiState.value
+                val normalizedPersonId = PersonId.normalize(mutation.personId)
                 _uiState.value = state.copy(
                     people = state.people.map { person ->
-                        if (person.id == mutation.personId) {
+                        if (PersonId.normalize(person.id) == normalizedPersonId) {
                             person.copy(name = mutation.newName)
                         } else {
                             person
                         }
                     },
-                    filters = if (state.filters.personId == mutation.personId) {
+                    filters = if (state.filters.personId?.let(PersonId::normalize) == normalizedPersonId) {
                         state.filters.copy(personName = mutation.newName)
                     } else {
                         state.filters

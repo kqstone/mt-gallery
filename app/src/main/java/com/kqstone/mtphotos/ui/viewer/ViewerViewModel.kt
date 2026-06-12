@@ -18,6 +18,7 @@ import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
 import com.kqstone.mtphotos.data.repository.MediaUiMutationBus
+import com.kqstone.mtphotos.data.repository.PersonId
 import com.kqstone.mtphotos.data.repository.ServerOpTaskRepository
 import com.kqstone.mtphotos.ui.media.MediaThumbnailResolver
 import com.kqstone.mtphotos.ui.gallery.removePhotos
@@ -933,7 +934,7 @@ class ViewerViewModel(
     fun getPeoplePortraitUrl(descriptor: PeopleDescriptorItem): String? {
         val personId = descriptor.person.id.takeIf { it > 0.0 } ?: return null
         val cover = descriptor.person.cover.takeIf { it > 0.0 } ?: return null
-        val personIdPath = if (personId % 1.0 == 0.0) personId.toLong().toString() else personId.toString()
+        val personIdPath = PersonId.normalize(personId)
         return galleryRepository.getPortraitUrl(personIdPath, cover)
     }
 
