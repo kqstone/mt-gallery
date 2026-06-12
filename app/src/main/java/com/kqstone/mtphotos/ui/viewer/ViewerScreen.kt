@@ -1316,13 +1316,6 @@ private fun VideoPoster(
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(32.dp)
             )
-        } else {
-            Icon(
-                imageVector = Icons.Default.PlayCircle,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.86f),
-                modifier = Modifier.size(56.dp)
-            )
         }
     }
 }

@@ -38,8 +38,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
@@ -77,26 +79,62 @@ fun VideoPlayer(
             ?: createPreparedVideoPlayer(context, videoUrl, mediaItem)
     }
 
-    var isPlaying by remember { mutableStateOf(false) }
-    var playbackPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
+    var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer.isPlaying) }
+    var playbackPosition by remember(exoPlayer) { mutableLongStateOf(0L) }
+    var duration by remember(exoPlayer) { mutableLongStateOf(validDuration(exoPlayer.duration)) }
+    var isPlaybackEnded by remember(exoPlayer) { mutableStateOf(exoPlayer.playbackState == Player.STATE_ENDED) }
+    var controlsInteractionKey by remember(exoPlayer) { mutableLongStateOf(0L) }
     var isMuted by remember { mutableStateOf(false) }
+    val currentIsUiVisible by rememberUpdatedState(isUiVisible)
+    val currentOnToggleUi by rememberUpdatedState(onToggleUi)
+    val currentOnPlaybackError by rememberUpdatedState(onPlaybackError)
+    val currentOnFirstFrameRendered by rememberUpdatedState(onFirstFrameRendered)
 
-    val listener = remember {
+    fun showControls() {
+        if (!currentIsUiVisible) {
+            currentOnToggleUi()
+        }
+    }
+
+    fun hideControls() {
+        if (currentIsUiVisible) {
+            currentOnToggleUi()
+        }
+    }
+
+    fun resetControlAutoHideTimer() {
+        controlsInteractionKey += 1
+        showControls()
+    }
+
+    fun syncPlaybackUiState() {
+        duration = validDuration(exoPlayer.duration)
+        playbackPosition = if (duration > 0L) {
+            exoPlayer.currentPosition.coerceIn(0L, duration)
+        } else {
+            0L
+        }
+        isPlaying = exoPlayer.isPlaying
+    }
+
+    val listener = remember(exoPlayer) {
         object : androidx.media3.common.Player.Listener {
             override fun onIsPlayingChanged(isPlayingChanged: Boolean) {
                 isPlaying = isPlayingChanged
+                syncPlaybackUiState()
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == androidx.media3.common.Player.STATE_READY) {
-                    duration = exoPlayer.duration.coerceAtLeast(0L)
+                syncPlaybackUiState()
+                isPlaybackEnded = state == Player.STATE_ENDED
+                if (state == Player.STATE_ENDED) {
+                    showControls()
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
-                onPlaybackError(error)
+                currentOnPlaybackError(error)
             }
             override fun onRenderedFirstFrame() {
-                onFirstFrameRendered()
+                currentOnFirstFrameRendered()
             }
         }
     }
@@ -108,11 +146,18 @@ fun VideoPlayer(
         }
     }
 
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (true) {
-                playbackPosition = exoPlayer.currentPosition
-                delay(200)
+    LaunchedEffect(exoPlayer, isCurrentPage) {
+        while (isCurrentPage) {
+            syncPlaybackUiState()
+            delay(200)
+        }
+    }
+
+    LaunchedEffect(exoPlayer, isCurrentPage, isUiVisible, isPlaybackEnded, controlsInteractionKey) {
+        if (isCurrentPage && isUiVisible && !isPlaybackEnded) {
+            delay(2_000)
+            if (currentIsUiVisible && exoPlayer.playbackState != Player.STATE_ENDED) {
+                hideControls()
             }
         }
     }
@@ -126,6 +171,10 @@ fun VideoPlayer(
 
     LaunchedEffect(exoPlayer, isCurrentPage) {
         if (isCurrentPage) {
+            exoPlayer.seekTo(0L)
+            playbackPosition = 0L
+            isPlaybackEnded = false
+            duration = validDuration(exoPlayer.duration)
             exoPlayer.playWhenReady = true
             exoPlayer.play()
         } else {
@@ -167,7 +216,13 @@ fun VideoPlayer(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { onToggleUi() }
+                        onTap = {
+                            if (currentIsUiVisible) {
+                                hideControls()
+                            } else {
+                                resetControlAutoHideTimer()
+                            }
+                        }
                     )
                 }
         )
@@ -204,9 +259,16 @@ fun VideoPlayer(
 
             IconButton(
                 onClick = {
+                    resetControlAutoHideTimer()
                     if (isPlaying) {
                         exoPlayer.pause()
                     } else {
+                        if (isPlaybackEnded || exoPlayer.playbackState == Player.STATE_ENDED) {
+                            exoPlayer.seekTo(0L)
+                            playbackPosition = 0L
+                            isPlaybackEnded = false
+                        }
+                        exoPlayer.playWhenReady = true
                         exoPlayer.play()
                     }
                 },
@@ -247,8 +309,15 @@ fun VideoPlayer(
                     val timeTextStyle = MaterialTheme.typography.bodyMedium.copy(
                         fontFeatureSettings = "tnum"
                     )
+                    val safeDuration = duration.coerceAtLeast(0L)
+                    val safePosition = if (safeDuration > 0L) {
+                        playbackPosition.coerceIn(0L, safeDuration)
+                    } else {
+                        0L
+                    }
+                    val sliderMax = safeDuration.coerceAtLeast(1L)
                     Text(
-                        text = formatTime(playbackPosition),
+                        text = formatTime(safePosition),
                         style = timeTextStyle,
                         color = Color.White
                     )
@@ -256,12 +325,13 @@ fun VideoPlayer(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Slider(
-                        value = playbackPosition.toFloat(),
+                        value = safePosition.toFloat(),
                         onValueChange = { newValue ->
-                            playbackPosition = newValue.toLong()
+                            resetControlAutoHideTimer()
+                            playbackPosition = newValue.toLong().coerceIn(0L, sliderMax)
                             exoPlayer.seekTo(playbackPosition)
                         },
-                        valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+                        valueRange = 0f..sliderMax.toFloat(),
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
                             activeTrackColor = Color.White,
@@ -284,11 +354,12 @@ fun VideoPlayer(
                             val fraction = if (sliderState.valueRange.endInclusive > sliderState.valueRange.start) {
                                 (sliderState.value - sliderState.valueRange.start) / (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
                             } else 0f
+                            val safeFraction = fraction.coerceIn(0f, 1f)
                             
                             Canvas(modifier = Modifier.fillMaxWidth().height(20.dp)) {
                                 val width = size.width
                                 val height = size.height
-                                val activeWidth = width * fraction
+                                val activeWidth = width * safeFraction
                                 val trackHeight = 2.dp.toPx()
                                 val startY = (height - trackHeight) / 2f
                                 
@@ -313,7 +384,7 @@ fun VideoPlayer(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text = formatTime(duration),
+                        text = formatTime(safeDuration),
                         style = timeTextStyle,
                         color = Color.White
                     )
@@ -322,6 +393,7 @@ fun VideoPlayer(
 
                     IconButton(
                         onClick = {
+                            resetControlAutoHideTimer()
                             isMuted = !isMuted
                             exoPlayer.volume = if (isMuted) 0f else 1f
                         },
@@ -443,6 +515,10 @@ private fun defaultVideoLoadControl(): DefaultLoadControl {
 
 private fun identityFor(videoUrl: String, videoCacheKey: String?): String {
     return videoCacheKey ?: videoUrl
+}
+
+private fun validDuration(durationMs: Long): Long {
+    return durationMs.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
 }
 
 private fun formatTime(ms: Long): String {
