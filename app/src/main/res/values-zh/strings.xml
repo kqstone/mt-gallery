@@ -356,8 +356,6 @@
     <string name="no_media_folders_found">未发现可选择的媒体文件夹</string>
     <string name="ok">确定</string>
     <string name="private_album_title">隐私相册</string>
-    <string name="private_album_keep_pulling">继续下拉进入隐私相册</string>
-    <string name="private_album_release_to_open">松手进入隐私相册</string>
     <string name="private_album_intro_title">隐私相册</string>
     <string name="private_album_intro_message">首次进入需使用当前账号密码验证，随后设置手势或 6 位数字密码，之后可直接用于进入隐私相册。</string>
     <string name="private_album_password_prompt">输入当前用户密码</string>

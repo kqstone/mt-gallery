@@ -356,8 +356,6 @@
     <string name="no_media_folders_found">No selectable media folders found</string>
     <string name="ok">OK</string>
     <string name="private_album_title">Private Album</string>
-    <string name="private_album_keep_pulling">Keep pulling for private album</string>
-    <string name="private_album_release_to_open">Release to open private album</string>
     <string name="private_album_intro_title">Private album</string>
     <string name="private_album_intro_message">The first time you enter, verify with your current account password, then set a gesture or 6-digit PIN for future access.</string>
     <string name="private_album_password_prompt">Enter the current account password</string>

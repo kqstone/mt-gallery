@@ -41,6 +41,21 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.ui.util.ToastMessageEffect
 import com.kqstone.mtphotos.ui.util.rememberScrollAlpha
 import com.kqstone.mtphotos.ui.util.hazeContentSource
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.graphicsLayer
 
 private const val PRIVATE_ALBUM_PULL_THRESHOLD = 1.85f
 
@@ -90,10 +105,14 @@ fun GalleryScreen(
     var privatePullArmed by remember { mutableStateOf(false) }
 
     LaunchedEffect(pullRefreshState.distanceFraction, uiState.isRefreshing) {
-        if (!uiState.isRefreshing &&
-            pullRefreshState.distanceFraction >= PRIVATE_ALBUM_PULL_THRESHOLD
-        ) {
-            privatePullArmed = true
+        if (!uiState.isRefreshing) {
+            if (pullRefreshState.distanceFraction >= PRIVATE_ALBUM_PULL_THRESHOLD) {
+                privatePullArmed = true
+            } else if (pullRefreshState.distanceFraction < 1.0f) {
+                privatePullArmed = false
+            }
+        } else {
+            privatePullArmed = false
         }
     }
 
@@ -152,31 +171,53 @@ fun GalleryScreen(
                 modifier = Modifier.fillMaxSize().hazeContentSource(),
                 state = pullRefreshState,
                 indicator = {
-                    Column(
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = scrollState.topBarHeight),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        PullToRefreshDefaults.Indicator(
-                            isRefreshing = uiState.isRefreshing,
-                            state = pullRefreshState
-                        )
-                        if (!uiState.isRefreshing && pullRefreshState.distanceFraction > 1.1f) {
-                            Text(
-                                text = stringResource(
-                                    if (privatePullArmed) {
-                                        R.string.private_album_release_to_open
-                                    } else {
-                                        R.string.private_album_keep_pulling
-                                    }
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                        AnimatedVisibility(
+                            visible = !privatePullArmed || uiState.isRefreshing,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            PullToRefreshDefaults.Indicator(
+                                isRefreshing = uiState.isRefreshing,
+                                state = pullRefreshState
                             )
+                        }
+
+                        AnimatedVisibility(
+                            visible = privatePullArmed && !uiState.isRefreshing,
+                            enter = fadeIn() + scaleIn(
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                )
+                            ),
+                            exit = fadeOut() + scaleOut()
+                        ) {
+                            Surface(
+                                modifier = Modifier
+                                    .padding(top = 16.dp)
+                                    .size(40.dp)
+                                    .graphicsLayer {
+                                        translationY = (pullRefreshState.distanceFraction * 80.dp.toPx()).coerceAtLeast(0f) - 16.dp.toPx()
+                                    },
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shadowElevation = 2.dp
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Lock,
+                                        contentDescription = stringResource(R.string.private_album_title),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
