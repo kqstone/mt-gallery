@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +26,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import android.content.res.Configuration
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -40,6 +50,7 @@ import com.kqstone.mtphotos.MTPhotosApp
 import com.kqstone.mtphotos.R
 import kotlinx.coroutines.delay
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun VideoPlayer(
     videoUrl: String,
@@ -54,6 +65,8 @@ fun VideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val mediaItem = remember(videoUrl, videoCacheKey) {
         buildVideoMediaItem(videoUrl, videoCacheKey)
@@ -159,6 +172,25 @@ fun VideoPlayer(
                 }
         )
 
+        // Scrim layer at the bottom for better visibility
+        AnimatedVisibility(
+            visible = isUiVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isLandscape) 120.dp else 200.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        )
+                    )
+            )
+        }
+
         // Completely Custom Play/Pause Overlay Button in Center
         AnimatedVisibility(
             visible = isUiVisible,
@@ -166,6 +198,10 @@ fun VideoPlayer(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.Center)
         ) {
+            val interactionSource = remember { MutableInteractionSource() }
+            val isPressed by interactionSource.collectIsPressedAsState()
+            val scale by animateFloatAsState(targetValue = if (isPressed) 0.85f else 1f, label = "playButtonScale")
+
             IconButton(
                 onClick = {
                     if (isPlaying) {
@@ -174,9 +210,11 @@ fun VideoPlayer(
                         exoPlayer.play()
                     }
                 },
+                interactionSource = interactionSource,
                 modifier = Modifier
                     .size(72.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .scale(scale)
+                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -194,29 +232,24 @@ fun VideoPlayer(
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 96.dp) // Floating above the HUD buttons bar
+                .padding(bottom = if (isLandscape) 24.dp else 96.dp) // Floating above the HUD buttons bar
         ) {
             Box(
                 modifier = Modifier
-                    .width(320.dp)
-                    .background(
-                        color = Color.Black.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .fillMaxWidth(if (isLandscape) 0.8f else 0.9f)
+                    .widthIn(max = 600.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    val timeTextStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontFeatureSettings = "tnum"
+                    )
                     Text(
                         text = formatTime(playbackPosition),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = timeTextStyle,
                         color = Color.White
                     )
 
@@ -234,14 +267,54 @@ fun VideoPlayer(
                             activeTrackColor = Color.White,
                             inactiveTrackColor = Color.White.copy(alpha = 0.3f)
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        thumb = {
+                            Box(
+                                modifier = Modifier.size(20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(Color.White, CircleShape)
+                                )
+                            }
+                        },
+                        track = { sliderState ->
+                            val fraction = if (sliderState.valueRange.endInclusive > sliderState.valueRange.start) {
+                                (sliderState.value - sliderState.valueRange.start) / (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                            } else 0f
+                            
+                            Canvas(modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                                val width = size.width
+                                val height = size.height
+                                val activeWidth = width * fraction
+                                val trackHeight = 2.dp.toPx()
+                                val startY = (height - trackHeight) / 2f
+                                
+                                // Inactive track
+                                drawRoundRect(
+                                    color = Color.White.copy(alpha = 0.3f),
+                                    topLeft = Offset(0f, startY),
+                                    size = Size(width, trackHeight),
+                                    cornerRadius = CornerRadius(trackHeight / 2)
+                                )
+                                // Active track
+                                drawRoundRect(
+                                    color = Color.White,
+                                    topLeft = Offset(0f, startY),
+                                    size = Size(activeWidth, trackHeight),
+                                    cornerRadius = CornerRadius(trackHeight / 2)
+                                )
+                            }
+                        }
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
                         text = formatTime(duration),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = timeTextStyle,
                         color = Color.White
                     )
 
