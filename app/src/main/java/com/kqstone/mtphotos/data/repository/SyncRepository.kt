@@ -30,6 +30,7 @@ private const val TAG = "SyncRepo"
 private const val LOCAL_SCAN_PREFS = "local_media_scan"
 private const val KEY_LAST_LOCAL_SCAN_AT = "last_local_scan_at"
 private const val KEY_LAST_ORPHAN_CHECK_AT = "last_orphan_check_at"
+private const val KEY_MEDIASTORE_FINGERPRINT = "mediastore_fingerprint"
 private const val INCREMENTAL_SCAN_LOOKBACK_MS = 2 * 60 * 1000L
 private const val INCREMENTAL_ORPHAN_CHECK_INTERVAL_MS = 30 * 1000L
 
@@ -81,6 +82,7 @@ class SyncRepository(
             if (mergedEntities.isNotEmpty()) {
                 mediaDao.insertAll(mergedEntities)
             }
+            rememberCurrentMediaStoreFingerprint()
             Log.d(
                 TAG,
                 "Full sync complete: ${mergedEntities.size} entities " +
@@ -167,6 +169,7 @@ class SyncRepository(
             val cleaned = cleanupOrphanedLocalRecords()
             if (cleaned > 0) Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
 
+            rememberCurrentMediaStoreFingerprint()
             emit(SyncProgress(scannedCount, scannedCount, "done", cloudPhotos.size))
             Log.d(TAG, "Initial sync complete: $scannedCount local files processed")
         } catch (e: Exception) {
@@ -233,6 +236,10 @@ class SyncRepository(
     }
 
     data class SyncResult(val newCount: Int, val removedCount: Int)
+    data class MediaStoreChange(
+        val changed: Boolean,
+        val mayIncludeDeletion: Boolean
+    )
 
     data class BackupRepairResult(
         val scannedCount: Int,
@@ -307,6 +314,7 @@ class SyncRepository(
                 cleanupOrphanedLocalRecords()
             }
             scanPrefs.edit().putLong(KEY_LAST_LOCAL_SCAN_AT, scanStartedAt).apply()
+            rememberCurrentMediaStoreFingerprint()
             MediaChangeObserver.clearDirty()
             SyncResult(newEntities.size, removed)
         } catch (e: Exception) {
@@ -951,6 +959,116 @@ class SyncRepository(
                         FolderPathMatcher.isInAnyScope(entity.localFolderPath, localFolders)
                 }
                 .map { it.toUnifiedPhotoItem(localFolders) }
+        }
+    }
+
+    suspend fun hasMediaStoreChangedSinceLastSync(): Boolean = withContext(Dispatchers.IO) {
+        detectMediaStoreChangesSinceLastSync().changed
+    }
+
+    suspend fun detectMediaStoreChangesSinceLastSync(): MediaStoreChange = withContext(Dispatchers.IO) {
+        val current = readMediaStoreFingerprint()
+        val previous = decodeMediaStoreFingerprint(scanPrefs.getString(KEY_MEDIASTORE_FINGERPRINT, null))
+        val changed = previous == null || previous.encode() != current.encode()
+        val mayIncludeDeletion = previous == null ||
+            current.imageCount < previous.imageCount ||
+            current.videoCount < previous.videoCount ||
+            (
+                current.imageCount == previous.imageCount &&
+                    current.videoCount == previous.videoCount &&
+                    current.latestModifiedSeconds != previous.latestModifiedSeconds
+            )
+        if (changed) {
+            Log.d(
+                TAG,
+                "MediaStore fingerprint changed: previous=${previous?.encode()} " +
+                    "current=${current.encode()} mayIncludeDeletion=$mayIncludeDeletion"
+            )
+        }
+        MediaStoreChange(changed, mayIncludeDeletion)
+    }
+
+    private fun rememberCurrentMediaStoreFingerprint() {
+        val current = readMediaStoreFingerprint().encode()
+        scanPrefs.edit().putString(KEY_MEDIASTORE_FINGERPRINT, current).apply()
+    }
+
+    private data class MediaStoreFingerprint(
+        val generation: Long,
+        val imageCount: Int,
+        val videoCount: Int,
+        val latestModifiedSeconds: Long
+    ) {
+        fun encode(): String = "$generation|$imageCount|$videoCount|$latestModifiedSeconds"
+    }
+
+    private fun decodeMediaStoreFingerprint(encoded: String?): MediaStoreFingerprint? {
+        if (encoded.isNullOrBlank()) return null
+        val parts = encoded.split('|')
+        if (parts.size != 4) return null
+        return MediaStoreFingerprint(
+            generation = parts[0].toLongOrNull() ?: return null,
+            imageCount = parts[1].toIntOrNull() ?: return null,
+            videoCount = parts[2].toIntOrNull() ?: return null,
+            latestModifiedSeconds = parts[3].toLongOrNull() ?: return null
+        )
+    }
+
+    private data class MediaStoreStats(
+        val count: Int = 0,
+        val latestModifiedSeconds: Long = 0L
+    )
+
+    private fun readMediaStoreFingerprint(): MediaStoreFingerprint {
+        val context = container.prefsManager.context
+        val generation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching { MediaStore.getGeneration(context, MediaStore.VOLUME_EXTERNAL) }
+                .getOrElse {
+                    Log.w(TAG, "Failed to read MediaStore generation", it)
+                    -1L
+                }
+        } else {
+            -1L
+        }
+        val imageStats = queryMediaStoreStats(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        val videoStats = queryMediaStoreStats(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        return MediaStoreFingerprint(
+            generation = generation,
+            imageCount = imageStats.count,
+            videoCount = videoStats.count,
+            latestModifiedSeconds = maxOf(
+                imageStats.latestModifiedSeconds,
+                videoStats.latestModifiedSeconds
+            )
+        )
+    }
+
+    private fun queryMediaStoreStats(collection: Uri): MediaStoreStats {
+        return try {
+            container.prefsManager.context.contentResolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns.DATE_MODIFIED),
+                visibleMediaSelection(),
+                null,
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )?.use { cursor ->
+                val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                val latest = if (cursor.moveToFirst()) cursor.getLong(modifiedColumn) else 0L
+                MediaStoreStats(count = cursor.count, latestModifiedSeconds = latest)
+            } ?: MediaStoreStats()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to query MediaStore stats for $collection", e)
+            MediaStoreStats()
+        }
+    }
+
+    private fun visibleMediaSelection(): String? {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+                "${MediaStore.MediaColumns.IS_PENDING} = 0 AND ${MediaStore.MediaColumns.IS_TRASHED} = 0"
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+                "${MediaStore.MediaColumns.IS_PENDING} = 0"
+            else -> null
         }
     }
 

@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -44,6 +45,7 @@ private const val TAG = "GalleryVM"
 private const val LOCAL_VIDEO_THUMB_WARMUP_LIMIT = 80
 private const val INITIAL_PREVIEW_LIMIT = 160
 private const val TIMELINE_EXPAND_BATCH_MONTHS = 3
+private val FOREGROUND_PENDING_RETRY_DELAYS_MS = longArrayOf(500L, 1_500L, 3_000L)
 
 data class DayGroup(
     val date: String,
@@ -89,6 +91,7 @@ class GalleryViewModel(
     private var initialSyncJob: Job? = null
     private var roomTimelineExpandJob: Job? = null
     private var roomTimelineObserveJob: Job? = null
+    private var foregroundPendingRetryJob: Job? = null
     private val monthLoadJobs = mutableMapOf<String, Job>()
     private var timelineMonthsByYearMonth: Map<String, TimelineMonth> = emptyMap()
     private var currentLocalFolders: Set<String>? = null
@@ -831,7 +834,7 @@ class GalleryViewModel(
     }
 
     fun quickRefresh() {
-        if (syncRepository == null || !_uiState.value.isHybridMode) return
+        val repo = syncRepository ?: return
         if (_uiState.value.isSyncing || _uiState.value.isRefreshing) return
 
         viewModelScope.launch {
@@ -839,7 +842,8 @@ class GalleryViewModel(
                 val folderSelection = getFolderSelectionState()
                 val folderKey = folderSelection.refreshKey()
                 val folderChanged = lastFolderSelectionKey != null && lastFolderSelectionKey != folderKey
-                val mediaChanged = MediaChangeObserver.isDirty
+                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync()
+                val mediaChanged = MediaChangeObserver.isDirty || mediaStoreChange.changed
 
                 if (skipNextResumeRefresh && !folderChanged && !mediaChanged) {
                     skipNextResumeRefresh = false
@@ -861,19 +865,52 @@ class GalleryViewModel(
                 }
                 val folders = folderSelection.effectiveFolders
                 if (folderChanged) {
-                    syncRepository.reconcileFolderSelection(folders)
+                    repo.reconcileFolderSelection(folders)
                     lastFolderSelectionKey = folderKey
                     startRoomTimelineObservation(folders)
                 }
                 if (mediaChanged) {
-                    syncRepository.syncLocalMedia(folders)
+                    val result = repo.syncLocalMedia(
+                        folders = folders,
+                        incremental = true,
+                        forceOrphanCheck = mediaStoreChange.mayIncludeDeletion
+                    )
                     viewModelScope.launch {
-                        syncRepository.computeMd5InBackground()
+                        repo.computeMd5InBackground()
+                    }
+                    if (result.newCount == 0 && result.removedCount == 0) {
+                        scheduleForegroundPendingMediaRetries(folders)
+                    } else {
+                        foregroundPendingRetryJob?.cancel()
                     }
                 }
                 startRoomTimelineExpansion(folders)
             } catch (e: Exception) {
                 Log.w(TAG, "Quick refresh failed", e)
+            }
+        }
+    }
+
+    private fun scheduleForegroundPendingMediaRetries(folders: Set<String>?) {
+        val repo = syncRepository ?: return
+        foregroundPendingRetryJob?.cancel()
+        foregroundPendingRetryJob = viewModelScope.launch {
+            for (delayMillis in FOREGROUND_PENDING_RETRY_DELAYS_MS) {
+                delay(delayMillis)
+                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync()
+                if (!MediaChangeObserver.isDirty && !mediaStoreChange.changed) continue
+
+                val result = repo.syncLocalMedia(
+                    folders = folders,
+                    incremental = true,
+                    forceOrphanCheck = mediaStoreChange.mayIncludeDeletion
+                )
+                if (result.newCount > 0 || result.removedCount > 0) {
+                    viewModelScope.launch {
+                        repo.computeMd5InBackground()
+                    }
+                    break
+                }
             }
         }
     }
