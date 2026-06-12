@@ -82,7 +82,7 @@ class SyncRepository(
             if (mergedEntities.isNotEmpty()) {
                 mediaDao.insertAll(mergedEntities)
             }
-            rememberCurrentMediaStoreFingerprint()
+            rememberCurrentMediaStoreFingerprint(localFolders)
             Log.d(
                 TAG,
                 "Full sync complete: ${mergedEntities.size} entities " +
@@ -169,7 +169,7 @@ class SyncRepository(
             val cleaned = cleanupOrphanedLocalRecords()
             if (cleaned > 0) Log.d(TAG, "Cleanup: removed $cleaned orphaned records")
 
-            rememberCurrentMediaStoreFingerprint()
+            rememberCurrentMediaStoreFingerprint(localFolders)
             emit(SyncProgress(scannedCount, scannedCount, "done", cloudPhotos.size))
             Log.d(TAG, "Initial sync complete: $scannedCount local files processed")
         } catch (e: Exception) {
@@ -314,7 +314,7 @@ class SyncRepository(
                 cleanupOrphanedLocalRecords()
             }
             scanPrefs.edit().putLong(KEY_LAST_LOCAL_SCAN_AT, scanStartedAt).apply()
-            rememberCurrentMediaStoreFingerprint()
+            rememberCurrentMediaStoreFingerprint(folders)
             MediaChangeObserver.clearDirty()
             SyncResult(newEntities.size, removed)
         } catch (e: Exception) {
@@ -962,13 +962,14 @@ class SyncRepository(
         }
     }
 
-    suspend fun hasMediaStoreChangedSinceLastSync(): Boolean = withContext(Dispatchers.IO) {
-        detectMediaStoreChangesSinceLastSync().changed
+    suspend fun hasMediaStoreChangedSinceLastSync(localFolders: Set<String>? = null): Boolean = withContext(Dispatchers.IO) {
+        detectMediaStoreChangesSinceLastSync(localFolders).changed
     }
 
-    suspend fun detectMediaStoreChangesSinceLastSync(): MediaStoreChange = withContext(Dispatchers.IO) {
-        val current = readMediaStoreFingerprint()
-        val previous = decodeMediaStoreFingerprint(scanPrefs.getString(KEY_MEDIASTORE_FINGERPRINT, null))
+    suspend fun detectMediaStoreChangesSinceLastSync(localFolders: Set<String>? = null): MediaStoreChange = withContext(Dispatchers.IO) {
+        val current = readMediaStoreFingerprint(localFolders)
+        val fingerprintKey = mediaStoreFingerprintKey(localFolders)
+        val previous = decodeMediaStoreFingerprint(scanPrefs.getString(fingerprintKey, null))
         val changed = previous == null || previous.encode() != current.encode()
         val mayIncludeDeletion = previous == null ||
             current.imageCount < previous.imageCount ||
@@ -988,9 +989,18 @@ class SyncRepository(
         MediaStoreChange(changed, mayIncludeDeletion)
     }
 
-    private fun rememberCurrentMediaStoreFingerprint() {
-        val current = readMediaStoreFingerprint().encode()
-        scanPrefs.edit().putString(KEY_MEDIASTORE_FINGERPRINT, current).apply()
+    private fun rememberCurrentMediaStoreFingerprint(localFolders: Set<String>? = null) {
+        val current = readMediaStoreFingerprint(localFolders).encode()
+        scanPrefs.edit().putString(mediaStoreFingerprintKey(localFolders), current).apply()
+    }
+
+    private fun mediaStoreFingerprintKey(localFolders: Set<String>?): String {
+        val scope = localFolders
+            ?.map { it.trimEnd('/', '\\') }
+            ?.sorted()
+            ?.joinToString(separator = "|")
+            ?: "all"
+        return "$KEY_MEDIASTORE_FINGERPRINT:$scope"
     }
 
     private data class MediaStoreFingerprint(
@@ -1019,9 +1029,9 @@ class SyncRepository(
         val latestModifiedSeconds: Long = 0L
     )
 
-    private fun readMediaStoreFingerprint(): MediaStoreFingerprint {
+    private fun readMediaStoreFingerprint(localFolders: Set<String>? = null): MediaStoreFingerprint {
         val context = container.prefsManager.context
-        val generation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val generation = if (localFolders == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             runCatching { MediaStore.getGeneration(context, MediaStore.VOLUME_EXTERNAL) }
                 .getOrElse {
                     Log.w(TAG, "Failed to read MediaStore generation", it)
@@ -1030,8 +1040,8 @@ class SyncRepository(
         } else {
             -1L
         }
-        val imageStats = queryMediaStoreStats(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        val videoStats = queryMediaStoreStats(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        val imageStats = queryMediaStoreStats(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, localFolders)
+        val videoStats = queryMediaStoreStats(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, localFolders)
         return MediaStoreFingerprint(
             generation = generation,
             imageCount = imageStats.count,
@@ -1043,13 +1053,21 @@ class SyncRepository(
         )
     }
 
-    private fun queryMediaStoreStats(collection: Uri): MediaStoreStats {
+    private fun queryMediaStoreStats(collection: Uri, localFolders: Set<String>?): MediaStoreStats {
+        if (localFolders != null && localFolders.isEmpty()) return MediaStoreStats()
+        val folderSelection = mediaStoreFolderSelection(localFolders)
+        val visibleSelection = visibleMediaSelection()
+        val selection = when {
+            folderSelection == null -> visibleSelection
+            visibleSelection == null -> folderSelection.first
+            else -> "(${folderSelection.first}) AND $visibleSelection"
+        }
         return try {
             container.prefsManager.context.contentResolver.query(
                 collection,
                 arrayOf(MediaStore.MediaColumns.DATE_MODIFIED),
-                visibleMediaSelection(),
-                null,
+                selection,
+                folderSelection?.second,
                 "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
             )?.use { cursor ->
                 val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
@@ -1060,6 +1078,14 @@ class SyncRepository(
             Log.w(TAG, "Failed to query MediaStore stats for $collection", e)
             MediaStoreStats()
         }
+    }
+
+    private fun mediaStoreFolderSelection(localFolders: Set<String>?): Pair<String, Array<String>>? {
+        if (localFolders == null) return null
+        if (localFolders.isEmpty()) return "0" to emptyArray()
+        val conditions = localFolders.map { "${MediaStore.MediaColumns.DATA} LIKE ?" }
+        val args = localFolders.map { "${it.trimEnd('/', '\\')}/%" }.toTypedArray()
+        return conditions.joinToString(" OR ") to args
     }
 
     private fun visibleMediaSelection(): String? {

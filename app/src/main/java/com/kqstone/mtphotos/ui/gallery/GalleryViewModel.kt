@@ -842,29 +842,34 @@ class GalleryViewModel(
                 val folderSelection = getFolderSelectionState()
                 val folderKey = folderSelection.refreshKey()
                 val folderChanged = lastFolderSelectionKey != null && lastFolderSelectionKey != folderKey
-                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync()
-                val mediaChanged = MediaChangeObserver.isDirty || mediaStoreChange.changed
 
-                if (skipNextResumeRefresh && !folderChanged && !mediaChanged) {
+                if (!folderSelection.isConfigured) {
+                    foregroundPendingRetryJob?.cancel()
+                    Log.w(TAG, "Quick refresh skipped local scope because folder selection is missing")
+                    lastFolderSelectionKey = folderKey
+                    loadFromCloud()
+                    return@launch
+                }
+
+                val folders = folderSelection.effectiveFolders
+                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync(folders)
+                val hasPendingMediaSignal = MediaChangeObserver.isDirty
+                val mediaChanged = mediaStoreChange.changed
+
+                if (skipNextResumeRefresh && !folderChanged && !mediaChanged && !hasPendingMediaSignal) {
                     skipNextResumeRefresh = false
                     Log.d(TAG, "Quick refresh skipped once after navigation")
                     return@launch
                 }
                 skipNextResumeRefresh = false
 
-                if (!folderChanged && !mediaChanged) {
+                if (!folderChanged && !mediaChanged && !hasPendingMediaSignal) {
                     Log.d(TAG, "Quick refresh skipped: no media or folder changes")
                     return@launch
                 }
 
-                if (!folderSelection.isConfigured) {
-                    Log.w(TAG, "Quick refresh skipped local scope because folder selection is missing")
-                    lastFolderSelectionKey = folderKey
-                    loadFromCloud()
-                    return@launch
-                }
-                val folders = folderSelection.effectiveFolders
                 if (folderChanged) {
+                    foregroundPendingRetryJob?.cancel()
                     repo.reconcileFolderSelection(folders)
                     lastFolderSelectionKey = folderKey
                     startRoomTimelineObservation(folders)
@@ -879,10 +884,12 @@ class GalleryViewModel(
                         repo.computeMd5InBackground()
                     }
                     if (result.newCount == 0 && result.removedCount == 0) {
-                        scheduleForegroundPendingMediaRetries(folders)
+                        scheduleForegroundPendingMediaRetries(folders, folderKey)
                     } else {
                         foregroundPendingRetryJob?.cancel()
                     }
+                } else if (hasPendingMediaSignal) {
+                    scheduleForegroundPendingMediaRetries(folders, folderKey)
                 }
                 startRoomTimelineExpansion(folders)
             } catch (e: Exception) {
@@ -891,14 +898,16 @@ class GalleryViewModel(
         }
     }
 
-    private fun scheduleForegroundPendingMediaRetries(folders: Set<String>?) {
+    private fun scheduleForegroundPendingMediaRetries(folders: Set<String>?, expectedFolderKey: String) {
         val repo = syncRepository ?: return
         foregroundPendingRetryJob?.cancel()
         foregroundPendingRetryJob = viewModelScope.launch {
             for (delayMillis in FOREGROUND_PENDING_RETRY_DELAYS_MS) {
                 delay(delayMillis)
-                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync()
-                if (!MediaChangeObserver.isDirty && !mediaStoreChange.changed) continue
+                if (getFolderSelectionState().refreshKey() != expectedFolderKey) return@launch
+
+                val mediaStoreChange = repo.detectMediaStoreChangesSinceLastSync(folders)
+                if (!mediaStoreChange.changed) continue
 
                 val result = repo.syncLocalMedia(
                     folders = folders,
