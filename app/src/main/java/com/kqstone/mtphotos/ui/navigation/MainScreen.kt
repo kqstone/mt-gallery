@@ -145,6 +145,7 @@ fun MainScreen(
     val cloudSearchViewModel: CloudSearchViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = CloudSearchViewModel.Factory(
             container.galleryRepository,
+            container.prefsManager,
             container.syncRepository,
             container.serverOpTaskRepository,
             appContext,

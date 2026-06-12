@@ -243,6 +243,9 @@
     <string name="search_type_ocr">OCR</string>
     <string name="search_type_filename">Filename</string>
     <string name="search_type_auto">Auto</string>
+    <string name="search_history">Search history</string>
+    <string name="clear_search_history">Clear</string>
+    <string name="remove_search_history">Remove history item</string>
     <string name="search_suggestions">Suggestions</string>
     <string name="search_people">People</string>
     <string name="search_unlimited">Any</string>

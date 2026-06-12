@@ -4,8 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.kqstone.mtphotos.data.model.UnifiedPhotoItem
 import com.kqstone.mtphotos.data.model.sortedForTimeline
+import com.kqstone.mtphotos.data.local.PrefsManager
 import com.kqstone.mtphotos.data.repository.GalleryRepository
 import com.kqstone.mtphotos.data.repository.LocationItem
 import com.kqstone.mtphotos.data.repository.MediaUiMutation
@@ -33,14 +36,33 @@ import com.kqstone.mtphotos.R
 import com.kqstone.mtphotos.worker.BackupScheduler
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+
+private const val MaxSearchHistoryItems = 20
+
+data class SearchHistoryItem(
+    val query: String = "",
+    val searchType: SearchType = SearchType.VISUAL_TEXT,
+    val filters: SearchFilters = SearchFilters(),
+    val updatedAt: Long = 0L
+)
+
+private data class StoredSearchHistoryItem(
+    val query: String? = null,
+    val searchType: SearchType? = null,
+    val filters: SearchFilters? = null,
+    val updatedAt: Long? = null
+)
 
 data class CloudSearchUiState(
     val query: String = "",
     val searchType: SearchType = SearchType.VISUAL_TEXT,
     val filters: SearchFilters = SearchFilters(),
+    val searchHistory: List<SearchHistoryItem> = emptyList(),
     val suggestions: List<SearchTipItem> = emptyList(),
     val people: List<PersonItem> = emptyList(),
     val locations: List<LocationItem> = emptyList(),
@@ -57,6 +79,7 @@ data class CloudSearchUiState(
 
 class CloudSearchViewModel(
     private val galleryRepository: GalleryRepository,
+    private val prefsManager: PrefsManager? = null,
     private val syncRepository: SyncRepository? = null,
     private val serverOpTaskRepository: ServerOpTaskRepository? = null,
     private val appContext: Context? = null,
@@ -69,6 +92,7 @@ class CloudSearchViewModel(
     private var searchTipsJob: Job? = null
     private var refreshJob: Job? = null
     private var filterCandidatesLoaded = false
+    private val gson = Gson()
 
     val selectionManager = SelectionManager(
         scope = viewModelScope,
@@ -79,8 +103,18 @@ class CloudSearchViewModel(
     val shareManager = ShareManager(galleryRepository, viewModelScope)
 
     init {
+        observeSearchHistory()
         observeMediaUiMutations()
         refreshClipAvailability()
+    }
+
+    private fun observeSearchHistory() {
+        val prefs = prefsManager ?: return
+        viewModelScope.launch {
+            prefs.searchHistory.collect { json ->
+                _uiState.value = _uiState.value.copy(searchHistory = parseSearchHistory(json))
+            }
+        }
     }
 
     private fun observeMediaUiMutations() {
@@ -199,6 +233,17 @@ class CloudSearchViewModel(
         executeSearch()
     }
 
+    fun applyHistory(item: SearchHistoryItem) {
+        searchTipsJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            query = item.query,
+            searchType = item.searchType,
+            filters = item.filters,
+            suggestions = emptyList()
+        )
+        executeSearch()
+    }
+
     fun updateSearchType(type: SearchType) {
         _uiState.value = _uiState.value.copy(searchType = type)
     }
@@ -233,6 +278,23 @@ class CloudSearchViewModel(
             error = null,
             toastMessage = null
         )
+    }
+
+    fun removeSearchHistory(item: SearchHistoryItem) {
+        val prefs = prefsManager ?: return
+        viewModelScope.launch {
+            val current = parseSearchHistory(prefs.searchHistory.first())
+            val next = current.filterNot { it.historyKey() == item.historyKey() }
+            saveSearchHistory(next)
+        }
+    }
+
+    fun clearSearchHistory() {
+        val prefs = prefsManager ?: return
+        viewModelScope.launch {
+            prefs.saveSearchHistory("")
+            _uiState.value = _uiState.value.copy(searchHistory = emptyList())
+        }
     }
 
     fun executeSearch() {
@@ -301,6 +363,10 @@ class CloudSearchViewModel(
             resultMonths = if (isRefresh) state.resultMonths else emptyList(),
             error = null
         )
+
+        if (!isRefresh) {
+            recordSearchHistory(query, state.searchType, filters)
+        }
 
         galleryRepository.searchMedia(
             SearchRequest(query = query, type = state.searchType, filters = filters)
@@ -506,8 +572,79 @@ class CloudSearchViewModel(
         }
     }
 
+    private fun recordSearchHistory(
+        query: String,
+        searchType: SearchType,
+        filters: SearchFilters
+    ) {
+        val prefs = prefsManager ?: return
+        val normalizedQuery = query.trim()
+        if (!hasSearchContent(normalizedQuery, filters)) return
+
+        viewModelScope.launch {
+            val current = parseSearchHistory(prefs.searchHistory.first())
+            val item = SearchHistoryItem(
+                query = normalizedQuery,
+                searchType = searchType,
+                filters = filters,
+                updatedAt = System.currentTimeMillis()
+            )
+            val next = listOf(item)
+                .plus(current.filterNot { it.historyKey() == item.historyKey() })
+                .take(MaxSearchHistoryItems)
+            saveSearchHistory(next)
+        }
+    }
+
+    private suspend fun saveSearchHistory(items: List<SearchHistoryItem>) {
+        val prefs = prefsManager ?: return
+        prefs.saveSearchHistory(if (items.isEmpty()) "" else gson.toJson(items))
+    }
+
+    private fun parseSearchHistory(json: String): List<SearchHistoryItem> {
+        if (json.isBlank()) return emptyList()
+        return runCatching {
+            val type = object : TypeToken<List<StoredSearchHistoryItem>>() {}.type
+            gson.fromJson<List<StoredSearchHistoryItem>>(json, type).orEmpty()
+                .mapNotNull { it.toSearchHistoryItemOrNull() }
+                .distinctBy { it.historyKey() }
+                .sortedByDescending { it.updatedAt }
+                .take(MaxSearchHistoryItems)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun StoredSearchHistoryItem.toSearchHistoryItemOrNull(): SearchHistoryItem? {
+        val normalizedQuery = query.orEmpty().trim()
+        val normalizedFilters = filters ?: SearchFilters()
+        if (!hasSearchContent(normalizedQuery, normalizedFilters)) return null
+        return SearchHistoryItem(
+            query = normalizedQuery,
+            searchType = searchType ?: SearchType.VISUAL_TEXT,
+            filters = normalizedFilters,
+            updatedAt = updatedAt ?: 0L
+        )
+    }
+
+    private fun SearchHistoryItem.historyKey(): String {
+        return listOf(
+            query.trim().lowercase(),
+            searchType.name,
+            filters.personId.orEmpty(),
+            filters.personName.orEmpty(),
+            filters.location.orEmpty()
+        ).joinToString("|")
+    }
+
+    private fun hasSearchContent(query: String, filters: SearchFilters): Boolean {
+        return query.isNotBlank() ||
+            !filters.personId.isNullOrBlank() ||
+            !filters.personName.isNullOrBlank() ||
+            !filters.location.isNullOrBlank()
+    }
+
     class Factory(
         private val galleryRepository: GalleryRepository,
+        private val prefsManager: PrefsManager? = null,
         private val syncRepository: SyncRepository? = null,
         private val serverOpTaskRepository: ServerOpTaskRepository? = null,
         private val appContext: Context? = null,
@@ -517,6 +654,7 @@ class CloudSearchViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return CloudSearchViewModel(
                 galleryRepository,
+                prefsManager,
                 syncRepository,
                 serverOpTaskRepository,
                 appContext,

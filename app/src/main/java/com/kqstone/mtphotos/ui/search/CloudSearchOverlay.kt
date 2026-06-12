@@ -229,8 +229,10 @@ fun CloudSearchOverlay(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     SearchFilterContent(
+                        query = uiState.query,
                         searchType = uiState.searchType,
                         filters = uiState.filters,
+                        searchHistory = uiState.searchHistory,
                         suggestions = uiState.suggestions,
                         people = uiState.people,
                         locations = uiState.locations,
@@ -242,6 +244,13 @@ fun CloudSearchOverlay(
                         onSearchTypeChange = viewModel::updateSearchType,
                         onPersonFilterChange = viewModel::updatePersonFilter,
                         onLocationFilterChange = viewModel::updateLocationFilter,
+                        onHistoryClick = {
+                            keyboardController?.hide()
+                            isFilterPanelVisible = false
+                            viewModel.applyHistory(it)
+                        },
+                        onHistoryRemove = viewModel::removeSearchHistory,
+                        onHistoryClear = viewModel::clearSearchHistory,
                         onSuggestionClick = {
                             keyboardController?.hide()
                             isFilterPanelVisible = false
@@ -426,8 +435,10 @@ private fun CloudSearchTopBar(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun SearchFilterContent(
+    query: String,
     searchType: SearchType,
     filters: SearchFilters,
+    searchHistory: List<SearchHistoryItem>,
     suggestions: List<SearchTipItem>,
     people: List<PersonItem>,
     locations: List<LocationItem>,
@@ -437,6 +448,9 @@ private fun SearchFilterContent(
     onSearchTypeChange: (SearchType) -> Unit,
     onPersonFilterChange: (PersonItem?) -> Unit,
     onLocationFilterChange: (LocationItem?) -> Unit,
+    onHistoryClick: (SearchHistoryItem) -> Unit,
+    onHistoryRemove: (SearchHistoryItem) -> Unit,
+    onHistoryClear: () -> Unit,
     onSuggestionClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -448,6 +462,15 @@ private fun SearchFilterContent(
             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        if (query.isBlank() && searchHistory.isNotEmpty()) {
+            SearchHistorySection(
+                history = searchHistory,
+                onHistoryClick = onHistoryClick,
+                onHistoryRemove = onHistoryRemove,
+                onHistoryClear = onHistoryClear
+            )
+        }
+
         // 搜索类型 Card
         SectionContainer {
             Column {
@@ -626,6 +649,146 @@ private fun SearchFilterContent(
             }
         }
     }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun SearchHistorySection(
+    history: List<SearchHistoryItem>,
+    onHistoryClick: (SearchHistoryItem) -> Unit,
+    onHistoryRemove: (SearchHistoryItem) -> Unit,
+    onHistoryClear: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, bottom = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(12.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(2.dp)
+                        )
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.search_history),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.3.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = stringResource(R.string.clear_search_history),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onHistoryClear)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            history.forEach { item ->
+                SearchHistoryChip(
+                    item = item,
+                    onClick = { onHistoryClick(item) },
+                    onRemove = { onHistoryRemove(item) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchHistoryChip(
+    item: SearchHistoryItem,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                shape = CircleShape
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick)
+            .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Search,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = searchHistoryDisplayText(item),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(R.string.remove_search_history),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun searchHistoryDisplayText(item: SearchHistoryItem): String {
+    val query = item.query.trim()
+    if (query.isNotEmpty()) return query
+
+    val parts = buildList {
+        item.filters.personName?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            add("${stringResource(R.string.search_people)}: $it")
+        }
+        item.filters.location?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            add("${stringResource(R.string.search_locations)}: $it")
+        }
+    }
+    return parts.joinToString(" / ").ifBlank { stringResource(R.string.search) }
 }
 
 @Composable

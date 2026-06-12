@@ -243,6 +243,9 @@
     <string name="search_type_ocr">OCR</string>
     <string name="search_type_filename">文件名</string>
     <string name="search_type_auto">综合</string>
+    <string name="search_history">搜索历史</string>
+    <string name="clear_search_history">清空</string>
+    <string name="remove_search_history">删除历史记录</string>
     <string name="search_suggestions">建议</string>
     <string name="search_people">人物</string>
     <string name="search_unlimited">不限</string>

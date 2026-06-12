@@ -65,6 +65,7 @@ class PrefsManager(val context: Context) {
         private val KEY_FOLDER_SETUP_COMPLETE = booleanPreferencesKey("folder_setup_complete")
         private val KEY_SYNC_INTERVAL = intPreferencesKey("sync_interval_minutes") // 默认 60
         private val KEY_COIL_DISK_CACHE_MB = intPreferencesKey("coil_disk_cache_mb") // 默认 512MB
+        private val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
 
         // 排序相关
         private val KEY_PEOPLE_ORDER = stringPreferencesKey("people_order")
@@ -112,6 +113,7 @@ class PrefsManager(val context: Context) {
     val folderSetupComplete: Flow<Boolean> = context.dataStore.data.map { it[KEY_FOLDER_SETUP_COMPLETE] ?: false }
     val syncInterval: Flow<Int> = context.dataStore.data.map { it[KEY_SYNC_INTERVAL] ?: 60 }
     val coilDiskCacheMb: Flow<Int> = context.dataStore.data.map { it[KEY_COIL_DISK_CACHE_MB] ?: 512 }
+    val searchHistory: Flow<String> = context.dataStore.data.map { it[KEY_SEARCH_HISTORY] ?: "" }
 
     val peopleOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_PEOPLE_ORDER] ?: "") }
     val scenesOrder: Flow<List<String>> = context.dataStore.data.map { parseStringList(it[KEY_SCENES_ORDER] ?: "") }
@@ -197,6 +199,7 @@ class PrefsManager(val context: Context) {
     fun isFolderSetupComplete(): Boolean = runBlocking { folderSetupComplete.first() }
     fun getSyncIntervalSync(): Int = runBlocking { syncInterval.first() }
     fun getCoilDiskCacheMbSync(): Int = runBlocking { coilDiskCacheMb.first() }
+    fun getSearchHistorySync(): String = runBlocking { searchHistory.first() }
 
     fun getPeopleOrderSync(): List<String> = runBlocking { peopleOrder.first() }
     fun getScenesOrderSync(): List<String> = runBlocking { scenesOrder.first() }
@@ -384,6 +387,16 @@ class PrefsManager(val context: Context) {
     suspend fun saveCoilDiskCacheMb(mb: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_COIL_DISK_CACHE_MB] = mb
+        }
+    }
+
+    suspend fun saveSearchHistory(historyJson: String) {
+        context.dataStore.edit { prefs ->
+            if (historyJson.isBlank()) {
+                prefs.remove(KEY_SEARCH_HISTORY)
+            } else {
+                prefs[KEY_SEARCH_HISTORY] = historyJson
+            }
         }
     }
 
